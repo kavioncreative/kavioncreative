@@ -1,0 +1,8 @@
+{
+  "data": {
+    "code": "PGRST205",
+    "details": null,
+    "hint": "Perhaps you meant the table 'public.platform_commissions'",
+    "message": "Could not find the table 'public.seller_commissions' in the schema cache"
+  }
+}

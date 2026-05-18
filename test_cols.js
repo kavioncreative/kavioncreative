@@ -1,0 +1,1 @@
+import fs from 'fs'; const env = fs.readFileSync('.env', 'utf8'); const url = env.match(/VITE_SUPABASE_URL=(.*)/)[1].trim(); const key = env.match(/VITE_SUPABASE_ANON_KEY=(.*)/)[1].trim(); fetch(url + '/rest/v1/projects?select=*&limit=1', { headers: { apikey: key, Authorization: 'Bearer ' + key } }).then(r => r.json()).then(r => console.log(Object.keys(r[0] || {})));

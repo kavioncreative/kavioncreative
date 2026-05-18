@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CodesLogic</title>
+  <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              primary: '#FF4D2D',
+              secondary: '#3B82F6',
+              accent: '#A855F7',
+              success: '#10B981',
+              warning: '#F59E0B',
+              error: '#EF4444',
+              info: '#0EA5E9',
+              'addon-indicator': '#A855F7', // LOCKED: Exclusive for Add-ons capsules
+            },
+            surface: {
+              bg: '#0F0F0F',
+              card: '#1A1A1A',
+              overlay: '#262626',
+              border: '#333333',
+              input: '#121212',
+            },
+            background: '#0F0F0F'
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+          boxShadow: {
+            'nova': '0 10px 30px -10px rgba(0, 0, 0, 0.5)',
+            'nova-glow': '0 0 20px -5px rgba(255, 77, 45, 0.3)',
+          },
+          borderRadius: {
+            'xl': '0.5rem',   /* Reduced from 1rem to 8px */
+            '2xl': '0.75rem', /* Reduced from 1.5rem to 12px */
+            '3xl': '1rem',    /* Reduced from 2rem to 16px */
+          },
+          animation: {
+            'spin-slow': 'spin 3s linear infinite',
+          },
+          backgroundImage: {
+            'grid-pattern': "url(\"data:image/svg+xml,%3Csvg width='40' height='40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M 40 0 L 0 0 0 40' fill='none' stroke='white' stroke-opacity='0.15' stroke-width='0.5'/%3E%3Ccircle cx='0' cy='0' r='1.5' fill='white' fill-opacity='0.3'/%3E%3C/svg%3E\")",
+            'grid-pattern-light': "url(\"data:image/svg+xml,%3Csvg width='40' height='40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M 40 0 L 0 0 0 40' fill='none' stroke='black' stroke-opacity='0.15' stroke-width='0.5'/%3E%3Ccircle cx='0' cy='0' r='1.5' fill='black' fill-opacity='0.3'/%3E%3C/svg%3E\")",
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #0F0F0F;
+      color: #FFFFFF;
+      font-family: 'Inter', sans-serif;
+      -webkit-font-smoothing: antialiased;
+      overflow-y: auto;
+      margin: 0;
+      min-height: 100vh;
+    }
+
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    ::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      /* IE and Edge */
+      scrollbar-width: none;
+      /* Firefox */
+    }
+
+    @keyframes scan {
+      0% {
+        transform: translateY(-100%);
+        opacity: 0;
+      }
+
+      50% {
+        opacity: 0.5;
+      }
+
+      100% {
+        transform: translateY(200%);
+        opacity: 0;
+      }
+    }
+
+    @keyframes fade-in {
+      from {
+        opacity: 0;
+      }
+
+      to {
+        opacity: 1;
+      }
+    }
+
+    @keyframes slide-in-from-left {
+      from {
+        transform: translateX(-20px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    @keyframes shimmer {
+      0% {
+        transform: translateX(-100%);
+      }
+
+      100% {
+        transform: translateX(400%);
+      }
+    }
+
+    @keyframes slide-in-from-bottom {
+      from {
+        transform: translateY(20px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .animate-scan {
+      animation: scan 3s linear infinite;
+    }
+
+    .animate-in {
+      animation: fade-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+
+    .fade-in {
+      animation: fade-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+
+    .slide-in-from-left-4 {
+      animation: slide-in-from-left 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+
+    .slide-in-from-bottom-4 {
+      animation: slide-in-from-bottom 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+
+    @keyframes project-entry {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .animate-project-entry {
+      animation: project-entry 200ms ease-out forwards;
+    }
+
+    /* Performance optimization for animations */
+    .animate-in,
+    .fade-in,
+    .slide-in-from-left-4,
+    .slide-in-from-bottom-4,
+    .animate-project-entry {
+      will-change: transform, opacity;
+      backface-visibility: hidden;
+      perspective: 1000px;
+    }
+
+    /* Override autofill background */
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover,
+    input:-webkit-autofill:focus,
+    input:-webkit-autofill:active {
+      -webkit-box-shadow: 0 0 0 30px #0A0A0A inset !important;
+      -webkit-text-fill-color: white !important;
+      transition: background-color 5000s ease-in-out 0s;
+    }
+
+    /* Global Reset to prevent nano-second focus flickers */
+    * {
+      --tw-ring-offset-width: 0px !important;
+      --tw-ring-offset-color: transparent !important;
+      --tw-ring-color: transparent !important;
+      --tw-ring-width: 0px !important;
+      --tw-ring-shadow: 0 0 #0000 !important;
+      --tw-ring-offset-shadow: 0 0 #0000 !important;
+      outline: none !important;
+      -webkit-tap-highlight-color: transparent !important;
+    }
+
+    button:focus,
+    button:focus-visible,
+    button:focus-within {
+      outline: none !important;
+      -webkit-tap-highlight-color: transparent !important;
+    }
+
+    /* Force instant shadow/outline transitions for all interactive elements */
+    /* This prevents the "white flicker" during blur by skipping the transition back to idle */
+    input,
+    textarea,
+    select,
+    button,
+    [role="button"],
+    [tabindex],
+    .group {
+      transition-property: background-color, opacity, transform, filter, backdrop-filter !important;
+    }
+
+    /* Preserve inset shadows for the metallic effect */
+    .shadow-\[inset_0_2px_8px_rgba\(0\2c 0\2c 0\2c 0\.6\)\] {
+      box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.6) !important;
+    }
+
+    .shadow-\[inset_0_4px_12px_rgba\(0\2c 0\2c 0\2c 0\.6\)\] {
+      box-shadow: inset 0 4px 12px rgba(0, 0, 0, 0.6) !important;
+    }
+
+    /* Force instant shadow removal (prevents ghosting outlines) */
+    .shadow-none-instant {
+      box-shadow: none !important;
+      transition: box-shadow 0s !important;
+    }
+
+    .border-none-instant {
+      transition-property: color, background-color, opacity, transform, filter, backdrop-filter !important;
+    }
+
+    /* Target specifically the 1265 x 559 viewport and below to reduce overall UI scale */
+    /* 12. Responsive Overrides for Compact View (Desktop/Tablet) */
+    @media (min-width: 1024px) and (max-width: 1265px) {
+
+      /* 1. Global Scale Reductions */
+      html {
+        font-size: 13px !important;
+      }
+
+      /* 2. Header & Top Bar */
+      header {
+        height: 4.8rem !important;
+        padding-left: 1.5rem !important;
+        padding-right: 1.5rem !important;
+      }
+
+      header h2 {
+        font-size: 1.1rem !important;
+      }
+
+      /* 3. Sidebar */
+      aside.w-20 {
+        width: 4.5rem !important;
+      }
+
+      /* Collapsed */
+      aside.w-56 {
+        width: 11rem !important;
+      }
+
+      /* Expanded */
+
+      /* Centering for ALL collapsed buttons */
+      aside.w-20 button {
+        width: 2.7rem !important;
+        height: 2.7rem !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+        margin-top: 0.4rem !important;
+        margin-bottom: 0.4rem !important;
+        padding: 0 !important;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        border-radius: 0.85rem !important;
+        overflow: hidden !important;
+      }
+
+      /* Hide text labels completely to prevent pushing icons */
+      aside.w-20 button span:not(.shrink-0),
+      aside.w-20 button .relative.z-10 span:not(.shrink-0) {
+        display: none !important;
+      }
+
+      /* Remove any container padding that might offset icons */
+      aside.w-20 nav,
+      aside.w-20 .mt-auto .relative.z-10 {
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+      }
+
+      /* Ensure the flex wrapper inside bottom buttons is centered */
+      aside.w-20 button .relative.z-10 {
+        width: 100% !important;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        margin: 0 !important;
+      }
+
+      aside.w-56 button {
+        height: 2.4rem !important;
+        margin-top: 0.25rem !important;
+        margin-bottom: 0.25rem !important;
+      }
+
+      aside .h-20 {
+        height: 4.8rem !important;
+      }
+
+      /* Sidebar Profile Info Scaling */
+      aside .h-20 span.text-sm {
+        font-size: 0.82rem !important;
+      }
+
+      /* Name */
+      aside .h-20 span.text-\[10px\] {
+        font-size: 9px !important;
+        letter-spacing: 0.1em !important;
+      }
+
+      /* Role */
+      aside .h-20 .shrink-0 .Avatar,
+      aside .h-20 .shrink-0 div {
+        transform: scale(0.9) !important;
+      }
+
+      /* Avatar scale */
+
+      /* 4. Navigation Tabs & Buttons */
+      aside button span {
+        font-size: 0.75rem !important;
+      }
+
+      /* 4. Navigation Tabs & Buttons */
+      .flex-wrap,
+      .flex.gap-3\.5,
+      .flex.gap-3 {
+        gap: 0.4rem !important;
+      }
+
+      [role="tablist"] button,
+      .projects-tabs button,
+      button.flex.items-center.h-10 {
+        height: 2.2rem !important;
+        padding-left: 0.6rem !important;
+        padding-right: 0.6rem !important;
+        font-size: 0.7rem !important;
+      }
+
+      /* 5. Content Spacing - Reduced lateral padding to increase content width */
+      main,
+      .flex-1.flex.flex-col>.p-8,
+      .p-10 {
+        padding-left: 1.5rem !important;
+        padding-right: 1.5rem !important;
+        padding-top: 1.5rem !important;
+        padding-bottom: 1.5rem !important;
+      }
+
+      /* Add vertical space above 1st tabs row and below header */
+      .space-y-6>.flex-col.items-center.gap-3\.5 {
+        margin-top: 1.5rem !important;
+        margin-bottom: 1.5rem !important;
+      }
+
+      /* 6. Projects Action Buttons */
+      #projects-action-btn,
+      .projects-table-controls button {
+        height: 2.22rem !important;
+        font-size: 0.7rem !important;
+        padding: 0 0.8rem !important;
+      }
+
+      /* 7. Table Overrides */
+      .projects-table th {
+        padding-top: 0.8rem !important;
+        padding-bottom: 0.8rem !important;
+        font-size: 10.5px !important;
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+      }
+
+      .projects-table td {
+        font-size: 10.5px !important;
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+        padding-top: 0.6rem !important;
+        padding-bottom: 0.6rem !important;
+      }
+
+      /* Add space on the left side inside the table */
+      .projects-table th:first-child,
+      .projects-table td:first-child {
+        padding-left: 1.5rem !important;
+      }
+
+      /* Add space for Project Title column */
+      .projects-table th:nth-child(2),
+      .projects-table td:nth-child(2) {
+        padding-left: 1rem !important;
+      }
+
+      /* Add space for other columns */
+      .projects-table th:nth-child(3),
+      .projects-table td:nth-child(3),
+      .projects-table th:nth-child(4),
+      .projects-table td:nth-child(4),
+      .projects-table th:nth-child(5),
+      .projects-table td:nth-child(5),
+      .projects-table th:nth-child(6),
+      .projects-table td:nth-child(6),
+      .projects-table th:nth-child(8),
+      .projects-table td:nth-child(8) {
+        padding-left: 1rem !important;
+      }
+
+      /* Reduce Status Column (6th col) width */
+      .projects-table th:nth-child(6),
+      .projects-table td:nth-child(6) {
+        width: 100px !important;
+        min-width: 100px !important;
+      }
+
+      /* Make last column narrow/square and centered */
+      .projects-table th:last-child,
+      .projects-table td:last-child {
+        width: 40px !important;
+        min-width: 40px !important;
+        padding: 0 !important;
+        text-align: center !important;
+      }
+
+      .projects-table td:last-child button {
+        margin: 0 auto !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+      }
+
+      .projects-table td .flex-col {
+        flex-direction: column !important;
+        gap: 0px !important;
+      }
+
+      /* 7. Compact Filter Bar (Analytics/Finances) */
+      .bg-\[\#1A1A1A\].rounded-2xl.shadow-nova div.p-3.relative.z-10 {
+        padding: 0.6rem 0.75rem !important;
+      }
+
+      /* Force row layout for the main filter containers */
+      .bg-\[\#1A1A1A\].rounded-2xl.shadow-nova .flex-col.xl\:flex-row {
+        flex-direction: row !important;
+        justify-content: space-between !important;
+        flex-wrap: nowrap !important;
+        gap: 0.5rem !important;
+      }
+
+      /* Force row layout for the left side (DatePickers + Dropdown) */
+      .bg-\[\#1A1A1A\].rounded-2xl.shadow-nova .flex-col.md\:flex-row {
+        flex-direction: row !important;
+        width: auto !important;
+        gap: 0.5rem !important;
+      }
+
+      /* Reduce width of DatePickers */
+      .bg-\[\#1A1A1A\].rounded-2xl.shadow-nova .flex-col.md\:flex-row>div:not(.h-8) {
+        width: auto !important;
+        min-width: 0 !important;
+        flex: 0 1 auto !important;
+      }
+
+      .bg-\[\#1A1A1A\].rounded-2xl.shadow-nova .flex-col.md\:flex-row .min-w-20 {
+        min-width: 0 !important;
+        width: auto !important;
+      }
+
+      /* Reduce padding inside DatePicker/Dropdown buttons */
+      .bg-black\/40.border.border-white\/\[0\.05\].rounded-xl.pl-4.pr-2.py-2\.5,
+      .bg-black\/40.border.border-white\/\[0\.05\].rounded-xl.px-4.h-10 {
+        padding-left: 0.6rem !important;
+        padding-right: 0.6rem !important;
+        height: 2.2rem !important;
+        font-size: 0.75rem !important;
+      }
+
+      /* Reduce margin/padding for Quick Filter buttons & Export Button */
+      .bg-\[\#1A1A1A\].rounded-2xl.shadow-nova .justify-end {
+        width: auto !important;
+        gap: 0.5rem !important;
+      }
+
+      .bg-\[\#1A1A1A\].rounded-2xl.shadow-nova .min-w-\[90px\],
+      .bg-\[\#1A1A1A\].rounded-2xl.shadow-nova button.inline-flex.items-center.justify-center {
+        min-width: 0 !important;
+        min-height: 0 !important;
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+        padding-left: 0.75rem !important;
+        padding-right: 0.75rem !important;
+        height: 2.2rem !important;
+        font-size: 0.75rem !important;
+        line-height: normal !important;
+      }
+
+      /* Fix Gap between left and right groups */
+      .bg-\[\#1A1A1A\].rounded-2xl.shadow-nova .flex-col.xl\:flex-row {
+        gap: 1.25rem !important;
+        /* Give more space between groups if justified */
+      }
+
+      /* Reduce icon size in filter bar */
+      .bg-\[\#1A1A1A\].rounded-2xl.shadow-nova .w-4.h-4 {
+        width: 0.85rem !important;
+        height: 0.85rem !important;
+      }
+
+      /* 8. Table Compacting & Row Height Match Projects List */
+      table th {
+        padding-top: 0.8rem !important;
+        padding-bottom: 0.8rem !important;
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+        font-size: 10.5px !important;
+        letter-spacing: 0.05em !important;
+      }
+
+      table td {
+        padding-top: 0.6rem !important;
+        padding-bottom: 0.6rem !important;
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+        font-size: 10.5px !important;
+      }
+
+      /* Status Chips (Badges) & Account Chips Size Sync */
+      .bg-surface-card table td span.inline-flex.items-center.rounded-lg.border,
+      .bg-surface-card table td span.tracking-widest.uppercase {
+        padding: 0.18rem 0.5rem !important;
+        font-size: 9px !important;
+        letter-spacing: 0.01rem !important;
+        border-radius: 5px !important;
+        line-height: 1 !important;
+      }
+
+      /* Specific column adjustments for Performance Log */
+      .bg-surface-card table th:first-child,
+      .bg-surface-card table td:first-child {
+        padding-left: 1rem !important;
+      }
+
+      /* Reduce horizontal scroll frequency by tightening columns */
+      table td span {
+        display: inline-block;
+      }
+
+      /* 10. Ultimate Gap & Layout Balance */
+      /* Synchronize all vertical section gaps within main content */
+      [class*="space-y-"] {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 0.5rem !important;
+      }
+
+      [class*="space-y-"]>* {
+        margin-top: 0 !important;
+        margin-bottom: 0 !important;
+      }
+
+      /* Synchronize horizontal gaps for ALL summary grids */
+      .grid.gap-4,
+      .grid.gap-3,
+      .grid[class*="gap-"],
+      [class*="grid-cols-"] {
+        gap: 0.5rem !important;
+      }
+
+      /* Ensure 1-row layout (3 columns) for summary cards on ALL pages */
+      .grid[class*="grid-cols-"] {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+      }
+
+      /* Exception for specific grids that should NOT be 3 columns (e.g. 2-column small grids) */
+      /* Actually, the summary cards are the main concern. */
+
+      /* Compact card internals further to allow 3 cards to fit perfectly */
+      .bg-surface-card .p-5 {
+        padding: 0.65rem 0.85rem !important;
+      }
+
+      .bg-surface-card .mb-4,
+      .bg-surface-card .mb-2,
+      .bg-surface-card .mb-1 {
+        margin-bottom: 0.2rem !important;
+      }
+
+      /* Align Freelancer Earnings specific elements */
+      .space-y-4 div.grid-cols-1.md\:grid-cols-2.xl\:grid-cols-3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        gap: 0.5rem !important;
+      }
+
+      .grid.grid-cols-1.md\:grid-cols-2.xl\:grid-cols-3.gap-4 .relative.z-10.w-full.p-5 {
+        padding: 0.75rem !important;
+      }
+
+      .grid.grid-cols-1.md\:grid-cols-2.xl\:grid-cols-3.gap-4 h4.text-2xl {
+        font-size: 1.1rem !important;
+      }
+
+      .grid.grid-cols-1.md\:grid-cols-2.xl\:grid-cols-3.gap-4 p.text-xs {
+        font-size: 9px !important;
+        margin-bottom: 0.25rem !important;
+      }
+
+      .grid.grid-cols-1.md\:grid-cols-2.xl\:grid-cols-3.gap-4 .mb-4,
+      .grid.grid-cols-1.md\:grid-cols-2.xl\:grid-cols-3.gap-4 .mb-1 {
+        margin-bottom: 0.25rem !important;
+      }
+
+      /* 11. Project Details View - Ultimate Compactness */
+      /* Sidebar adjustment */
+      aside.w-\[360px\],
+      aside.w-360px {
+        width: 280px !important;
+        min-width: 280px !important;
+      }
+
+      aside .p-10,
+      aside div.p-10 {
+        padding: 1.5rem !important;
+        /* From 2.5rem to 1.5rem */
+      }
+
+      aside .space-y-8>*+*,
+      aside div.space-y-8>*+* {
+        margin-top: 1.25rem !important;
+        /* Reduced from space-y-8 */
+      }
+
+      /* Metadata spacing */
+      .mb-8 {
+        margin-bottom: 1.25rem !important;
+      }
+
+      /* Right Main Content area */
+      div.px-10.flex.items-center.justify-between,
+      .nova-canvas+div.px-10,
+      header .px-10 {
+        padding-left: 1.5rem !important;
+        padding-right: 1.5rem !important;
+      }
+
+      .nova-canvas .p-10,
+      .nova-canvas div.p-10 {
+        padding: 1rem 1.5rem !important;
+      }
+
+      /* Section spacings in brief/timeline */
+      .space-y-10>*+* {
+        margin-top: 1.5rem !important;
+        /* From space-y-10 to space-y-6 */
+      }
+
+      .my-10 {
+        margin-top: 1.5rem !important;
+        margin-bottom: 1.5rem !important;
+      }
+
+      /* Reduce Card interior for brief */
+      .nova-canvas .p-10.pb-8,
+      .nova-canvas .p-10 {
+        padding: 1.25rem !important;
+      }
+
+      /* Metadata headings adjustment */
+      aside h3.text-sm {
+        font-size: 0.75rem !important;
+        letter-spacing: 0.1em !important;
+      }
+
+      /* Project title size */
+      h1.text-xl {
+        font-size: 1rem !important;
+      }
+
+      aside .pt-2,
+      aside .pt-3 {
+        padding-top: 0.5rem !important;
+      }
+
+      aside .space-y-5>*+* {
+        margin-top: 0.75rem !important;
+      }
+
+    }
+    
+    /* 13. Mobile-Specific Refinements (Below 1024px) */
+    @media (max-width: 1023px) {
+      /* Reset grid to 1 column on mobile to avoid squashing */
+      .grid[class*="grid-cols-"] {
+        grid-template-columns: repeat(1, minmax(0, 1fr)) !important;
+      }
+      
+      /* Balance spacing for mobile cards & metadata sections */
+      .bg-surface-card .p-5, 
+      .bg-[#1A1A1A].rounded-2xl.shadow-nova div.p-3 {
+        padding: 1.25rem !important;
+      }
+
+      /* Ensure Project Details internal headers don't take too much vertical space */
+      .ProjectDetails header.h-20 {
+        height: 3.5rem !important; /* h-14 equivalent for mobile */
+      }
+    }
+  </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
+  }
+}
+</script>
+</head>
+
+<body class="dark">
+  <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+
+</html>

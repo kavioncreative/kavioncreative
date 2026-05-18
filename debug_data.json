@@ -1,0 +1,9 @@
+{
+  "data": {
+    "code": "42703",
+    "details": null,
+    "hint": null,
+    "message": "column projects.admin_override does not exist"
+  },
+  "err": null
+}

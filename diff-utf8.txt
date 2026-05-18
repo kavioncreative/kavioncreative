@@ -1,0 +1,2503 @@
+﻿diff --git a/sections/ProjectDetails.tsx b/sections/ProjectDetails.tsx
+index cf28027..f0a8de8 100644
+--- a/sections/ProjectDetails.tsx
++++ b/sections/ProjectDetails.tsx
+@@ -1,5 +1,5 @@
+ 
+-import React, { useState, useEffect, useRef } from 'react';
++import React, { useState, useEffect, useRef, useMemo } from 'react';
+ import { supabase } from '../lib/supabase';
+ import Button from '../components/Button';
+ import {
+@@ -25,63 +25,104 @@ import {
+     IconLink,
+     IconRefreshCw,
+     IconChevronRight,
+-    IconCalendar
++    IconCalendar,
++    IconStar
+ } from '../components/Icons';
+ import { formatTime, formatDeadlineDate, getTimeLeft, formatDisplayName } from '../utils/formatter';
+ import { DatePicker } from '../components/DatePicker';
+ import { TimeSelect } from '../components/TimeSelect';
+ import { ElevatedMetallicCard } from '../components/ElevatedMetallicCard';
+ import { Dropdown } from '../components/Dropdown';
++import { Modal } from '../components/Surfaces';
+ import { addToast } from '../components/Toast';
+ import { useNotifications } from '../contexts/NotificationContext';
+ import { useUser } from '../contexts/UserContext';
++import { Avatar } from '../components/Avatar';
++import ReactMarkdown from 'react-markdown';
++import remarkGfm from 'remark-gfm';
++import remarkBreaks from 'remark-breaks';
++
++export const markdownPlugins = [remarkGfm, remarkBreaks];
++
++export const parseCodesLogicMarkdown = (text: string) => {
++    if (!text) return '';
++    // Replace literal bullets with markdown list items
++    return text.replace(/^[ \t]*[ΓÇó][ \t]*/gm, '- ');
++};
++export const markdownComponents = {
++    p: ({ node, ...props }: any) => <p className="mb-4 last:mb-0 text-[13px] leading-relaxed text-gray-300" {...props} />,
++    strong: ({ node, ...props }: any) => <strong className="font-bold text-white tracking-wide" {...props} />,
++    ul: ({ node, ...props }: any) => <ul className="list-disc pl-5 mb-4 space-y-2 text-[13px] text-gray-300" {...props} />,
++    ol: ({ node, ...props }: any) => <ol className="list-decimal pl-5 mb-4 space-y-2 text-[13px] text-gray-300" {...props} />,
++    li: ({ node, ...props }: any) => <li className="leading-relaxed text-[13px]" {...props} />,
++    a: ({ node, ...props }: any) => <a className="text-brand-primary hover:underline" target="_blank" rel="noopener noreferrer" {...props} />,
++    h1: ({ node, ...props }: any) => <h1 className="text-base font-bold text-white mb-4 mt-6 first:mt-0" {...props} />,
++    h2: ({ node, ...props }: any) => <h2 className="text-sm font-bold text-white mb-3 mt-5 first:mt-0" {...props} />,
++    h3: ({ node, ...props }: any) => <h3 className="text-sm font-bold text-white mb-2 mt-4 first:mt-0" {...props} />,
++};
+ 
+ interface ProjectDetailsProps {
+     projectId: string;
+     onBack: () => void;
+-    onStatusChange?: () => void;
++    onStatusChange?: (newStatus: string) => void;
+ }
+ 
+ // Helper for dynamic status styles driven by CodesLogic tokens
+ const getStatusStyles = (status: string) => {
+     const s = status?.toLowerCase() || '';
+ 
+-    // Done Status: NO COLOR (Neutral/Border Only) - per user request
+-    if (s.includes('done')) {
+-        return 'bg-white/[0.02] border-white/10 text-gray-400';
++    // Done Status
++    if (s.includes('done') || s.includes('delivered') || s.includes('completed')) {
++        return 'bg-sky-500/20 text-sky-500';
+     }
+ 
+-    // In Progress Status: GREEN - per user request
++    // In Progress Status
+     if (s.includes('in progress')) {
+-        return 'bg-brand-success/10 border-brand-success/20 text-brand-success';
++        return 'bg-amber-600/20 text-amber-600';
+     }
+ 
+-    // Approved: High Success Green
++    // Approved
+     if (s.includes('approved')) {
+-        return 'bg-brand-success/15 border-brand-success/30 text-brand-success';
++        return 'bg-green-600/20 text-green-600';
+     }
+ 
+-    // Urgent State: 
++    // Warning State: Revision
++    if (s.includes('revision')) {
++        return 'bg-orange-600/20 text-orange-600';
++    }
++
++    // Urgent State
+     if (s.includes('urgent')) {
+-        return 'bg-brand-primary/10 border-brand-primary/20 text-brand-primary';
++        return 'bg-red-600/20 text-red-600';
+     }
+ 
+-    // Warning State: Revision
+-    if (s.includes('revision')) {
+-        return 'bg-brand-warning/10 border-brand-warning/20 text-brand-warning';
++    // Sent For Approval
++    if (s.includes('sent for approval') || s === 'approval') {
++        return 'bg-emerald-500/20 text-emerald-600';
+     }
+ 
+     // Error State: Cancelled, Removed
+     if (s.includes('cancelled') || s.includes('removed')) {
+-        return 'bg-brand-error/10 border-brand-error/20 text-brand-error';
++        return 'bg-gray-600/20 text-gray-600';
+     }
+ 
+-    // Default Neutral for Others
+-    return 'bg-brand-secondary/10 border-brand-secondary/20 text-brand-secondary';
++    // Default Neutral
++    return 'bg-brand-primary/10 text-brand-primary';
+ };
+ 
+ const getRoleStyles = (role: string = 'Project Manager') => {
+     const r = role.toLowerCase();
++
++    // 1. Project Operations Manager -> POM
++    if (r.includes('operations')) return {
++        color: 'text-brand-info',
++        bg: 'bg-brand-info/10',
++        border: 'border-brand-info/20',
++        label: 'POM',
++        glow: 'shadow-[0_0_15px_rgba(6,182,212,0.15)]'
++    };
++
++    // 2. Admin Roles
+     if (r.includes('admin')) return {
+         color: 'text-brand-error',
+         bg: 'bg-brand-error/10',
+@@ -89,20 +130,26 @@ const getRoleStyles = (role: string = 'Project Manager') => {
+         label: 'Admin',
+         glow: 'shadow-[0_0_15px_rgba(239,68,68,0.15)]'
+     };
++
++    // 3. Project Manager -> PM
+     if (r.includes('manager')) return {
+         color: 'text-brand-secondary',
+         bg: 'bg-brand-secondary/10',
+         border: 'border-brand-secondary/20',
+-        label: 'Project Manager',
++        label: 'PM',
+         glow: 'shadow-[0_0_15px_rgba(59,130,246,0.15)]'
+     };
++
++    // 4. Presentation Designer -> Pres. Designer
+     if (r.includes('presentation')) return {
+         color: 'text-brand-accent',
+         bg: 'bg-brand-accent/10',
+         border: 'border-brand-accent/20',
+-        label: 'Presentation Designer',
++        label: 'Pres. Designer',
+         glow: 'shadow-[0_0_15px_rgba(168,85,247,0.15)]'
+     };
++
++    // 5. Designer
+     if (r.includes('designer')) return {
+         color: 'text-brand-success',
+         bg: 'bg-brand-success/10',
+@@ -110,19 +157,43 @@ const getRoleStyles = (role: string = 'Project Manager') => {
+         label: 'Designer',
+         glow: 'shadow-[0_0_15px_rgba(16,185,129,0.15)]'
+     };
++
+     return {
+         color: 'text-gray-400',
+         bg: 'bg-gray-400/10',
+         border: 'border-gray-400/10',
+-        label: 'Team Member',
++        label: 'Staff',
+         glow: ''
+     };
+ };
+ 
++const Skeleton = ({ className }: { className?: string }) => (
++    <div className={`bg-white/5 rounded-lg animate-pulse ${className}`} />
++);
++
+ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectId, onBack, onStatusChange }) => {
+-    const [project, setProject] = useState<any>(null);
+-    const canonicalId = project?.project_id || projectId;
+-    const [loading, setLoading] = useState(true);
++    const [project, setProject] = useState<any>(() => {
++        const idKey = projectId.replace(/-/g, ' ');
++        // 1. Try to find the exact full project from its dedicated cache for 0ms loads
++        const detailCache = localStorage.getItem(`nova_project_detail_${idKey}`);
++        if (detailCache) return JSON.parse(detailCache);
++
++        // 2. Fallback to basic tabular cache to avoid blank titles
++        const cachedProjects = localStorage.getItem('nova_projects_cache');
++        if (cachedProjects) {
++            const projects = JSON.parse(cachedProjects);
++            return projects.find((p: any) => p.id === projectId || p.id === idKey) || null;
++        }
++        return null;
++    });
++    const canonicalId = project?.project_id || project?.id || projectId;
++    const [isProjectLoading, setIsProjectLoading] = useState(!project || !('brief' in project));
++    const [isCommentsLoading, setIsCommentsLoading] = useState(true);
++    const [updating, setUpdating] = useState(false);
++    const [isDeadlineModalOpen, setIsDeadlineModalOpen] = useState(false);
++    const [modalDate, setModalDate] = useState<Date | null>(null);
++    const [modalTime, setModalTime] = useState('17:00');
++    const [activeShortcut, setActiveShortcut] = useState<number | null>(null);
+     const [comments, setComments] = useState<any[]>([]);
+     const [newComment, setNewComment] = useState('');
+     const [isPostingComment, setIsPostingComment] = useState(false);
+@@ -131,7 +202,226 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectId, onBack, onSt
+     const [hasMore, setHasMore] = useState(false);
+     const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+     const { addNotification } = useNotifications();
+-    const { profile } = useUser();
++    const { profile, effectiveRole } = useUser();
++    const userRole = effectiveRole?.toLowerCase().trim() || '';
++    const isProjectManager = userRole.includes('manager') || userRole.includes('admin') || userRole.includes('operations');
++    const isFreelancer = userRole === 'freelancer';
++
++    // Review & View State
++    const [viewMode, setViewMode] = useState<'timeline' | 'review'>('timeline');
++    const [rating, setRating] = useState(0);
++    const [reviewText, setReviewText] = useState('');
++    const [isSubmittingReview, setIsSubmittingReview] = useState(false);
++    const [reviewSubmitted, setReviewSubmitted] = useState(false);
++    const [existingReview, setExistingReview] = useState<any>(null);
++    const [allReviews, setAllReviews] = useState<any[]>([]);
++    const [revieweeAvatarUrl, setRevieweeAvatarUrl] = useState<string | null>(null);
++    const [teamProfileData, setTeamProfileData] = useState<Record<string, { avatar_url?: string; phone?: string }>>({});
++    const [isReviewsLoading, setIsReviewsLoading] = useState(false);
++    const [projectTeammates, setProjectTeammates] = useState<any[]>([]);
++
++    // Fetch teammates (other members of the primary manager's teams)
++    useEffect(() => {
++        const fetchTeammates = async () => {
++            if (!project?.primary_manager_id) return;
++
++            try {
++                // 1. Get the primary manager's team IDs
++                const { data: userTeams } = await supabase
++                    .from('team_members')
++                    .select('team_id')
++                    .eq('member_id', project.primary_manager_id);
++
++                if (userTeams && userTeams.length > 0) {
++                    const teamIds = userTeams.map(t => t.team_id);
++
++                    // 2. Fetch all members of these teams
++                    const { data: members } = await supabase
++                        .from('team_members')
++                        .select('profiles(id, name, role, phone)')
++                        .in('team_id', teamIds)
++                        .neq('member_id', project.primary_manager_id);
++
++                    if (members) {
++                        const uniqueMembers = Array.from(new Map(
++                            members
++                                .filter((m: any) => m.profiles)
++                                .map((m: any) => [m.profiles.id, {
++                                    id: m.profiles.id,
++                                    name: m.profiles.name,
++                                    role: m.profiles.role
++                                }])
++                        ).values());
++                        setProjectTeammates(uniqueMembers);
++                    }
++                }
++            } catch (err) {
++                console.error('Error fetching teammates:', err);
++            }
++        };
++        fetchTeammates();
++    }, [project?.primary_manager_id]);
++
++    // Aggregate all collaborators: Explicitly assigned + Team members
++    const allCollaborators = useMemo(() => {
++        const collaborators = project?.collaborators || [];
++        const teammates = projectTeammates.map(t => ({
++            id: t.id,
++            name: t.name,
++            role: t.role || 'Member',
++            phone: t.phone
++        }));
++
++        const seen = new Set();
++        const result: any[] = [];
++
++        // Priority 1: Explicitly assigned collaborators
++        collaborators.forEach((c: any) => {
++            const key = c.id || c.name;
++            if (key) {
++                seen.add(key);
++                result.push(c);
++            }
++        });
++
++        // Priority 2: Other members from the primary manager's team
++        teammates.forEach(t => {
++            const key = t.id || t.name;
++            if (key && !seen.has(key)) {
++                seen.add(key);
++                result.push(t);
++            }
++        });
++
++        return result;
++    }, [project?.collaborators, projectTeammates]);
++
++    // Fetch profile data (avatars & phones) for all team members mentioned in project
++    useEffect(() => {
++        const fetchTeamProfileData = async () => {
++            if (!project) return;
++            const names = new Set<string>();
++            if (project.assignee) names.add(project.assignee);
++            if (project.primary_manager?.name) names.add(project.primary_manager.name);
++
++            // Use unified allCollaborators list
++            allCollaborators.forEach((c: any) => {
++                if (c.name) names.add(c.name);
++            });
++
++            if (names.size === 0) return;
++
++            const nameList = Array.from(names);
++            const { data } = await supabase
++                .from('profiles')
++                .select('name, avatar_url, phone')
++                .in('name', nameList);
++
++            if (data) {
++                const map: Record<string, { avatar_url?: string; phone?: string }> = {};
++                data.forEach(p => {
++                    map[p.name] = {
++                        avatar_url: p.avatar_url || undefined,
++                        phone: p.phone || undefined
++                    };
++                });
++                setTeamProfileData(prev => ({ ...prev, ...map }));
++            }
++        };
++        fetchTeamProfileData();
++    }, [project?.project_id, allCollaborators]);
++
++    // Auto-set viewMode to review if approved
++    useEffect(() => {
++        if (project?.status?.toLowerCase().includes('approved')) {
++            setViewMode('review');
++        } else {
++            setViewMode('timeline');
++        }
++    }, [project?.status]);
++
++    // Fetch reviewee avatar when project is approved
++    useEffect(() => {
++        const fetchRevieweeAvatar = async () => {
++            if (!project?.status?.toLowerCase().includes('approved')) return;
++            const targetName = isFreelancer
++                ? project?.primary_manager?.name
++                : project?.assignee;
++            if (!targetName) return;
++            const { data } = await supabase
++                .from('profiles')
++                .select('avatar_url')
++                .or(`name.eq."${targetName}",email.eq."${targetName}"`)
++                .maybeSingle();
++            if (data?.avatar_url) setRevieweeAvatarUrl(data.avatar_url);
++        };
++        fetchRevieweeAvatar();
++    }, [project?.status, project?.assignee, project?.primary_manager?.name, isFreelancer]);
++
++    // Check for existing review and fetch all reviews for admins
++    useEffect(() => {
++        const fetchReviews = async () => {
++            if (!profile?.id || !canonicalId || !project?.status?.toLowerCase().includes('approved')) return;
++
++            const isAdmin = ['Super Admin', 'Admin'].includes(profile.role);
++            setIsReviewsLoading(true);
++
++            // 1. Fetch ALL reviews for the project if Admin
++            if (isAdmin) {
++                const { data: multipleReviews } = await supabase
++                    .from('project_reviews')
++                    .select('*')
++                    .eq('project_id', canonicalId)
++                    .order('created_at', { ascending: true });
++
++                if (multipleReviews && multipleReviews.length > 0) {
++                    const reviewerIds = multipleReviews.map((r: any) => r.reviewer_id).filter(Boolean);
++                    const reviewerNames = multipleReviews.map((r: any) => r.reviewer_name).filter(Boolean);
++
++                    // Fetch profiles by ID OR Name for maximum robustness
++                    const { data: profileData } = await supabase
++                        .from('profiles')
++                        .select('id, name, avatar_url')
++                        .or(`id.in.(${reviewerIds.map(id => `"${id}"`).join(',')}),name.in.(${reviewerNames.map(name => `"${name}"`).join(',')})`);
++
++                    // Create lookup maps
++                    const avatarMapById = new Map();
++                    const avatarMapByName = new Map();
++                    profileData?.forEach(p => {
++                        if (p.id) avatarMapById.set(p.id, p.avatar_url);
++                        if (p.name) avatarMapByName.set(p.name, p.avatar_url);
++                    });
++
++                    // Merge avatars into reviews
++                    const reviewsWithAvatars = multipleReviews.map((rev: any) => ({
++                        ...rev,
++                        avatar_url: avatarMapById.get(rev.reviewer_id) || avatarMapByName.get(rev.reviewer_name)
++                    }));
++
++                    setAllReviews(reviewsWithAvatars);
++                } else if (multipleReviews) {
++                    setAllReviews(multipleReviews);
++                }
++            }
++
++            // 2. Check for current user's review
++            const { data, error } = await supabase
++                .from('project_reviews')
++                .select('*')
++                .eq('project_id', canonicalId)
++                .eq('reviewer_id', profile.id)
++                .maybeSingle();
++
++            if (!error && data) {
++                setExistingReview(data);
++                setRating(data.rating);
++                setReviewText(data.review_text);
++                setReviewSubmitted(true);
++            }
++            setIsReviewsLoading(false);
++        };
++        fetchReviews();
++    }, [canonicalId, profile?.id, project?.status, profile?.role]);
+ 
+     // Sync role from profile
+     useEffect(() => {
+@@ -248,10 +538,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectId, onBack, onSt
+     };
+ 
+     const fetchProject = async () => {
+-        const tableName = 'projects';
+-        const idColumn = 'project_id';
+-
+-        let query = supabase.from(tableName).select('*, primary_manager:profiles!primary_manager_id (name, phone)');
++        let query = supabase.from('projects_with_collaborators').select('*, primary_manager:profiles!primary_manager_id (name, phone)');
+ 
+         const { data, error } = await query
+             .or(`project_id.eq."${projectId}",project_id.eq."${projectId.replace(/-/g, ' ')}"`)
+@@ -259,6 +546,19 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectId, onBack, onSt
+ 
+         if (!error && data) {
+             setProject(data);
++            const idKey = data.project_id.replace(/-/g, ' ');
++            localStorage.setItem(`nova_project_detail_${idKey}`, JSON.stringify(data));
++
++            const cached = localStorage.getItem('nova_projects_cache');
++            if (cached) {
++                const projects = JSON.parse(cached);
++                const idx = projects.findIndex((p: any) => (p.project_id || p.id) === data.project_id || (p.project_id || p.id) === idKey);
++                if (idx !== -1) {
++                    projects[idx] = { ...projects[idx], status: data.status, due_date: data.due_date, due_time: data.due_time };
++                    localStorage.setItem('nova_projects_cache', JSON.stringify(projects));
++                }
++            }
++
+             return data.project_id;
+         }
+         return null;
+@@ -351,7 +651,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectId, onBack, onSt
+         const isImage = type?.startsWith('image/') || ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext);
+ 
+         // Map extensions to specialized brand icons from /public
+-        if (ext === 'ai') return <img src="/icons/ai-document.png" className={`${className} object-contain p-2`} alt="AI" />;
++        if (ext === 'ai') return <img src="/ai-document.png" className={`${className} object-contain p-2`} alt="AI" />;
+         if (ext === 'psd') return <img src="/psd-icon.png" className={`${className} object-contain p-2`} alt="PSD" />;
+         if (ext === 'pdf') return <img src="/pdf-icon.png" className={`${className} object-contain p-2`} alt="PDF" />;
+         if (ext === 'png') return <img src="/png-icon.png" className={`${className} object-contain p-2`} alt="PNG" />;
+@@ -391,15 +691,19 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectId, onBack, onSt
+ 
+     useEffect(() => {
+         const fetchData = async () => {
+-            setLoading(true);
+-            const realId = await fetchProject();
+-            if (realId) {
+-                await fetchComments(realId);
+-            }
+-            setLoading(false);
++            // Assume the project ID matches what we display, replace URL dashes with spaces
++            const normalizedId = projectId.replace(/-/g, ' ');
++
++            if (!project || !('brief' in project)) setIsProjectLoading(true);
++            setIsCommentsLoading(true);
++
++            // Fetch concurrently without blocking
++            fetchProject().finally(() => setIsProjectLoading(false));
++            fetchComments(normalizedId).finally(() => setIsCommentsLoading(false));
+         };
+ 
+         fetchData();
++        // eslint-disable-next-line react-hooks/exhaustive-deps
+     }, [projectId]);
+ 
+     const handlePostComment = async () => {
+@@ -478,12 +782,19 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectId, onBack, onSt
+                 ? `Files added to timeline : ${project?.project_title || canonicalId}`
+                 : `${commentSnippet || 'New comment'} : ${project?.project_title || canonicalId}`;
+ 
+-            await addNotification({
+-                type: 'timeline_update',
+-                reference_id: canonicalId,
+-                message: notificationMessage,
+-                is_read: false
+-            });
++            // Determine notification target
++            const assigneeProfile = projectTeammates.find(t => t.name === project?.assignee);
++            const targetUserId = (profile?.id !== assigneeProfile?.id) ? (assigneeProfile?.id || project?.primary_manager_id) : project?.primary_manager_id;
++
++            if (targetUserId && targetUserId !== profile?.id) {
++                await addNotification({
++                    type: 'timeline_update',
++                    reference_id: canonicalId,
++                    message: notificationMessage,
++                    user_id: targetUserId,
++                    is_read: false
++                });
++            }
+ 
+             // Mark as persistent locally to avoid re-fetch trimming flicker
+             setComments(prev => prev.map(c =>
+@@ -493,26 +804,97 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectId, onBack, onSt
+     };
+ 
+     const handleDateChange = async (date: Date) => {
++        // ... handled in modal now ...
++    };
++
++    const handleUpdateDeadlineModal = async () => {
++        if (!project || !modalDate || !modalTime) return;
++
++        const yyyy = modalDate.getFullYear();
++        const mm_month = String(modalDate.getMonth() + 1).padStart(2, '0');
++        const dd_date = String(modalDate.getDate()).padStart(2, '0');
++        const dateStr = `${yyyy}-${mm_month}-${dd_date}`;
++        const timeStr = modalTime;
++
++        const previousDate = project.due_date;
++        const previousTime = project.due_time;
++
++        setProject((prev: any) => ({ ...prev, due_date: dateStr, due_time: timeStr }));
++        setIsDeadlineModalOpen(false);
++
++        const { error } = await supabase
++            .from('projects')
++            .update({ due_date: dateStr, due_time: timeStr })
++            .eq('project_id', canonicalId);
++
++        if (error) {
++            console.error('Error updating deadline:', error);
++            setProject((prev: any) => ({ ...prev, due_date: previousDate, due_time: previousTime }));
++            addToast({ type: 'error', title: 'Update Failed', message: 'Could not update deadline' });
++            return;
++        }
++
++        addToast({ type: 'success', title: 'Deadline Updated', message: `Deadline set to ${formatDeadlineDate(dateStr)} ${formatTime(timeStr)}` });
++
++        const stableId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `temp-${Date.now()}`;
++        const content = `DEADLINE_UPDATED:${previousDate || 'Not Set'}:${dateStr}:${previousTime || 'Not Set'}:${timeStr}`;
++
++        const optimisticCard = {
++            id: stableId,
++            project_id: canonicalId,
++            content,
++            author_name: profile?.name || 'User',
++            author_role: currentRole,
++            created_at: new Date().toISOString(),
++            isOptimistic: true
++        };
++
++        setComments(prev => [...prev, optimisticCard]);
++
++        const { error: timelineError } = await supabase
++            .from('project_comments')
++            .insert([{
++                id: stableId,
++                project_id: canonicalId,
++                content,
++                author_name: profile?.name || 'User',
++                author_role: currentRole
++            }]);
++
++        if (timelineError) console.error('Error logging deadline update:', timelineError);
++    };
++
++    const handleDeadlineShortcut = async (hours: number) => {
+         if (!project) return;
++        setActiveShortcut(hours);
++        const now = new Date();
++        const futureDate = new Date(now.getTime() + hours * 60 * 60 * 1000);
++
++        const yyyy = futureDate.getFullYear();
++        const mm_month = String(futureDate.getMonth() + 1).padStart(2, '0');
++        const dd = String(futureDate.getDate()).padStart(2, '0');
++        const dateStr = `${yyyy}-${mm_month}-${dd}`;
++        const hh = String(futureDate.getHours()).padStart(2, '0');
++        const mm = String(futureDate.getMinutes()).padStart(2, '0');
++        const timeStr = `${hh}:${mm}`;
+ 
+-        // Optimistic update
+-        const dateStr = date.toISOString().split('T')[0];
+         const previousDate = project.due_date;
++        const previousTime = project.due_time;
+ 
+-        setProject((prev: any) => ({ ...prev, due_date: dateStr }));
++        // Optimistic update
++        setProject((prev: any) => ({ ...prev, due_date: dateStr, due_time: timeStr }));
+ 
+         const { error } = await supabase
+             .from('projects')
+-            .update({ due_date: dateStr })
++            .update({ due_date: dateStr, due_time: timeStr })
+             .eq('project_id', canonicalId);
+ 
+         if (error) {
+-            console.error('Error updating project date:', error);
+-            // Revert on error
+-            setProject((prev: any) => ({ ...prev, due_date: previousDate }));
+-            addToast({ type: 'error', title: 'Update Failed', message: 'Could not update deadline date' });
++            console.error('Error updating deadline shortcut:', error);
++            setProject((prev: any) => ({ ...prev, due_date: previousDate, due_time: previousTime }));
++            addToast({ type: 'error', title: 'Update Failed', message: 'Could not update deadline' });
+         } else {
+-            addToast({ type: 'success', title: 'Date Updated', message: `Deadline set to ${formatDeadlineDate(dateStr)}` });
++            addToast({ type: 'success', title: 'Deadline Updated', message: `Set to ${formatDeadlineDate(dateStr)} ${formatTime(timeStr)}` });
+         }
+     };
+ 
+@@ -522,6 +904,12 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectId, onBack, onSt
+         const previousStatus = project.status;
+         setProject((prev: any) => ({ ...prev, status: newStatus }));
+ 
++        // If moving to Approved, ensure we mark payout_completed as true in the local state update
++        // (The DB trigger will handle the actual logic, but we update UI state for consistency)
++        if (newStatus.toLowerCase().includes('approved')) {
++            setProject((prev: any) => ({ ...prev, payout_completed: true }));
++        }
++
+         const tableName = 'projects';
+         const idColumn = 'project_id';
+ 
+@@ -558,44 +946,122 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectId, onBack, onSt
+             // 4. Process side effects in background (Async)
+             const syncSideEffects = async () => {
+                 // Record status change in timeline
+-                const { error: insertError } = await supabase
++                const { error: timelineError } = await supabase
+                     .from('project_comments')
+                     .insert([{
+                         id: stableId,
+                         project_id: canonicalId,
+                         content: `STATUS_CHANGED:${previousStatus || 'Pending'}:${newStatus}`,
+-                        author_name: formatDisplayName(profile?.name) || 'User',
++                        author_name: profile?.name || 'User',
+                         author_role: currentRole
+                     }]);
+ 
+-                if (insertError) {
+-                    console.error('Error inserting status comment:', insertError);
+-                    // Revert UI if needed, but usually we just leave it since the project status itself updated
+-                }
++                if (timelineError) console.error('Error syncing status timeline:', timelineError);
+ 
+-                // Add notification
+-                await addNotification({
+-                    type: 'status_update',
+-                    reference_id: canonicalId,
+-                    message: `Status changed to ${newStatus} : ${project?.project_title || canonicalId}`,
+-                    is_read: false
++                // 1. Generate Status-specific flags
++                const normalizedStatus = newStatus.toLowerCase().trim();
++                const isDoneType = normalizedStatus.includes('done');
++
++                // DEBUG LOGS
++                console.log('--- STATUS CHANGE NOTIF DEBUG ---', {
++                    newStatus,
++                    isDoneType,
++                    primaryManagerId: project?.primary_manager_id,
++                    collaboratorsCount: project?.collaborators?.length || 0,
++                    projectTitle: project?.project_title
+                 });
+ 
+-                // Refresh timeline to sync with server - with stableId, this won't cause double animation
+-                setComments(prev => prev.map(c =>
+-                    c.id === stableId ? { ...c, isOptimistic: false } : c
+-                ));
++                if (isDoneType) {
++                    // RULE: PMs and POMs are notified ONLY when project is marked as DONE (by freelancer usually)
++
++                    // 1. Notify Primary Manager
++                    if (project?.primary_manager_id && project.primary_manager_id !== profile?.id) {
++                        addNotification({
++                            type: 'project_done',
++                            reference_id: canonicalId,
++                            message: `Project marked as ${newStatus}: ${project?.project_title || canonicalId}`,
++                            user_id: project.primary_manager_id,
++                            is_read: false
++                        }).catch(e => console.error('PM Notification Error:', e));
++                    }
++
++                    // 2. Notify Collaborators (usually other PMs)
++                    if (Array.isArray(project?.collaborators)) {
++                        project.collaborators.forEach((collab: any) => {
++                            if (collab.id && collab.id !== profile?.id) { // Don't notify the person who made the change
++                                addNotification({
++                                    type: 'project_done',
++                                    reference_id: canonicalId,
++                                    message: `Project marked as ${newStatus}: ${project?.project_title || canonicalId}`,
++                                    user_id: collab.id,
++                                    is_read: false
++                                }).catch(e => console.error('Collab Notification Error:', e));
++                            }
++                        });
++                    }
++                } else {
++                    // RULE: For non-done statuses (Revision, In Progress, Approved, etc.), PMs/POMs should NOT be notified.
++                    // We only notify the assigned freelancer to inform them of the change.
++
++                    const assigneeProfile = projectTeammates.find(t => t.name === project?.assignee);
++
++                    // ONLY notify the assignee if they exist and are not the one who made the change
++                    if (assigneeProfile?.id && assigneeProfile.id !== profile?.id) {
++                        addNotification({
++                            type: 'status_update',
++                            reference_id: canonicalId,
++                            message: `Status changed to ${newStatus} : ${project?.project_title || canonicalId}`,
++                            user_id: assigneeProfile.id,
++                            is_read: false
++                        }).catch(e => console.error('Assignee Status Update Notification Error:', e));
++                    }
++                }
+ 
+-                // Trigger parent update so project moves between tabs
+-                if (onStatusChange) onStatusChange();
++                // Update tab parent
++                if (onStatusChange) onStatusChange(newStatus);
+             };
+ 
+-            syncSideEffects().catch(err => console.error('Error syncing status side effects:', err));
++            syncSideEffects();
+         }
+     };
+ 
++    const handleReopenProject = async () => {
++        if (!project) return;
++
++        // 1. We NO LONGER update the status to 'Revision' automatically.
++        // We just switch the UI view to the timeline and log the event.
++        setViewMode('timeline');
++
++        // 2. Log the "REOPENED" event in the timeline
++        const stableId = crypto.randomUUID();
++        const { error: logError } = await supabase
++            .from('project_comments')
++            .insert([{
++                id: stableId,
++                project_id: canonicalId,
++                content: `PROJECT_REOPENED:${project.status || 'Approved'}:${project.status || 'Approved'}`,
++                author_name: profile?.name || 'User',
++                author_role: currentRole
++            }]);
++
++        if (logError) console.error('Error logging reopen event:', logError);
++
++        // 3. Update UI locally so the "Reopened" card appears immediately
++        setComments(prev => [...prev, {
++            id: stableId,
++            project_id: canonicalId,
++            content: `PROJECT_REOPENED:${project.status || 'Approved'}:${project.status || 'Approved'}`,
++            author_name: profile?.name || 'User',
++            author_role: currentRole,
++            created_at: new Date().toISOString()
++        }]);
++
++        addToast({ type: 'success', title: 'Project Reopened', message: 'You can now view history and change status manually.' });
++    };
++
+     const handleTimeChange = async (newTime: string) => {
+         if (!project) return;
++        setActiveShortcut(null);
+ 
+         const previousTime = project.due_time;
+         setProject((prev: any) => ({ ...prev, due_time: newTime }));
+@@ -605,7 +1071,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectId, onBack, onSt
+             .update({ due_time: newTime })
+             .eq('project_id', canonicalId);
+         if (error) {
+-            console.error('Error updating status:', error);
++            console.error('Error updating time:', error);
+             setProject((prev: any) => ({ ...prev, due_time: previousTime }));
+             addToast({ type: 'error', title: 'Update Failed', message: 'Could not update project deadline time' });
+         } else {
+@@ -646,8 +1112,363 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectId, onBack, onSt
+             });
+ 
+             // Trigger parent refresh if it exists
+-            if (onStatusChange) onStatusChange();
++            if (onStatusChange) onStatusChange(project.status || '');
++        }
++    };
++
++    const handleSubmitReview = async () => {
++        if (rating === 0 || !reviewText.trim() || isSubmittingReview || !profile?.id) return;
++
++        const targetName = isFreelancer
++            ? (project?.primary_manager?.name || 'Project Manager')
++            : (project?.assignee || 'Freelancer');
++
++        setIsSubmittingReview(true);
++        try {
++            const { data, error } = await supabase
++                .from('project_reviews')
++                .insert([{
++                    project_id: canonicalId,
++                    reviewer_id: profile.id,
++                    reviewer_name: profile.name,
++                    reviewer_role: profile.role,
++                    reviewee_name: targetName,
++                    rating,
++                    review_text: reviewText,
++                }])
++                .select()
++                .single();
++
++            if (error) throw error;
++
++            setExistingReview(data);
++            setReviewSubmitted(true);
++            addToast({ type: 'success', title: 'Review Submitted', message: 'Thank you for your feedback!' });
++        } catch (err: any) {
++            console.error('Review submission error:', err);
++            addToast({ type: 'error', title: 'Submission Failed', message: err.message || 'Could not submit review.' });
++        } finally {
++            setIsSubmittingReview(false);
++        }
++    };
++
++    const renderReviewContent = () => {
++        const isAdmin = ['Super Admin', 'Admin'].includes(profile?.role || '');
++
++        // Loading state for Admin to prevent flicker
++        if (isAdmin && isReviewsLoading) {
++            return (
++                <div className="flex flex-col flex-1 h-full">
++                    <div className="w-full flex-1 flex flex-col">
++                        <ElevatedMetallicCard
++                            title="Loading Reviews..."
++                            headerClassName="px-10 py-6"
++                            bodyClassName="p-10 flex-1 flex flex-col items-center justify-center"
++                            className="flex-1 flex flex-col mb-10"
++                        >
++                            <div className="flex flex-col items-center gap-4">
++                                <div className="w-12 h-12 border-4 border-brand-primary/20 border-t-brand-primary rounded-full animate-spin" />
++                                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.3em]">Syncing Feed...</p>
++                            </div>
++                        </ElevatedMetallicCard>
++                    </div>
++                </div>
++            );
+         }
++
++        const targetName = isFreelancer
++            ? (project?.primary_manager?.name || 'Project Manager')
++            : (project?.assignee || 'Freelancer');
++
++        // Admin View: Show summary of reviews if ANY reviews exist
++        if (isAdmin && allReviews.length > 0) {
++            return (
++                <div className="flex flex-col flex-1 h-full animate-in fade-in zoom-in duration-700">
++                    <div className="w-full flex-1 flex flex-col">
++                        <ElevatedMetallicCard
++                            title="Project Reviews Summary"
++                            headerClassName="px-10 py-6"
++                            bodyClassName="p-10 flex-1 flex flex-col overflow-y-auto"
++                            className="flex-1 flex flex-col mb-10"
++                        >
++                            <div className="space-y-12">
++                                {allReviews.map((rev, idx) => {
++                                    const isOwnReview = rev.reviewer_id === profile?.id;
++                                    const rating = rev.rating;
++
++                                    // Premium Star Colors
++                                    let fromColor = '#22c55e';
++                                    let toColor = '#15803d';
++                                    let borderColor = '#16a34a';
++
++                                    if (rating > 0 && rating < 3) {
++                                        fromColor = '#f87171'; toColor = '#b91c1c'; borderColor = '#dc2626';
++                                    } else if (rating > 0 && rating < 4) {
++                                        fromColor = '#facc15'; toColor = '#a16207'; borderColor = '#ca8a04';
++                                    }
++
++                                    return (
++                                        <div key={rev.id || idx} className="space-y-6 animate-in fade-in slide-in-from-top-4" style={{ animationDelay: `${idx * 150}ms` }}>
++                                            <div className="flex items-center justify-between">
++                                                <div className="flex items-center gap-4 text-left">
++                                                    <Avatar
++                                                        src={rev.avatar_url}
++                                                        initials={rev.reviewer_name?.slice(0, 2).toUpperCase()}
++                                                        size="lg"
++                                                        className={isOwnReview ? 'ring-2 ring-brand-primary/30 ring-offset-2 ring-offset-black' : ''}
++                                                    />
++                                                    <div>
++                                                        <div className="flex items-center gap-2">
++                                                            <p className="text-sm font-black text-white uppercase tracking-tight">{rev.reviewer_name}</p>
++                                                            {isOwnReview && (
++                                                                <span className="text-[8px] font-black bg-brand-primary/20 text-brand-primary px-1.5 py-0.5 rounded border border-brand-primary/30 uppercase tracking-[0.1em]">You</span>
++                                                            )}
++                                                        </div>
++                                                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em]">{rev.reviewer_role}</p>
++                                                    </div>
++                                                </div>
++                                                <div className="flex items-center gap-3">
++                                                    <div className="flex items-center gap-1.5">
++                                                        {[1, 2, 3, 4, 5].map((s) => {
++                                                            const isStarActive = s <= rev.rating;
++                                                            return (
++                                                                <div key={s} className="relative w-6 h-6 rounded-lg flex items-center justify-center overflow-hidden">
++                                                                    {!isStarActive ? (
++                                                                        <div className="absolute inset-0 rounded-lg bg-white/[0.02] border border-white/[0.05] shadow-[inset_0_1px_4px_rgba(0,0,0,0.3)] flex items-center justify-center">
++                                                                            <IconStar size={10} className="text-white/10" fill="none" />
++                                                                        </div>
++                                                                    ) : (
++                                                                        <div
++                                                                            className="absolute inset-0 rounded-lg flex items-center justify-center shadow-lg"
++                                                                            style={{
++                                                                                background: `linear-gradient(to bottom, ${fromColor}, ${toColor})`,
++                                                                                border: `1px solid ${borderColor}`,
++                                                                                boxShadow: `inset 0 1px 0 rgba(255,255,255,0.3), 0 4px 12px -4px ${borderColor}80`,
++                                                                            }}
++                                                                        >
++                                                                            <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.2)_50%,transparent_100%)] pointer-events-none" />
++                                                                            <IconStar size={10} className="relative z-10 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.3)]" fill="currentColor" />
++                                                                        </div>
++                                                                    )}
++                                                                </div>
++                                                            );
++                                                        })}
++                                                    </div>
++                                                    <span className="text-xs font-black text-white/50 ml-1 tracking-tighter">{rev.rating}.0</span>
++                                                </div>
++                                            </div>
++                                            <div className={`p-6 rounded-3xl border shadow-[inset_0_2px_12px_rgba(0,0,0,0.3)] ${isOwnReview ? 'bg-brand-primary/5 border-brand-primary/10' : 'bg-black/20 border-white/[0.04]'}`}>
++                                                <p className="text-sm text-gray-300 leading-relaxed italic">"{rev.review_text}"</p>
++                                                <p className="text-[9px] text-gray-600 font-bold uppercase tracking-widest mt-4 text-right">
++                                                    {new Date(rev.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
++                                                </p>
++                                            </div>
++                                        </div>
++                                    );
++                                })}
++
++                                <div className="pt-2 flex justify-center">
++                                    <Button
++                                        variant="metallic"
++                                        className="h-12 px-10 text-[10px] font-black uppercase tracking-[0.2em]"
++                                        onClick={() => setViewMode('timeline')}
++                                    >
++                                        Open Timeline
++                                    </Button>
++                                </div>
++                            </div>
++                        </ElevatedMetallicCard>
++                    </div>
++                </div>
++            );
++        }
++
++        // Standard User View or Admin with no reviews yet
++        return (
++            <div className="flex flex-col flex-1 h-full animate-in fade-in zoom-in duration-700">
++                <div className="w-full flex-1 flex flex-col">
++                    <ElevatedMetallicCard
++                        title={isAdmin ? "Submit Administrative Review" : "Project Review"}
++                        headerClassName="px-10 py-6"
++                        bodyClassName="p-10 flex-1 flex flex-col"
++                        className="flex-1 flex flex-col mb-10"
++                    >
++                        <div className="flex-1 flex flex-col space-y-10">
++                            {/* Target User Info or Post-Submission Message */}
++                            <div className="flex flex-col items-center text-center space-y-6">
++                                {reviewSubmitted && !isAdmin ? (
++                                    <>
++                                        <div className="w-20 h-20 rounded-full bg-brand-success/10 border border-brand-success/20 flex items-center justify-center text-brand-success mb-2 shadow-[0_0_30px_rgba(34,197,94,0.1)]">
++                                            <IconCheckCircle size={40} className="animate-in zoom-in duration-500" />
++                                        </div>
++                                        <h2 className="text-2xl font-black text-white tracking-tight uppercase">Review Successfully Logged</h2>
++                                        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest max-w-xs leading-relaxed">
++                                            Your feedback has been privately stored for Administrative Review.
++                                        </p>
++
++                                        {/* Project Overview Card */}
++                                        <div className="w-full mt-10 p-8 bg-black/40 rounded-3xl border border-white/5 shadow-[inset_0_4px_24px_rgba(0,0,0,0.5)] flex flex-col gap-6 text-left">
++                                            <div className="flex justify-between items-center border-b border-white/5 pb-4">
++                                                <span className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Project ID</span>
++                                                <span className="text-sm font-mono text-brand-primary font-bold tracking-wider">{project?.project_id}</span>
++                                            </div>
++                                            <div className="flex justify-between items-start border-b border-white/5 pb-4">
++                                                <span className="text-[10px] font-black text-gray-600 uppercase tracking-widest pt-1">Project Title</span>
++                                                <span className="text-sm font-bold text-white text-right max-w-[200px] leading-snug">{project?.project_title}</span>
++                                            </div>
++                                            <div className="flex justify-between items-center">
++                                                <span className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Approval Date</span>
++                                                <span className="text-sm font-bold text-gray-300">
++                                                    {project?.updated_at ? new Date(project.updated_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'N/A'}
++                                                </span>
++                                            </div>
++                                        </div>
++                                    </>
++                                ) : (
++                                    <>
++                                        <Avatar
++                                            src={revieweeAvatarUrl || undefined}
++                                            initials={formatDisplayName(targetName).split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
++                                            size="xl"
++                                        />
++                                        <h2 className="text-2xl font-black text-white tracking-tight">{formatDisplayName(targetName)}</h2>
++                                    </>
++                                )}
++                            </div>
++
++                            {/* Conditional Rendering of Submission Form or Details */}
++                            {(!reviewSubmitted || isAdmin) && (
++                                <>
++                                    {/* Star Rating */}
++                                    <div className="flex flex-col items-center gap-6">
++                                        <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.4em]">
++                                            {reviewSubmitted ? 'Your Rating' : 'Rate your experience'}
++                                        </p>
++                                        <div className="flex items-center gap-3">
++                                            {[1, 2, 3, 4, 5].map((star) => {
++                                                const isActive = star <= rating;
++
++                                                let fromColor = '#22c55e';
++                                                let toColor = '#15803d';
++                                                let borderColor = '#16a34a';
++
++                                                if (rating > 0 && rating < 3) {
++                                                    fromColor = '#f87171'; toColor = '#b91c1c'; borderColor = '#dc2626';
++                                                } else if (rating > 0 && rating < 4) {
++                                                    fromColor = '#facc15'; toColor = '#a16207'; borderColor = '#ca8a04';
++                                                }
++
++                                                return reviewSubmitted ? (
++                                                    // Read-only star
++                                                    <div
++                                                        key={star}
++                                                        className="relative w-12 h-12 rounded-xl flex items-center justify-center"
++                                                    >
++                                                        {!isActive ? (
++                                                            <div className="absolute inset-0 rounded-xl bg-white/[0.02] border border-white/[0.05] shadow-[inset_0_2px_6px_rgba(0,0,0,0.35)] flex items-center justify-center">
++                                                                <IconStar size={20} className="text-white/10" fill="none" />
++                                                            </div>
++                                                        ) : (
++                                                            <div
++                                                                className="absolute inset-0 rounded-xl flex items-center justify-center overflow-hidden shadow-lg"
++                                                                style={{
++                                                                    background: `linear-gradient(to bottom, ${fromColor}, ${toColor})`,
++                                                                    border: `1px solid ${borderColor}`,
++                                                                    boxShadow: `inset 0 1.5px 0 rgba(255,255,255,0.35), 0 8px 20px -6px ${borderColor}60`,
++                                                                }}
++                                                            >
++                                                                <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.18)_50%,transparent_100%)] pointer-events-none" />
++                                                                <IconStar size={20} className="relative z-10 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]" fill="currentColor" />
++                                                            </div>
++                                                        )}
++                                                    </div>
++                                                ) : (
++                                                    // Interactive star
++                                                    <button
++                                                        key={star}
++                                                        onClick={() => setRating(star)}
++                                                        className="relative w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-300 active:scale-90 group/star"
++                                                    >
++                                                        {!isActive ? (
++                                                            <div className="absolute inset-0 rounded-xl bg-white/[0.02] border border-white/[0.05] shadow-[inset_0_2px_6px_rgba(0,0,0,0.35)] flex items-center justify-center group-hover/star:bg-white/[0.05] transition-colors">
++                                                                <IconStar size={20} className="text-white/10 group-hover/star:text-white/20" fill="none" />
++                                                            </div>
++                                                        ) : (
++                                                            <div
++                                                                className="absolute inset-0 rounded-xl flex items-center justify-center overflow-hidden shadow-lg"
++                                                                style={{
++                                                                    background: `linear-gradient(to bottom, ${fromColor}, ${toColor})`,
++                                                                    border: `1px solid ${borderColor}`,
++                                                                    boxShadow: `inset 0 1.5px 0 rgba(255,255,255,0.35), 0 8px 20px -6px ${borderColor}60`,
++                                                                }}
++                                                            >
++                                                                <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.18)_50%,transparent_100%)] pointer-events-none" />
++                                                                <IconStar size={20} className="relative z-10 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]" fill="currentColor" />
++                                                            </div>
++                                                        )}
++                                                    </button>
++                                                );
++                                            })}
++                                        </div>
++                                    </div>
++
++                                    {/* Review Text */}
++                                    <div className="space-y-4">
++                                        <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.4em] text-center">
++                                            {reviewSubmitted ? 'Your Review' : 'Written Review'}
++                                        </p>
++                                        {reviewSubmitted ? (
++                                            // Read-only review text
++                                            <div className="relative z-10 min-h-[120px] p-6 bg-black/20 rounded-3xl border border-white/[0.04] shadow-[inset_0_2px_12px_rgba(0,0,0,0.3)] flex flex-col items-center justify-center text-center">
++                                                <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{reviewText}</p>
++                                                {existingReview?.created_at && (
++                                                    <p className="text-[10px] text-gray-600 font-black uppercase tracking-wider mt-4">
++                                                        Submitted {new Date(existingReview.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
++                                                    </p>
++                                                )}
++                                            </div>
++                                        ) : (
++                                            // Editable textarea
++                                            <div className="relative z-10 min-h-[160px] p-6 bg-black/40 rounded-3xl border border-white/5 shadow-[inset_0_4px_24px_rgba(0,0,0,0.5)] focus-within:border-brand-primary/30 transition-all duration-500">
++                                                <textarea
++                                                    className="w-full h-full bg-transparent border-none outline-none text-sm text-white placeholder-gray-700 resize-none leading-relaxed"
++                                                    placeholder={`Describe your experience working with ${formatDisplayName(targetName)}...`}
++                                                    value={reviewText}
++                                                    onChange={(e) => setReviewText(e.target.value)}
++                                                />
++                                            </div>
++                                        )}
++                                    </div>
++                                </>
++                            )}
++
++                            {/* Action Buttons */}
++                            <div className="pt-4 flex items-center justify-center gap-4">
++                                {reviewSubmitted ? (
++                                    <Button
++                                        variant="metallic"
++                                        className="px-12 py-3 rounded-2xl h-14 text-sm font-black uppercase tracking-[0.2em] shadow-xl shadow-brand-primary/20"
++                                        onClick={() => setViewMode('timeline')}
++                                    >
++                                        Open Thread
++                                    </Button>
++                                ) : (
++                                    <Button
++                                        variant="metallic"
++                                        className="px-12 py-3 rounded-2xl h-14 text-sm font-black uppercase tracking-[0.2em] shadow-xl shadow-brand-primary/20"
++                                        onClick={handleSubmitReview}
++                                        isLoading={isSubmittingReview}
++                                        disabled={rating === 0 || !reviewText.trim()}
++                                    >
++                                        Submit Review
++                                    </Button>
++                                )}
++                            </div>
++                        </div>
++                    </ElevatedMetallicCard>
++                </div>
++            </div>
++        );
+     };
+ 
+     // Removed global early returns for loading and project-not-found states 
+@@ -687,28 +1508,32 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectId, onBack, onSt
+                 <div
+                     className={`flex-1 space-y-8 overflow-y-auto transition-all duration-300 ${isSidebarCollapsed ? 'px-0 py-10 no-scrollbar' : 'p-10 scrollbar-thin scrollbar-thumb-surface-border scrollbar-track-transparent'}`}
+                 >
+-                    {/* Identification */}
+                     <MetadataSection
+-                        title="Identification"
++                        title="Details"
+                         isCollapsed={isSidebarCollapsed}
+-                        collapsedHeight="h-40"
++                        collapsedHeight="h-72"
+                     >
+-                        <MetadataItem label="Project ID" value={project?.project_id || ''} />
+-                        <MetadataItem label="Project Title" value={project?.project_title || 'Untitled'} />
++                        <MetadataItem label="Project ID" value={isProjectLoading ? <Skeleton className="h-4 w-32" /> : (project?.project_id || '')} />
++                        <MetadataItem label="Project Title" value={isProjectLoading ? <Skeleton className="h-4 w-48" /> : (project?.project_title || 'Untitled')} />
++                        <MetadataItem label="Options Required" value={isProjectLoading ? <Skeleton className="h-4 w-12" /> : (project?.options_required !== undefined && project?.options_required !== null ? String(project.options_required) : 'N/A')} />
++                        <MetadataItem label="Client" value={isProjectLoading ? <Skeleton className="h-4 w-32" /> : (formatDisplayName(project?.client_name || project?.client_type) || 'Unknown')} />
++                        <MetadataItem
++                            label="Assignee"
++                            value={isProjectLoading ? <Skeleton className="h-4 w-40" /> : (formatDisplayName(project?.assignee) || 'Unassigned')}
++                        />
+                     </MetadataSection>
+ 
+-                    {/* Team */}
+                     <MetadataSection
+                         title="Team"
+                         isCollapsed={isSidebarCollapsed}
+-                        collapsedHeight="h-80"
++                        collapsedHeight="h-72"
+                     >
+-                        <MetadataItem label="Client" value={formatDisplayName(project?.client_name || project?.client_type) || 'Unknown'} />
+-                        <MetadataItem label="Assignee" value={formatDisplayName(project?.assignee) || 'Unassigned'} />
+                         <MetadataItem
+                             label="Project Manager"
+                             value={
+-                                project?.primary_manager ? (
++                                isProjectLoading ? (
++                                    <Skeleton className="h-10 w-full" />
++                                ) : project?.primary_manager ? (
+                                     <div className="flex flex-col gap-1">
+                                         <span className="text-sm font-bold text-white">{formatDisplayName(project.primary_manager.name) || 'Support'}</span>
+                                         {project.primary_manager.phone && (
+@@ -723,12 +1548,18 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectId, onBack, onSt
+                                 ) : 'Support'
+                             }
+                         />
+-                        {project?.collaborators && project.collaborators.length > 0 && (
++                        {allCollaborators.length > 0 && (
+                             <div className="pt-2">
+-                                <p className="text-[10px] font-bold text-brand-primary uppercase tracking-widest mb-2 px-1">Collaborators</p>
+-                                <div className="space-y-2">
+-                                    {project.collaborators.map((c: any, idx: number) => (
+-                                        <CollaboratorItem key={idx} name={c.name} role={c.role || 'Member'} />
++                                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2 px-1">Collaborators</p>
++                                <div className="space-y-5 pt-3">
++                                    {allCollaborators.map((c: any, idx: number) => (
++                                        <CollaboratorItem
++                                            key={idx}
++                                            name={c.name}
++                                            role={c.role || 'Member'}
++                                            phone={c.phone || teamProfileData[c.name]?.phone}
++                                            avatarUrl={teamProfileData[c.name]?.avatar_url}
++                                        />
+                                     ))}
+                                 </div>
+                             </div>
+@@ -742,47 +1573,56 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectId, onBack, onSt
+                         collapsedHeight="h-[480px]"
+                     >
+                         <div className="space-y-5">
+-                            {/* Inline Editable Deadline Date */}
+-                            {profile?.role === 'Freelancer' ? (
+-                                <MetadataItem
+-                                    label="Deadline Date"
+-                                    value={project?.due_date ? formatDeadlineDate(project.due_date) : 'Not Set'}
+-                                    isDate
+-                                    isRecessed
+-                                />
+-                            ) : (
+-                                <DatePicker
+-                                    value={project?.due_date ? new Date(project.due_date) : null}
+-                                    onChange={handleDateChange}
+-                                >
+-                                    <MetadataItem
+-                                        label="Deadline Date"
+-                                        value={project?.due_date ? formatDeadlineDate(project.due_date) : 'Set Date'}
+-                                        isSelect
+-                                        isDate
+-                                    />
+-                                </DatePicker>
++                            {/* Shortcuts for Deadline */}
++                            {!isFreelancer && (
++                                <div className="flex flex-wrap gap-2 mb-4 px-1">
++                                    {[2, 6, 8, 12, 24].map((hours) => (
++                                        <Button
++                                            key={hours}
++                                            variant="recessed"
++                                            size="sm"
++                                            onClick={() => handleDeadlineShortcut(hours)}
++                                            className={`!px-2.5 !py-1.5 !h-auto !text-[9px] font-bold uppercase tracking-wider transition-all duration-300 transform active:scale-95 ${activeShortcut === hours
++                                                ? '!text-white !border-white/20 !bg-white/10'
++                                                : ''
++                                                }`}
++                                        >
++                                            {hours} Hrs
++                                        </Button>
++                                    ))}
++                                </div>
+                             )}
+ 
+-                            {profile?.role === 'Freelancer' ? (
+-                                <MetadataItem
+-                                    label="Deadline Time"
+-                                    value={project?.due_time ? formatTime(project.due_time) : 'Not Set'}
+-                                    isTime
+-                                    isRecessed
+-                                />
+-                            ) : (
+-                                <TimeSelect
+-                                    value={project?.due_time || '17:00'}
+-                                    onChange={handleTimeChange}
+-                                >
+-                                    <MetadataItem
+-                                        label="Deadline Time"
+-                                        value={project?.due_time ? formatTime(project.due_time) : '10:00 PM'}
+-                                        isSelect
+-                                        isTime
+-                                    />
+-                                </TimeSelect>
++                            {/* Read-Only Deadline Date */}
++                            <MetadataItem
++                                label="Deadline Date"
++                                value={project?.due_date ? formatDeadlineDate(project.due_date) : 'Not Set'}
++                                isDate
++                                isRecessed
++                            />
++
++                            {/* Read-Only Deadline Time */}
++                            <MetadataItem
++                                label="Deadline Time"
++                                value={project?.due_time ? formatTime(project.due_time) : 'Not Set'}
++                                isTime
++                                isRecessed
++                            />
++
++                            {!isFreelancer && (
++                                <div className="pt-2">
++                                    <Button
++                                        variant="metallic"
++                                        onClick={() => {
++                                            setModalDate(project?.due_date ? new Date(project.due_date) : new Date());
++                                            setModalTime(project?.due_time || '17:00');
++                                            setIsDeadlineModalOpen(true);
++                                        }}
++                                        className="w-full justify-center h-10 text-[10px] font-black uppercase tracking-[0.2em]"
++                                    >
++                                        Update Deadline
++                                    </Button>
++                                </div>
+                             )}
+ 
+                             <MetadataItem
+@@ -795,7 +1635,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectId, onBack, onSt
+                                         targetDate = `${project?.due_date}T${time.length === 5 ? time + ':00' : time}`;
+                                     }
+ 
+-                                    const { label, color } = getTimeLeft(targetDate);
++                                    const { label, color } = getTimeLeft(targetDate, project?.status);
+                                     return label;
+                                 })()}
+                                 valueClassName={(() => {
+@@ -804,7 +1644,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectId, onBack, onSt
+                                         const time = project?.due_time || '00:00';
+                                         targetDate = `${project?.due_date}T${time.length === 5 ? time + ':00' : time}`;
+                                     }
+-                                    const { color } = getTimeLeft(targetDate);
++                                    const { color } = getTimeLeft(targetDate, project?.status);
+                                     return color;
+                                 })()}
+                             />
+@@ -819,16 +1659,22 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectId, onBack, onSt
+                                 <Dropdown
+                                     value={project?.status || 'In Progress'}
+                                     onChange={handleStatusChange}
+-                                    options={[
+-                                        { label: 'In Progress', value: 'In Progress' },
+-                                        { label: 'Done', value: 'Done' },
+-                                        { label: 'Urgent', value: 'Urgent' },
+-                                        { label: 'Urgent Done', value: 'Urgent Done' },
+-                                        { label: 'Revision', value: 'Revision' },
+-                                        { label: 'Revision Done', value: 'Revision Done' },
+-                                        { label: 'Revision Urgent', value: 'Revision Urgent' },
+-                                        { label: 'Revision Urgent Done', value: 'Revision Urgent Done' }
+-                                    ]}
++                                    options={useMemo(() => {
++                                        const base = [
++                                            { label: 'In Progress', value: 'In Progress' },
++                                            { label: 'Done', value: 'Done' },
++                                            { label: 'Urgent', value: 'Urgent' },
++                                            { label: 'Urgent Done', value: 'Urgent Done' },
++                                            { label: 'Revision', value: 'Revision' },
++                                            { label: 'Revision Done', value: 'Revision Done' },
++                                            { label: 'Revision Urgent', value: 'Revision Urgent' },
++                                            { label: 'Revision Urgent Done', value: 'Revision Urgent Done' }
++                                        ];
++                                        if (isProjectManager) {
++                                            base.push({ label: 'Sent For Approval', value: 'Sent For Approval' });
++                                        }
++                                        return base;
++                                    }, [isProjectManager])}
+                                     size="md"
+                                 >
+                                     <MetadataItem
+@@ -918,6 +1764,30 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectId, onBack, onSt
+                                     />
+                                 </Dropdown>
+                             )}
++
++                            {/* Reopen Project: Only visible on the Review screen for Approved projects (Not for Freelancers) */}
++                            {project?.status?.toLowerCase().includes('approved') && viewMode === 'review' && profile?.role !== 'Freelancer' && (
++                                <Button
++                                    variant="metallic"
++                                    className="w-full h-11 text-[11px] font-black uppercase tracking-[0.2em] shadow-lg shadow-brand-primary/10"
++                                    leftIcon={<IconRefreshCw size={14} />}
++                                    onClick={handleReopenProject}
++                                >
++                                    Reopen Project
++                                </Button>
++                            )}
++
++                            {/* Back to Review: Visible on Timeline if project is approved or review is submitted (Not for Freelancers) */}
++                            {(project?.status?.toLowerCase().includes('approved') || project?.payout_completed || reviewSubmitted) && viewMode === 'timeline' && profile?.role !== 'Freelancer' && (
++                                <Button
++                                    variant="metallic"
++                                    className="w-full h-11 text-[11px] font-black uppercase tracking-[0.2em] shadow-lg shadow-brand-primary/10"
++                                    leftIcon={<IconStar size={14} />}
++                                    onClick={() => setViewMode('review')}
++                                >
++                                    Back to Review
++                                </Button>
++                            )}
+                         </div>
+                     </MetadataSection>
+                 </div>
+@@ -930,8 +1800,8 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectId, onBack, onSt
+                     <div className="w-full px-10 flex items-center justify-between">
+                         {/* Left Aligned Project Title */}
+                         <div className="flex items-center gap-4">
+-                            {loading && !project ? (
+-                                <div className="h-7 w-64 bg-white/5 rounded-xl animate-pulse" />
++                            {isProjectLoading ? (
++                                <Skeleton className="h-7 w-64" />
+                             ) : (
+                                 <div className="flex items-center gap-3">
+                                     <h1 className="text-xl font-bold text-white tracking-tight">
+@@ -953,8 +1823,8 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectId, onBack, onSt
+ 
+                         {/* Right Aligned Status */}
+                         <div className="flex items-center gap-2">
+-                            {loading && !project ? (
+-                                <div className="h-7 w-24 bg-white/5 rounded-full animate-pulse" />
++                            {isProjectLoading ? (
++                                <Skeleton className="h-7 w-24" />
+                             ) : (
+                                 <>
+                                     {(() => {
+@@ -990,7 +1860,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectId, onBack, onSt
+                                         );
+                                     })()}
+ 
+-                                    <span className={`px-3 py-1 border rounded-full text-[10px] font-bold uppercase tracking-wider ${getStatusStyles(project?.status || '')}`}>
++                                    <span className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${getStatusStyles(project?.status || '')}`}>
+                                         {project?.status || 'In Progress'}
+                                     </span>
+                                 </>
+@@ -1001,8 +1871,8 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectId, onBack, onSt
+ 
+                 {/* Top Section - Project content (scrollable) */}
+                 <main className="flex-1 overflow-y-auto nova-canvas scrollbar-thin scrollbar-thumb-surface-border scrollbar-track-transparent">
+-                    <div className="w-full min-h-full p-10 flex flex-col relative z-10 bg-transparent">
+-                        {!project && !loading ? (
++                    <div className={`w-full p-10 flex flex-col relative z-10 bg-transparent ${viewMode === 'review' ? 'h-full' : 'min-h-full'}`}>
++                        {!project && !isProjectLoading ? (
+                             <div className="flex flex-col items-center justify-center py-24 space-y-6">
+                                 <div className="w-16 h-16 rounded-full bg-brand-error/10 flex items-center justify-center text-brand-error">
+                                     <IconAlertTriangle size={32} />
+@@ -1014,461 +1884,646 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectId, onBack, onSt
+                             </div>
+                         ) : (
+                             <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-bottom-4">
+-                                {/* 1. Project Brief Section (Always visible if project exists/is loading) */}
+-                                <section className="shrink-0">
+-                                    <ElevatedMetallicCard title="Project Brief">
+-                                        <div className="space-y-10">
+-                                            {/* 1. Brief Text */}
+-                                            <div className="space-y-6 text-gray-300 whitespace-pre-line leading-relaxed text-sm">
+-                                                {project?.brief || (loading ? (
+-                                                    <div className="space-y-3 animate-pulse">
+-                                                        <div className="h-4 bg-white/5 rounded w-3/4"></div>
+-                                                        <div className="h-4 bg-white/5 rounded w-full"></div>
+-                                                        <div className="h-4 bg-white/5 rounded w-5/6"></div>
++                                {viewMode === 'review' ? (
++                                    renderReviewContent()
++                                ) : (
++                                    <>
++                                        {/* 1. Project Brief Section (Always visible if project exists/is loading) */}
++                                        <section className="shrink-0">
++                                            <ElevatedMetallicCard title="Project Brief">
++                                                <div className="space-y-10">
++                                                    {/* 1. Brief Text */}
++                                                    <div className="space-y-6 text-gray-300 text-sm">
++                                                        {isProjectLoading ? (
++                                                            <div className="space-y-3">
++                                                                <Skeleton className="h-4 w-3/4" />
++                                                                <Skeleton className="h-4 w-full" />
++                                                                <Skeleton className="h-4 w-5/6" />
++                                                            </div>
++                                                        ) : project?.brief ? (
++                                                            <ReactMarkdown components={markdownComponents} remarkPlugins={markdownPlugins}>
++                                                                {parseCodesLogicMarkdown(project.brief)}
++                                                            </ReactMarkdown>
++                                                        ) : (
++                                                            <p className="text-gray-500 italic">No brief provided.</p>
++                                                        )}
+                                                     </div>
+-                                                ) : `No brief provided.`)}
+-                                            </div>
+ 
+-                                            {/* 2. Attachments Section (if any) */}
+-                                            {project?.attachments && Array.isArray(project.attachments) && project.attachments.length > 0 && (
+-                                                <div className="pt-8 border-t border-white/5">
+-                                                    <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em] mb-4">Attachments</h4>
+-                                                    <div className="flex flex-wrap gap-4">
+-                                                        {project.attachments.map((file: any, i: number) => (
+-                                                            <div key={i} className="group/posted-file relative cursor-pointer hover:scale-[1.02] transition-transform">
+-                                                                <div className="w-20 h-20 rounded-xl border border-surface-border bg-surface-overlay flex flex-col items-center justify-center relative overflow-hidden">
+-                                                                    <FileIcon name={file.name} type={file.type} url={file.url} />
+-                                                                </div>
++                                                    {/* 2. Attachments Section (if any) */}
++                                                    {project?.attachments && Array.isArray(project.attachments) && project.attachments.length > 0 && (
++                                                        <div className="pt-8 border-t border-white/5">
++                                                            <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em] mb-4">Attachments</h4>
++                                                            <div className="flex flex-wrap gap-4">
++                                                                {project.attachments.map((file: any, i: number) => (
++                                                                    <div key={i} className="group/posted-file relative cursor-pointer hover:scale-[1.02] transition-transform">
++                                                                        <div className="w-20 h-20 rounded-xl border border-surface-border bg-surface-overlay flex flex-col items-center justify-center relative overflow-hidden">
++                                                                            <FileIcon name={file.name} type={file.type} url={file.url} />
++                                                                        </div>
+ 
+-                                                                {/* OVERLAY for Download/Copy */}
+-                                                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/posted-file:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2 z-20 backdrop-blur-[1px]">
+-                                                                    <button
+-                                                                        onClick={(e) => {
+-                                                                            e.stopPropagation();
+-                                                                            forceDownload(file.url, file.name || 'download');
+-                                                                        }}
+-                                                                        className="p-1.5 rounded-full bg-white/10 hover:bg-brand-primary text-white transition-colors border border-white/10 hover:border-brand-primary"
+-                                                                        title="Download"
+-                                                                    >
+-                                                                        <IconDownload size={14} />
+-                                                                    </button>
+-                                                                    <button
+-                                                                        onClick={(e) => {
+-                                                                            e.stopPropagation();
+-                                                                            navigator.clipboard.writeText(file.url);
+-                                                                            addToast({ title: 'Link copied', type: 'success' });
+-                                                                        }}
+-                                                                        className="p-1.5 rounded-full bg-white/10 hover:bg-brand-primary text-white transition-colors border border-white/10 hover:border-brand-primary"
+-                                                                        title="Copy Link"
+-                                                                    >
+-                                                                        <IconLink size={14} />
+-                                                                    </button>
+-                                                                </div>
++                                                                        {/* OVERLAY for Download/Copy */}
++                                                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/posted-file:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2 z-20 backdrop-blur-[1px]">
++                                                                            <button
++                                                                                onClick={(e) => {
++                                                                                    e.stopPropagation();
++                                                                                    forceDownload(file.url, file.name || 'download');
++                                                                                }}
++                                                                                className="p-1.5 rounded-full bg-white/10 hover:bg-brand-primary text-white transition-colors border border-white/10 hover:border-brand-primary"
++                                                                                title="Download"
++                                                                            >
++                                                                                <IconDownload size={14} />
++                                                                            </button>
++                                                                            <button
++                                                                                onClick={(e) => {
++                                                                                    e.stopPropagation();
++                                                                                    navigator.clipboard.writeText(file.url);
++                                                                                    addToast({ title: 'Link copied', type: 'success' });
++                                                                                }}
++                                                                                className="p-1.5 rounded-full bg-white/10 hover:bg-brand-primary text-white transition-colors border border-white/10 hover:border-brand-primary"
++                                                                                title="Copy Link"
++                                                                            >
++                                                                                <IconLink size={14} />
++                                                                            </button>
++                                                                        </div>
++                                                                    </div>
++                                                                ))}
+                                                             </div>
+-                                                        ))}
+-                                                    </div>
++                                                        </div>
++                                                    )}
+                                                 </div>
+-                                            )}
+-                                        </div>
+-                                    </ElevatedMetallicCard>
+-                                </section>
+-
+-                                {/* 2. Top Separator */}
+-                                <div className="border-t border-surface-border w-full my-10" />
+-
+-                                {/* 3. Activity Timeline Section */}
+-                                <section className="flex-1 flex flex-col mb-10 min-h-[400px]">
+-                                    {loading ? (
+-                                        <div className="flex flex-col items-center justify-center py-12 space-y-4">
+-                                            <div className="w-10 h-10 border-2 border-brand-primary/20 border-t-brand-primary rounded-full animate-spin" />
+-                                            <p className="text-[11px] font-bold text-gray-500 uppercase tracking-[0.3em] ml-1">Loading history</p>
+-                                        </div>
+-                                    ) : comments.length > 0 ? (
+-                                        <div className="space-y-8">
+-                                            {/* Pagination: Show Older Activities Button */}
+-                                            {hasMore && (
+-                                                <div className="flex justify-center pb-4">
+-                                                    <button
+-                                                        onClick={fetchOlderComments}
+-                                                        disabled={isLoadingOlder}
+-                                                        className="group flex flex-col items-center gap-2 px-6 py-3 rounded-2xl bg-white/[0.02] border border-white/[0.05] hover:bg-white/[0.04] hover:border-white/10 transition-all duration-300 disabled:opacity-50"
+-                                                    >
+-                                                        {isLoadingOlder ? (
+-                                                            <div className="w-4 h-4 border-2 border-brand-primary/20 border-t-brand-primary rounded-full animate-spin" />
+-                                                        ) : (
+-                                                            <div className="flex items-center gap-2">
+-                                                                <IconRefreshCw size={12} className="text-brand-primary group-hover:rotate-180 transition-transform duration-700" />
+-                                                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] group-hover:text-white transition-colors">Show Older Activities</span>
+-                                                            </div>
+-                                                        )}
+-                                                    </button>
++                                            </ElevatedMetallicCard>
++                                        </section>
++
++                                        {/* 2. Top Separator */}
++                                        <div className="border-t border-surface-border w-full my-10" />
++
++                                        {/* 3. Activity Timeline Section */}
++                                        <section className="flex-1 flex flex-col mb-10 min-h-[400px]">
++                                            {(isCommentsLoading && comments.length === 0) ? (
++                                                <div className="flex flex-col items-center justify-center py-12 space-y-4">
++                                                    <div className="w-10 h-10 border-2 border-brand-primary/20 border-t-brand-primary rounded-full animate-spin" />
++                                                    <p className="text-[11px] font-bold text-gray-500 uppercase tracking-[0.3em] ml-1">Loading history</p>
+                                                 </div>
+-                                            )}
++                                            ) : comments.length > 0 ? (
++                                                <div className="space-y-8">
++                                                    {/* Pagination: Show Older Activities Button */}
++                                                    {hasMore && (
++                                                        <div className="flex justify-center pb-4">
++                                                            <button
++                                                                onClick={fetchOlderComments}
++                                                                disabled={isLoadingOlder}
++                                                                className="group flex flex-col items-center gap-2 px-6 py-3 rounded-2xl bg-white/[0.02] border border-white/[0.05] hover:bg-white/[0.04] hover:border-white/10 transition-all duration-300 disabled:opacity-50"
++                                                            >
++                                                                {isLoadingOlder ? (
++                                                                    <div className="w-4 h-4 border-2 border-brand-primary/20 border-t-brand-primary rounded-full animate-spin" />
++                                                                ) : (
++                                                                    <div className="flex items-center gap-2">
++                                                                        <IconRefreshCw size={12} className="text-brand-primary group-hover:rotate-180 transition-transform duration-700" />
++                                                                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] group-hover:text-white transition-colors">Show Older Activities</span>
++                                                                    </div>
++                                                                )}
++                                                            </button>
++                                                        </div>
++                                                    )}
++
++                                                    {comments.map((comment, index) => (
++                                                        <div
++                                                            key={comment.id || index}
++                                                            className="animate-in fade-in slide-in-from-left-4 opacity-0"
++                                                            style={{ animationDelay: `${Math.min(index, 10) * 100}ms` }}
++                                                        >
++                                                            {(() => {
++                                                                const isStatusChange = comment.content?.startsWith('STATUS_CHANGED:');
++
++                                                                if (isStatusChange) {
++                                                                    const parts = comment.content.split(':');
++                                                                    const oldStatus = parts[1];
++                                                                    const newStatus = parts[2];
++
++                                                                    return (
++                                                                        <div className="space-y-8">
++                                                                            <div className="bg-surface-card border border-surface-border rounded-3xl overflow-hidden group shadow-[0_24px_48px_-12px_rgba(0,0,0,0.5)] transition-all duration-300">
++                                                                                {/* Header row */}
++                                                                                <div className="px-6 py-4 border-b border-surface-border bg-white/[0.03] relative z-20 overflow-hidden">
++                                                                                    {/* Diagonal Metallic Shine Effect */}
++                                                                                    <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.04)_50%,transparent_100%)] pointer-events-none" />
++
++                                                                                    <span className={`relative z-10 text-[10px] font-bold uppercase tracking-widest ${getStatusStyles(newStatus).split(' ').find(c => c.startsWith('text-')) || 'text-brand-primary'}`}>
++                                                                                        STATUS CHANGED
++                                                                                    </span>
++
++                                                                                    {/* Center-weighted Shadow Depth Falloff */}
++                                                                                    <div className="absolute -bottom-px left-1/2 -translate-x-1/2 w-4/5 h-12 [mask-image:linear-gradient(to_right,transparent,black_20%,black_80%,transparent)] pointer-events-none -z-10">
++                                                                                        <div className="w-full h-full shadow-[0_12px_32px_-8px_rgba(0,0,0,0.9)] opacity-80" />
++                                                                                    </div>
++                                                                                </div>
++                                                                                {/* Changed By row */}
++                                                                                <div className="flex items-center justify-between px-6 py-4 border-b border-surface-border bg-white/[0.01]">
++                                                                                    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Changed By</span>
++                                                                                    <span className="text-[11px] font-bold text-white uppercase tracking-widest">{comment.author_name || 'User'}</span>
++                                                                                </div>
++                                                                                {/* Date row */}
++                                                                                <div className="flex items-center justify-between px-6 py-4 border-b border-surface-border bg-white/[0.01]">
++                                                                                    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Date</span>
++                                                                                    <div className="flex items-center gap-2">
++                                                                                        <span className="text-[11px] font-bold text-white uppercase tracking-widest">
++                                                                                            {new Date(comment.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}
++                                                                                        </span>
++                                                                                        <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">
++                                                                                            {new Date(comment.created_at).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }).toUpperCase()}
++                                                                                        </span>
++                                                                                    </div>
++                                                                                </div>
++                                                                                {/* Previous Status row */}
++                                                                                <div className="flex items-center justify-between px-6 py-4 border-b border-surface-border bg-white/[0.01]">
++                                                                                    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Previous Status</span>
++                                                                                    <span className={`inline-flex items-center px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider whitespace-nowrap opacity-50 ${getStatusStyles(oldStatus)}`}>
++                                                                                        {oldStatus}
++                                                                                    </span>
++                                                                                </div>
++                                                                                {/* Current Status row */}
++                                                                                <div className="flex items-center justify-between px-6 py-4 bg-white/[0.01]">
++                                                                                    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Current Status</span>
++                                                                                    <span className={`inline-flex items-center px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider whitespace-nowrap ${getStatusStyles(newStatus)}`}>
++                                                                                        {newStatus}
++                                                                                    </span>
++                                                                                </div>
++                                                                            </div>
+ 
+-                                            {comments.map((comment, index) => (
+-                                                <div
+-                                                    key={comment.id || index}
+-                                                    className="animate-in fade-in slide-in-from-left-4 opacity-0"
+-                                                    style={{ animationDelay: `${Math.min(index, 10) * 100}ms` }}
+-                                                >
+-                                                    {(() => {
+-                                                        const isStatusChange = comment.content?.startsWith('STATUS_CHANGED:');
++                                                                            {newStatus.toLowerCase().includes('approved') && (
++                                                                                <div className="w-full animate-in fade-in slide-in-from-top-2 duration-700">
++                                                                                    <div className="w-full bg-brand-warning/10 border border-brand-warning/30 rounded-2xl p-5 flex items-start gap-4 shadow-[0_8px_32px_-8px_rgba(245,158,11,0.15)] overflow-hidden relative group/alert">
++                                                                                        <div className="absolute inset-0 bg-gradient-to-r from-brand-warning/5 via-transparent to-transparent pointer-events-none" />
++                                                                                        <div className="p-2.5 rounded-xl bg-brand-warning/15 border border-brand-warning/30 text-brand-warning shrink-0 shadow-lg group-hover/alert:scale-110 transition-transform duration-500">
++                                                                                            <IconAlertTriangle size={20} />
++                                                                                        </div>
++                                                                                        <div className="space-y-1 py-1">
++                                                                                            <p className="text-sm font-black text-white uppercase tracking-wider mb-1">Project Approved</p>
++                                                                                            <p className="text-[12px] font-bold text-brand-warning/90 leading-relaxed uppercase tracking-widest">
++                                                                                                This Project Is Approved, But It can reopen IF The Client Asks For Any Revisions.
++                                                                                            </p>
++                                                                                        </div>
++                                                                                    </div>
++                                                                                </div>
++                                                                            )}
++                                                                        </div>
++                                                                    );
++                                                                }
+ 
+-                                                        if (isStatusChange) {
+-                                                            const parts = comment.content.split(':');
+-                                                            const oldStatus = parts[1];
+-                                                            const newStatus = parts[2];
+-                                                            const roleStyle = getRoleStyles(comment.author_role || 'User');
++                                                                const isDeadlineUpdate = comment.content?.startsWith('DEADLINE_UPDATED:');
++                                                                if (isDeadlineUpdate) {
++                                                                    const parts = comment.content.split(':');
++                                                                    // DEADLINE_UPDATED:oldDate:newDate:oldTime:newTime
++                                                                    const oldDate = parts[1];
++                                                                    const newDate = parts[2];
++                                                                    const oldTime = parts[3];
++                                                                    const newTime = parts[4];
++
++                                                                    const formattedOldDate = oldDate === 'Not Set' ? 'Not Set' : formatDeadlineDate(oldDate);
++                                                                    const formattedNewDate = formatDeadlineDate(newDate);
++                                                                    const formattedOldTime = oldTime === 'Not Set' ? 'Not Set' : formatTime(oldTime);
++                                                                    const formattedNewTime = formatTime(newTime);
++
++                                                                    return (
++                                                                        <div className="space-y-8">
++                                                                            <div className="bg-surface-card border border-surface-border rounded-3xl overflow-hidden group shadow-[0_24px_48px_-12px_rgba(0,0,0,0.5)] transition-all duration-300">
++                                                                                {/* Header row */}
++                                                                                <div className="px-6 py-4 border-b border-surface-border bg-white/[0.03] relative z-20 overflow-hidden">
++                                                                                    <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.04)_50%,transparent_100%)] pointer-events-none" />
++                                                                                    <span className="relative z-10 text-[10px] font-bold uppercase tracking-widest text-[#FF6B4B]">
++                                                                                        DEADLINE UPDATED
++                                                                                    </span>
++                                                                                    <div className="absolute -bottom-px left-1/2 -translate-x-1/2 w-4/5 h-12 [mask-image:linear-gradient(to_right,transparent,black_20%,black_80%,transparent)] pointer-events-none -z-10">
++                                                                                        <div className="w-full h-full shadow-[0_12px_32px_-8px_rgba(0,0,0,0.9)] opacity-80" />
++                                                                                    </div>
++                                                                                </div>
++                                                                                {/* Changed By row */}
++                                                                                <div className="flex items-center justify-between px-6 py-4 border-b border-surface-border bg-white/[0.01]">
++                                                                                    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Changed By</span>
++                                                                                    <span className="text-[11px] font-bold text-white uppercase tracking-widest">{comment.author_name || 'User'}</span>
++                                                                                </div>
++                                                                                {/* Date row */}
++                                                                                <div className="flex items-center justify-between px-6 py-4 border-b border-surface-border bg-white/[0.01]">
++                                                                                    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Date</span>
++                                                                                    <div className="flex items-center gap-2">
++                                                                                        <span className="text-[11px] font-bold text-white uppercase tracking-widest">
++                                                                                            {new Date(comment.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}
++                                                                                        </span>
++                                                                                        <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">
++                                                                                            {new Date(comment.created_at).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }).toUpperCase()}
++                                                                                        </span>
++                                                                                    </div>
++                                                                                </div>
++                                                                                {/* Previous Deadline row */}
++                                                                                <div className="flex items-center justify-between px-6 py-4 border-b border-surface-border bg-white/[0.01]">
++                                                                                    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Previous Deadline</span>
++                                                                                    <div className="text-right opacity-50">
++                                                                                        <span className="text-[10px] font-black text-white uppercase tracking-wider block">
++                                                                                            {formattedOldDate}
++                                                                                        </span>
++                                                                                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider block mt-0.5">
++                                                                                            {formattedOldTime}
++                                                                                        </span>
++                                                                                    </div>
++                                                                                </div>
++                                                                                {/* Current Deadline row */}
++                                                                                <div className="flex items-center justify-between px-6 py-4 bg-white/[0.01]">
++                                                                                    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Current Deadline</span>
++                                                                                    <div className="text-right">
++                                                                                        <span className="text-[10px] font-black text-[#FF6B4B] uppercase tracking-wider block">
++                                                                                            {formattedNewDate}
++                                                                                        </span>
++                                                                                        <span className="text-[10px] font-black text-[#FF6B4B] uppercase tracking-wider block mt-0.5">
++                                                                                            {formattedNewTime}
++                                                                                        </span>
++                                                                                    </div>
++                                                                                </div>
++                                                                            </div>
++                                                                        </div>
++                                                                    );
++                                                                }
+ 
+-                                                            return (
+-                                                                <ElevatedMetallicCard
+-                                                                    title={
+-                                                                        <div className="flex items-center justify-between w-full">
++                                                                const isReopenEvent = comment.content?.startsWith('PROJECT_REOPENED:');
++
++                                                                if (isReopenEvent) {
++                                                                    return (
++                                                                        <div className="space-y-8">
++                                                                            <ElevatedMetallicCard
++                                                                                title={
++                                                                                    <div className="flex items-center gap-3">
++                                                                                        <span className="text-xs font-bold text-white uppercase tracking-widest leading-none">
++                                                                                            {formatDisplayName(comment.author_name) || 'User'}
++                                                                                        </span>
++                                                                                        <div className="w-1 h-1 rounded-full bg-gray-600" />
++                                                                                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none">
++                                                                                            {new Date(comment.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).toUpperCase()}
++                                                                                        </span>
++                                                                                    </div>
++                                                                                }
++                                                                                bodyClassName="p-6"
++                                                                                headerClassName="px-6 py-3"
++                                                                                className="border-white/5 transition-all duration-500 hover:border-white/10"
++                                                                            >
++                                                                                <div className="flex items-center justify-center gap-4 w-full">
++                                                                                    <div className="px-3 py-1 rounded-md text-[10px] font-bold bg-green-100 text-green-600">
++                                                                                        Approved
++                                                                                    </div>
++                                                                                    <div className="flex items-center text-gray-700">
++                                                                                        <div className="w-6 h-px bg-white/10" />
++                                                                                        <IconRefreshCw size={12} className="text-gray-600 mx-1 animate-spin-slow" />
++                                                                                        <div className="w-6 h-px bg-white/10" />
++                                                                                    </div>
++                                                                                    <div className="px-3 py-1 rounded-md text-[10px] font-bold bg-amber-100 text-amber-600">
++                                                                                        Reopened
++                                                                                    </div>
++                                                                                </div>
++                                                                            </ElevatedMetallicCard>
++
++                                                                            <div className="w-full animate-in fade-in slide-in-from-top-2 duration-700">
++                                                                                <div className="w-full bg-brand-warning/10 border border-brand-warning/30 rounded-2xl p-5 flex items-start gap-4 shadow-[0_8px_32px_-8px_rgba(245,158,11,0.15)] overflow-hidden relative group/alert">
++                                                                                    <div className="absolute inset-0 bg-gradient-to-r from-brand-warning/5 via-transparent to-transparent pointer-events-none" />
++                                                                                    <div className="p-2.5 rounded-xl bg-brand-warning/15 border border-brand-warning/30 text-brand-warning shrink-0 shadow-lg group-hover/alert:scale-110 transition-transform duration-500">
++                                                                                        <IconAlertTriangle size={20} />
++                                                                                    </div>
++                                                                                    <div className="space-y-1 py-1">
++                                                                                        <p className="text-sm font-black text-white uppercase tracking-wider mb-1">Project Reopened</p>
++                                                                                        <p className="text-[12px] font-bold text-brand-warning/90 leading-relaxed uppercase tracking-widest">
++                                                                                            This Project Has Been Reopened. Please Check Revision Notes.
++                                                                                        </p>
++                                                                                    </div>
++                                                                                </div>
++                                                                            </div>
++                                                                        </div>
++                                                                    );
++                                                                }
++
++                                                                return (
++                                                                    <ElevatedMetallicCard
++                                                                        title={
+                                                                             <div className="flex items-center gap-3">
+-                                                                                <span className={`text-xs font-bold uppercase tracking-widest leading-none ${getStatusStyles(newStatus).split(' ').find(c => c.startsWith('text-')) || 'text-white'}`}>
+-                                                                                    STATUS CHANGED
+-                                                                                </span>
+-                                                                                <span className="text-xs font-bold text-gray-600 leading-none">|</span>
+                                                                                 <span className="text-xs font-bold text-white uppercase tracking-widest leading-none">
+-                                                                                    {comment.author_name || 'User'}
++                                                                                    {formatDisplayName(comment.author_name) || 'User'}
+                                                                                 </span>
+                                                                                 <div className="w-1 h-1 rounded-full bg-gray-600" />
+                                                                                 <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none">
+                                                                                     {new Date(comment.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).toUpperCase()}
+                                                                                 </span>
+                                                                             </div>
+-                                                                            <div className={`p-1 rounded ${roleStyle.bg} ${roleStyle.color} text-[8px] font-bold uppercase tracking-widest px-1.5 border ${roleStyle.border}`}>
+-                                                                                {roleStyle.label || comment.author_role || 'Staff'}
+-                                                                            </div>
+-                                                                        </div>
+-                                                                    }
+-                                                                    bodyClassName="p-6"
+-                                                                    headerClassName="px-6 py-3"
+-                                                                    className="border-white/5 transition-all duration-500 hover:border-white/10"
+-                                                                >
+-                                                                    <div className="flex items-center justify-center gap-4 w-full">
+-
+-                                                                        <div className="flex items-center gap-3">
+-                                                                            <div className={`px-2.5 py-1 rounded-md border text-[10px] font-bold ${getStatusStyles(oldStatus)} opacity-40 border-dashed`}>
+-                                                                                {oldStatus}
+-                                                                            </div>
+-
+-                                                                            <div className="flex items-center text-gray-700">
+-                                                                                <div className="w-6 h-px bg-white/10" />
+-                                                                                <IconChevronRight size={12} className="text-gray-600 mx-1" />
+-                                                                                <div className="w-6 h-px bg-white/10" />
++                                                                        }
++                                                                        bodyClassName="p-6"
++                                                                        headerClassName="px-6 py-3"
++                                                                        className="border-white/5 transition-all duration-500 hover:border-white/10"
++                                                                    >
++                                                                        {comment.content && comment.content.trim().length > 0 && (
++                                                                            <div className="text-sm text-gray-300 leading-relaxed">
++                                                                                {comment.content}
+                                                                             </div>
+-
+-                                                                            <div className={`px-2.5 py-1 rounded-md border text-[10px] font-bold ${getStatusStyles(newStatus)}`}>
+-                                                                                {newStatus}
++                                                                        )}
++
++                                                                        {/* Render Posted Attachments */}
++                                                                        {comment.attachments && Array.isArray(comment.attachments) && comment.attachments.length > 0 && (
++                                                                            <div className={`${comment.content && comment.content.trim().length > 0 ? 'mt-4 pt-4 border-t border-white/5' : ''} flex flex-wrap gap-3`}>
++                                                                                {comment.attachments.map((file: any, i: number) => (
++                                                                                    <div key={i} className="group/posted-file relative cursor-pointer hover:scale-[1.02] transition-transform">
++                                                                                        <div className="w-20 h-20 rounded-xl border border-surface-border bg-surface-overlay flex flex-col items-center justify-center relative overflow-hidden">
++                                                                                            <FileIcon name={file.name} type={file.type} url={file.url} />
++                                                                                        </div>
++
++                                                                                        {/* OVERLAY for Download/Copy */}
++                                                                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/posted-file:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2 z-20 backdrop-blur-[1px]">
++                                                                                            <button
++                                                                                                onClick={(e) => {
++                                                                                                    e.stopPropagation();
++                                                                                                    forceDownload(file.url, file.name || 'download');
++                                                                                                }}
++                                                                                                className="p-1.5 rounded-full bg-white/10 hover:bg-brand-primary text-white transition-colors border border-white/10 hover:border-brand-primary"
++                                                                                                title="Download"
++                                                                                            >
++                                                                                                <IconDownload size={14} />
++                                                                                            </button>
++                                                                                            <button
++                                                                                                onClick={(e) => {
++                                                                                                    e.stopPropagation();
++                                                                                                    navigator.clipboard.writeText(file.url);
++                                                                                                    addToast({ title: 'Link copied', type: 'success' });
++                                                                                                }}
++                                                                                                className="p-1.5 rounded-full bg-white/10 hover:bg-brand-primary text-white transition-colors border border-white/10 hover:border-brand-primary"
++                                                                                                title="Copy Link"
++                                                                                            >
++                                                                                                <IconLink size={14} />
++                                                                                            </button>
++                                                                                        </div>
++                                                                                    </div>
++                                                                                ))}
+                                                                             </div>
+-                                                                        </div>
+-                                                                    </div>
+-                                                                </ElevatedMetallicCard>
+-                                                            );
+-                                                        }
+-
+-                                                        const roleStyle = getRoleStyles(comment.author_role || 'Staff');
+-                                                        return (
+-                                                            <ElevatedMetallicCard
+-                                                                title={
+-                                                                    <div className="flex items-center justify-between w-full">
+-                                                                        <div className="flex items-center gap-3">
+-                                                                            <span className="text-xs font-bold text-white uppercase tracking-widest leading-none">
+-                                                                                {formatDisplayName(comment.author_name) || 'User'}
+-                                                                            </span>
+-                                                                            <div className="w-1 h-1 rounded-full bg-gray-600" />
+-                                                                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none">
+-                                                                                {new Date(comment.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).toUpperCase()}
+-                                                                            </span>
+-                                                                        </div>
+-                                                                        <div className={`p-1 rounded ${roleStyle.bg} ${roleStyle.color} text-[8px] font-bold uppercase tracking-widest px-1.5 border ${roleStyle.border}`}>
+-                                                                            {roleStyle.label}
+-                                                                        </div>
+-                                                                    </div>
+-                                                                }
+-                                                                bodyClassName="p-6"
+-                                                                headerClassName="px-6 py-3"
+-                                                                className="border-white/5 transition-all duration-500 hover:border-white/10"
+-                                                            >
+-                                                                {comment.content && comment.content.trim().length > 0 && (
+-                                                                    <div className="text-sm text-gray-300 leading-relaxed">
+-                                                                        {comment.content}
+-                                                                    </div>
+-                                                                )}
+-
+-                                                                {/* Render Posted Attachments */}
+-                                                                {comment.attachments && Array.isArray(comment.attachments) && comment.attachments.length > 0 && (
+-                                                                    <div className={`${comment.content && comment.content.trim().length > 0 ? 'mt-4 pt-4 border-t border-white/5' : ''} flex flex-wrap gap-3`}>
+-                                                                        {comment.attachments.map((file: any, i: number) => (
+-                                                                            <div key={i} className="group/posted-file relative cursor-pointer hover:scale-[1.02] transition-transform">
+-                                                                                <div className="w-20 h-20 rounded-xl border border-surface-border bg-surface-overlay flex flex-col items-center justify-center relative overflow-hidden">
+-                                                                                    <FileIcon name={file.name} type={file.type} url={file.url} />
+-                                                                                </div>
+-
+-                                                                                {/* OVERLAY for Download/Copy */}
+-                                                                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/posted-file:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2 z-20 backdrop-blur-[1px]">
+-                                                                                    <button
+-                                                                                        onClick={(e) => {
+-                                                                                            e.stopPropagation();
+-                                                                                            forceDownload(file.url, file.name || 'download');
+-                                                                                        }}
+-                                                                                        className="p-1.5 rounded-full bg-white/10 hover:bg-brand-primary text-white transition-colors border border-white/10 hover:border-brand-primary"
+-                                                                                        title="Download"
+-                                                                                    >
+-                                                                                        <IconDownload size={14} />
+-                                                                                    </button>
+-                                                                                    <button
+-                                                                                        onClick={(e) => {
+-                                                                                            e.stopPropagation();
+-                                                                                            navigator.clipboard.writeText(file.url);
+-                                                                                            addToast({ title: 'Link copied', type: 'success' });
+-                                                                                        }}
+-                                                                                        className="p-1.5 rounded-full bg-white/10 hover:bg-brand-primary text-white transition-colors border border-white/10 hover:border-brand-primary"
+-                                                                                        title="Copy Link"
+-                                                                                    >
+-                                                                                        <IconLink size={14} />
+-                                                                                    </button>
+-                                                                                </div>
+-                                                                            </div>
+-                                                                        ))}
+-                                                                    </div>
+-                                                                )}
+-                                                            </ElevatedMetallicCard>
+-                                                        );
+-                                                    })()}
++                                                                        )}
++                                                                    </ElevatedMetallicCard>
++                                                                );
++                                                            })()}
++                                                        </div>
++                                                    ))}
+                                                 </div>
+-                                            ))}
+-                                        </div>
+-                                    ) : (
+-                                        <div className="flex flex-col items-center justify-center py-12 bg-white/[0.01] border border-dashed border-white/5 rounded-3xl">
+-                                            <p className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">No activity recorded yet</p>
+-                                        </div>
+-                                    )}
+-                                </section>
+-
+-                                {/* 4. Bottom Separator */}
+-                                <div className="border-t border-surface-border w-full my-10" />
+-
+-                                {/* 5. Comment Composer (Input Area) */}
+-                                <section>
+-                                    <ElevatedMetallicCard
+-                                        title="Post Comment"
+-                                        headerClassName="px-8 py-3"
+-                                        bodyClassName="p-8"
+-                                    >
+-                                        <div className="space-y-4">
+-                                            {/* Input Area (Recessed/Sunken) */}
+-                                            <div className="relative z-10 min-h-[140px] p-5 bg-black/20 rounded-2xl border border-surface-border/50 transition-all duration-300 shadow-[inset_0_2px_10px_rgba(0,0,0,0.4)] focus-within:shadow-[inset_0_4px_16px_rgba(0,0,0,0.6)] focus-within:border-white/10 group-active:border-white/10">
+-                                                <textarea
+-                                                    className="w-full h-full bg-transparent border-none outline-none text-sm text-white placeholder-gray-600 resize-none leading-relaxed"
+-                                                    placeholder="Write a comment..."
+-                                                    value={newComment}
+-                                                    onChange={(e) => setNewComment(e.target.value)}
+-                                                    onKeyDown={(e) => {
+-                                                        if (e.key === 'Enter' && !e.shiftKey) {
+-                                                            e.preventDefault();
+-                                                            handlePostComment();
+-                                                        }
+-                                                    }}
+-                                                />
+-                                            </div>
++                                            ) : (
++                                                <div className="flex flex-col items-center justify-center py-12 bg-white/[0.01] border border-dashed border-white/5 rounded-3xl">
++                                                    <p className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">No activity recorded yet</p>
++                                                </div>
++                                            )}
++                                        </section>
++
++                                        {/* 4. Bottom Separator */}
++                                        <div className="border-t border-surface-border w-full my-10" />
++
++                                        {/* 5. Comment Composer (Input Area) */}
++                                        <section>
++                                            <ElevatedMetallicCard
++                                                title="Post Comment"
++                                                headerClassName="px-8 py-3"
++                                                bodyClassName="p-8"
++                                            >
++                                                <div className="space-y-4">
++                                                    {/* Input Area (Recessed/Sunken) */}
++                                                    <div className="relative z-10 min-h-[140px] p-5 bg-black/20 rounded-2xl border border-surface-border/50 transition-all duration-300 shadow-[inset_0_2px_10px_rgba(0,0,0,0.4)] focus-within:shadow-[inset_0_4px_16px_rgba(0,0,0,0.6)] focus-within:border-white/10 group-active:border-white/10">
++                                                        <textarea
++                                                            className="w-full h-full bg-transparent border-none outline-none text-sm text-white placeholder-gray-600 resize-none leading-relaxed"
++                                                            placeholder="Write a comment..."
++                                                            value={newComment}
++                                                            onChange={(e) => setNewComment(e.target.value)}
++                                                            onKeyDown={(e) => {
++                                                                if (e.key === 'Enter' && !e.shiftKey) {
++                                                                    e.preventDefault();
++                                                                    handlePostComment();
++                                                                }
++                                                            }}
++                                                        />
++                                                    </div>
+ 
+-                                            {/* Attachment Preview */}
+-                                            {attachments.length > 0 && (
+-                                                <div className="flex flex-wrap gap-3 px-1 relative z-10">
+-                                                    {attachments.map((att, i) => (
+-                                                        <div key={att.id} className="relative group/file">
+-                                                            <div className={`
++                                                    {/* Attachment Preview */}
++                                                    {attachments.length > 0 && (
++                                                        <div className="flex flex-wrap gap-3 px-1 relative z-10">
++                                                            {attachments.map((att, i) => (
++                                                                <div key={att.id} className="relative group/file">
++                                                                    <div className={`
+                                                             w-20 h-20 rounded-xl border flex flex-col items-center justify-center relative overflow-hidden transition-all duration-300
+                                                             ${att.status === 'uploading' ? 'bg-surface-card border-brand-primary/30' : 'bg-surface-overlay border-surface-border'}
+                                                         `}>
+-                                                                {/* Loading State */}
+-                                                                {att.status === 'uploading' && (
+-                                                                    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 backdrop-blur-[2px]">
+-                                                                        <div className="w-5 h-5 border-2 border-brand-primary border-t-transparent rounded-full animate-spin mb-2" />
+-                                                                    </div>
+-                                                                )}
++                                                                        {/* Loading State */}
++                                                                        {att.status === 'uploading' && (
++                                                                            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 backdrop-blur-[2px]">
++                                                                                <div className="w-5 h-5 border-2 border-brand-primary border-t-transparent rounded-full animate-spin mb-2" />
++                                                                            </div>
++                                                                        )}
+ 
+-                                                                <FileIcon name={att.file.name} type={att.file.type} url={att.previewUrl} />
++                                                                        <FileIcon name={att.file.name} type={att.file.type} url={att.previewUrl} />
+ 
+ 
+-                                                            </div>
++                                                                    </div>
+ 
+-                                                            {/* OVERLAY for Download/Copy */}
+-                                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/file:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2 z-20 backdrop-blur-[1px]">
+-                                                                <button
+-                                                                    onClick={(e) => {
+-                                                                        e.stopPropagation();
+-                                                                        forceDownload(att.previewUrl, att.file.name || 'download');
+-                                                                    }}
+-                                                                    className="p-1.5 rounded-full bg-white/10 hover:bg-brand-primary text-white transition-colors border border-white/10 hover:border-brand-primary"
+-                                                                    title="Download"
+-                                                                >
+-                                                                    <IconDownload size={14} />
+-                                                                </button>
+-                                                                <button
+-                                                                    onClick={(e) => {
+-                                                                        e.stopPropagation();
+-                                                                        navigator.clipboard.writeText(att.previewUrl);
+-                                                                        addToast({ title: 'Link copied', type: 'success' });
+-                                                                    }}
+-                                                                    className="p-1.5 rounded-full bg-white/10 hover:bg-brand-primary text-white transition-colors border border-white/10 hover:border-brand-primary"
+-                                                                    title="Copy Link"
+-                                                                >
+-                                                                    <IconLink size={14} />
+-                                                                </button>
+-                                                            </div>
++                                                                    {/* OVERLAY for Download/Copy */}
++                                                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/file:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2 z-20 backdrop-blur-[1px]">
++                                                                        <button
++                                                                            onClick={(e) => {
++                                                                                e.stopPropagation();
++                                                                                forceDownload(att.previewUrl, att.file.name || 'download');
++                                                                            }}
++                                                                            className="p-1.5 rounded-full bg-white/10 hover:bg-brand-primary text-white transition-colors border border-white/10 hover:border-brand-primary"
++                                                                            title="Download"
++                                                                        >
++                                                                            <IconDownload size={14} />
++                                                                        </button>
++                                                                        <button
++                                                                            onClick={(e) => {
++                                                                                e.stopPropagation();
++                                                                                navigator.clipboard.writeText(att.previewUrl);
++                                                                                addToast({ title: 'Link copied', type: 'success' });
++                                                                            }}
++                                                                            className="p-1.5 rounded-full bg-white/10 hover:bg-brand-primary text-white transition-colors border border-white/10 hover:border-brand-primary"
++                                                                            title="Copy Link"
++                                                                        >
++                                                                            <IconLink size={14} />
++                                                                        </button>
++                                                                    </div>
+ 
+-                                                            {/* Remove Button (Hover) */}
+-                                                            <div className="absolute -top-1.5 -right-1.5 opacity-0 group-hover/file:opacity-100 transition-opacity z-30">
+-                                                                <button
+-                                                                    onClick={() => removeAttachment(i)}
+-                                                                    className="bg-surface-card border border-surface-border text-gray-400 hover:text-brand-error p-1 rounded-full shadow-lg"
+-                                                                >
+-                                                                    <IconX size={10} />
+-                                                                </button>
+-                                                            </div>
++                                                                    {/* Remove Button (Hover) */}
++                                                                    <div className="absolute -top-1.5 -right-1.5 opacity-0 group-hover/file:opacity-100 transition-opacity z-30">
++                                                                        <button
++                                                                            onClick={() => removeAttachment(i)}
++                                                                            className="bg-surface-card border border-surface-border text-gray-400 hover:text-brand-error p-1 rounded-full shadow-lg"
++                                                                        >
++                                                                            <IconX size={10} />
++                                                                        </button>
++                                                                    </div>
++                                                                </div>
++                                                            ))}
+                                                         </div>
+-                                                    ))}
+-                                                </div>
+-                                            )}
+-
+-                                            <input
+-                                                type="file"
+-                                                ref={fileInputRef}
+-                                                className="hidden"
+-                                                multiple
+-                                                onChange={handleFileSelect}
+-                                            />
+-
+-                                            <div className="flex items-center justify-between relative z-10 pt-2">
+-                                                <button
+-                                                    onClick={() => fileInputRef.current?.click()}
+-                                                    className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-gray-500 hover:text-white transition-colors uppercase tracking-widest hover:bg-white/5 rounded-lg"
+-                                                >
+-                                                    <IconPaperclip size={16} />
+-                                                    Attach Files
+-                                                    {attachments.length > 0 && <span className="text-brand-primary">({attachments.length})</span>}
+-                                                </button>
+-                                                <div className="flex items-center gap-3">
+-                                                    <Button
+-                                                        variant="secondary"
+-                                                        className="px-6 py-2.5 h-[38px] text-xs font-bold uppercase tracking-widest bg-surface-overlay border-surface-border hover:bg-white/[0.05]"
+-                                                    >
+-                                                        QA Check
+-                                                    </Button>
+-                                                    <Button
+-                                                        variant="metallic"
+-                                                        className="px-8 py-2.5 h-[38px] text-xs font-bold uppercase tracking-widest"
+-                                                        leftIcon={<IconSend size={14} />}
+-                                                        onClick={handlePostComment}
+-                                                        isLoading={isPostingComment}
+-                                                        disabled={(!newComment.trim() && attachments.length === 0) || attachments.some(a => a.status === 'uploading')}
+-                                                    >
+-                                                        Send
+-                                                    </Button>
++                                                    )}
++
++                                                    <input
++                                                        type="file"
++                                                        ref={fileInputRef}
++                                                        className="hidden"
++                                                        multiple
++                                                        onChange={handleFileSelect}
++                                                    />
++
++                                                    <div className="flex items-center justify-between relative z-10 pt-2">
++                                                        <button
++                                                            onClick={() => fileInputRef.current?.click()}
++                                                            className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-gray-500 hover:text-white transition-colors uppercase tracking-widest hover:bg-white/5 rounded-lg"
++                                                        >
++                                                            <IconPaperclip size={16} />
++                                                            Attach Files
++                                                            {attachments.length > 0 && <span className="text-brand-primary">({attachments.length})</span>}
++                                                        </button>
++                                                        <div className="flex items-center gap-3">
++                                                            <Button
++                                                                variant="secondary"
++                                                                className="px-6 py-2.5 h-[38px] text-xs font-bold uppercase tracking-widest bg-surface-overlay border-surface-border hover:bg-white/[0.05]"
++                                                            >
++                                                                QA Check
++                                                            </Button>
++                                                            <Button
++                                                                variant="metallic"
++                                                                className="px-8 py-2.5 h-[38px] text-xs font-bold uppercase tracking-widest"
++                                                                leftIcon={<IconSend size={14} />}
++                                                                onClick={handlePostComment}
++                                                                isLoading={isPostingComment}
++                                                                disabled={(!newComment.trim() && attachments.length === 0) || attachments.some(a => a.status === 'uploading')}
++                                                            >
++                                                                Send
++                                                            </Button>
++                                                        </div>
++                                                    </div>
+                                                 </div>
+-                                            </div>
+-                                        </div>
+-                                    </ElevatedMetallicCard>
+-                                </section>
++                                            </ElevatedMetallicCard>
++                                        </section>
++                                    </>
++                                )}
+                             </div>
+                         )}
+                     </div>
+                 </main >
++
++                {/* Deadline Update Modal */}
++                <Modal isOpen={isDeadlineModalOpen} onClose={() => setIsDeadlineModalOpen(false)} title="Update Deadline">
++                    <div className="space-y-6">
++                        <p className="text-sm text-gray-400 font-medium">Set the new delivery date and time for this project.</p>
++
++                        <div className="space-y-4">
++                            <DatePicker
++                                value={modalDate}
++                                onChange={(date: Date) => setModalDate(date)}
++                            />
++                            <TimeSelect
++                                value={modalTime}
++                                onChange={(time: string) => setModalTime(time)}
++                            />
++                        </div>
++
++                        <div className="pt-4 flex items-center justify-end gap-3">
++                            <Button variant="ghost" className="uppercase tracking-widest text-xs" onClick={() => setIsDeadlineModalOpen(false)}>
++                                Cancel
++                            </Button>
++                            <Button variant="metallic" className="uppercase tracking-widest text-xs" onClick={handleUpdateDeadlineModal}>
++                                Update Deadline
++                            </Button>
++                        </div>
++                    </div>
++                </Modal>
+             </div >
+-        </div >
+-    );
++            );
+ };
+ 
+-// UI Subcomponents
+-const MetadataSection: React.FC<{
++            // UI Subcomponents
++            const MetadataSection: React.FC<{
+     title: string;
+-    children: React.ReactNode;
+-    isCollapsed?: boolean;
+-    collapsedHeight?: string;
+-}> = ({ title, children, isCollapsed, collapsedHeight = "h-14" }) => (
+-    <div className="w-full flex justify-center">
+-        {isCollapsed ? (
+-            <div className={`w-[2px] ${collapsedHeight} bg-surface-border rounded-full transition-all duration-300 animate-in fade-in zoom-in-95`} />
+-        ) : (
+-            <div className="w-full min-w-[280px] animate-in fade-in slide-in-from-left-2 duration-300">
+-                <ElevatedMetallicCard
+-                    title={title}
+-                    headerClassName="px-6 py-4"
+-                    bodyClassName="p-6 space-y-5"
+-                    className="hover:border-white/5 transition-all group"
+-                >
+-                    {children}
+-                </ElevatedMetallicCard>
++            children: React.ReactNode;
++            isCollapsed?: boolean;
++            collapsedHeight?: string;
++}> = ({title, children, isCollapsed, collapsedHeight = "h-14"}) => (
++            <div className="w-full flex justify-center">
++                {isCollapsed ? (
++                    <div className={`w-[2px] ${collapsedHeight} bg-surface-border rounded-full transition-all duration-300 animate-in fade-in zoom-in-95`} />
++                ) : (
++                    <div className="w-full min-w-[280px] animate-in fade-in slide-in-from-left-2 duration-300">
++                        <ElevatedMetallicCard
++                            title={title}
++                            headerClassName="px-6 py-4"
++                            bodyClassName="p-6 space-y-5"
++                            className="hover:border-white/5 transition-all group"
++                        >
++                            {children}
++                        </ElevatedMetallicCard>
++                    </div>
++                )}
+             </div>
+-        )}
+-    </div>
+-);
++            );
+ 
+-const MetadataItem: React.FC<{
+-    label: string;
+-    value: React.ReactNode;
+-    isMono?: boolean;
+-    isAccent?: boolean;
+-    isSelect?: boolean;
+-    isRecessed?: boolean;
+-    isDate?: boolean;
+-    isTime?: boolean;
+-    valueClassName?: string;
++            const MetadataItem: React.FC<{
++    label: React.ReactNode;
++            value: React.ReactNode;
++            isMono?: boolean;
++            isAccent?: boolean;
++            isSelect?: boolean;
++            isRecessed?: boolean;
++            isDate?: boolean;
++            isTime?: boolean;
++            valueClassName?: string;
+     onClick?: () => void;
+-}> = ({ label, value, isMono, isAccent, isSelect, isRecessed, isDate, isTime, valueClassName, onClick }) => (
+-    <div className={`px-1 group/item ${onClick || isSelect ? 'cursor-pointer' : ''}`} onClick={onClick}>
+-        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2 group-hover/item:text-brand-primary/70 transition-colors uppercase">{label}</p>
+-        <div className={`
++}> = ({label, value, isMono, isAccent, isSelect, isRecessed, isDate, isTime, valueClassName, onClick}) => (
++            <div className={`px-1 group/item ${onClick || isSelect ? 'cursor-pointer' : ''}`} onClick={onClick}>
++                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2 group-hover/item:text-brand-primary/70 transition-colors uppercase">{label}</p>
++                <div className={`
+             w-full flex items-center justify-between transition-all duration-300 relative overflow-hidden
+             ${(isSelect || isRecessed)
+-                ? 'bg-black/25 border border-surface-border/40 rounded-xl px-4 py-3 shadow-[inset_0_2px_8px_rgba(0,0,0,0.5),0_1px_1px_rgba(255,255,255,0.02)]'
+-                : 'bg-transparent border-2 border-transparent px-0 py-1'
+-            }
++                        ? 'bg-black/25 border border-surface-border/40 rounded-xl px-4 py-3 shadow-[inset_0_2px_8px_rgba(0,0,0,0.5),0_1px_1px_rgba(255,255,255,0.02)]'
++                        : 'bg-transparent border-2 border-transparent px-0 py-1'
++                    }
+             ${isSelect ? 'cursor-pointer hover:border-white/10 active:scale-[0.98]' : ''}
+         `}>
+-            {/* Subtle Vertical Metallic Gradient for isSelect/isRecessed */}
+-            {(isSelect || isRecessed) && <div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(255,255,255,0.01),transparent)] pointer-events-none" />}
++                    {/* Subtle Vertical Metallic Gradient for isSelect/isRecessed */}
++                    {(isSelect || isRecessed) && <div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(255,255,255,0.01),transparent)] pointer-events-none" />}
+ 
+-            <div className={`
++                    <div className={`
+                 relative z-10 w-full
+                 ${isMono ? 'font-mono' : 'font-bold'} 
+                 ${isAccent ? 'text-brand-primary text-base' : 'text-sm'}
+                 ${isSelect ? 'text-white' : valueClassName || 'text-gray-300'}
+             `}>
+-                {isDate ? (
+-                    <div className="flex items-center gap-2">
+-                        <IconCalendar size={16} className={(isSelect || isRecessed) ? 'text-brand-primary' : 'text-gray-500'} />
+-                        {value}
+-                    </div>
+-                ) : isTime ? (
+-                    <div className="flex items-center gap-2">
+-                        <IconClock size={16} className={(isSelect || isRecessed) ? 'text-brand-primary' : 'text-gray-500'} />
+-                        {value}
++                        {isDate ? (
++                            <div className="flex items-center gap-2">
++                                <IconCalendar size={16} className={(isSelect || isRecessed) ? 'text-brand-primary' : 'text-gray-500'} />
++                                {value}
++                            </div>
++                        ) : isTime ? (
++                            <div className="flex items-center gap-2">
++                                <IconClock size={16} className={(isSelect || isRecessed) ? 'text-brand-primary' : 'text-gray-500'} />
++                                {value}
++                            </div>
++                        ) : value}
+                     </div>
+-                ) : value}
++                    {isSelect && (
++                        <svg className="w-4 h-4 text-gray-600 group-hover/item:text-brand-primary transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
++                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
++                        </svg>
++                    )}
++                </div>
+             </div>
+-            {isSelect && (
+-                <svg className="w-4 h-4 text-gray-600 group-hover/item:text-brand-primary transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+-                </svg>
+-            )}
+-        </div>
+-    </div>
+-);
+-
+-const CollaboratorItem: React.FC<{ name: string; role: string }> = ({ name, role }) => (
+-    <div className="flex items-center justify-between p-3.5 bg-black/20 rounded-xl border border-white/5 shadow-[inset_0_2px_8px_rgba(0,0,0,0.6)] relative overflow-hidden">
+-        {/* Inner Top Shadow for depth */}
+-        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-black/80 to-transparent opacity-80" />
++            );
+ 
+-        <span className="text-xs font-bold text-gray-300 relative z-10">{formatDisplayName(name)}</span>
+-        <span className="text-[8px] font-bold text-brand-primary uppercase tracking-widest bg-brand-primary/5 border border-brand-primary/10 px-2 py-0.5 rounded-md shadow-sm relative z-10">
+-            {role}
+-        </span>
+-    </div>
+-);
++            const CollaboratorItem: React.FC<{ name: string; role: string; phone?: string; avatarUrl?: string }> = ({name, phone}) => {
++    return (
++            <div className="flex flex-col gap-1 leading-tight">
++                <span className="text-sm font-bold text-white">{formatDisplayName(name)}</span>
++
++                {phone && (
++                    <div className="flex items-center gap-2 group/phone cursor-pointer transition-colors">
++                        <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500 group-hover/phone:text-brand-primary transition-colors">Phone</span>
++                        <span className="text-xs font-mono text-gray-300 group-hover/phone:text-white transition-colors tracking-wide">
++                            {phone}
++                        </span>
++                    </div>
++                )}
++            </div>
++            );
++};
+ 
+-export default ProjectDetails;
++            export default ProjectDetails;
