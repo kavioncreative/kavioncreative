@@ -81,6 +81,8 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
 
     const [aiSummary, setAiSummary] = useState('');
     const [isAiLoading, setIsAiLoading] = useState(false);
+    const [refinePrompt, setRefinePrompt] = useState('');
+    const [isRefining, setIsRefining] = useState(false);
     const [summaryAction, setSummaryAction] = useState<'brief' | 'comments' | null>(null);
     const [projectBrief, setProjectBrief] = useState('');
     const [briefMode, setBriefMode] = useState<'edit' | 'preview'>('edit');
@@ -268,20 +270,105 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
     const isInitiated = !!n8nResponse || !!lead.automation_result || comments.some(c => c.author_role === 'system_log');
     const isInitiateRef = useRef(false);
 
+    // REPLACE THIS URL with your actual n8n AI Webhook URL once ready
+    const N8N_AI_BRIEF_WEBHOOK_URL = 'https://kashifn8n.app.n8n.cloud/webhook/ai-brief-assistant';
+
     useEffect(() => {
         if (isInitiateModalOpen && initiateStep === 'summary' && !isInitiateRef.current) {
             isInitiateRef.current = true;
             setIsAiLoading(true);
-            // Mocking the webhook delay
-            setTimeout(() => {
-                setAiSummary(`### Project Requirements\n- Minimalist logo design\n- Tech brand aesthetic\n- 2 concepts required\n\n### Deliverables\n- Delivery in 24 to 48 hours\n- Source files included`);
-                setIsAiLoading(false);
-            }, 3000);
+
+            const fetchSummary = async () => {
+                try {
+                    // Combine chat history
+                    const chatHistory = comments.map(c => `${c.author_name} (${c.author_role}): ${c.content}`).join('\n\n');
+
+                    const response = await fetch(N8N_AI_BRIEF_WEBHOOK_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: 'summarize',
+                            project_title: lead.project_title || 'Unknown',
+                            chat_history: chatHistory || 'No history provided.'
+                        })
+                    });
+
+                    if (response.ok) {
+                        const summaryText = await response.text();
+                        try {
+                            let parsed = JSON.parse(summaryText);
+                            if (typeof parsed === 'string') {
+                                parsed = JSON.parse(parsed);
+                            }
+                            const aiData = Array.isArray(parsed) ? parsed[0] : parsed;
+                            let extracted = aiData.markdown || aiData.output || aiData.text || aiData.message || summaryText;
+                            if (typeof extracted === 'string') {
+                                extracted = extracted.replace(/\\n/g, '\n');
+                            }
+                            setAiSummary(extracted);
+                        } catch (e) {
+                            setAiSummary(summaryText);
+                        }
+                    } else {
+                        setAiSummary('Failed to generate AI Summary. Please write manually.');
+                    }
+                } catch (error) {
+                    console.error('AI Error:', error);
+                    setAiSummary('Error connecting to AI Server. Please write manually.');
+                } finally {
+                    setIsAiLoading(false);
+                }
+            };
+
+            fetchSummary();
         }
         if (!isInitiateModalOpen) {
             isInitiateRef.current = false;
         }
     }, [isInitiateModalOpen, initiateStep]);
+
+    const handleRefineBrief = async () => {
+        if (!refinePrompt.trim() || isRefining) return;
+
+        setIsRefining(true);
+        try {
+            const response = await fetch(N8N_AI_BRIEF_WEBHOOK_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'refine',
+                    current_brief: aiSummary,
+                    refine_prompt: refinePrompt
+                })
+            });
+
+            if (response.ok) {
+                const refinedText = await response.text();
+                try {
+                    let parsed = JSON.parse(refinedText);
+                    if (typeof parsed === 'string') {
+                        parsed = JSON.parse(parsed);
+                    }
+                    const aiData = Array.isArray(parsed) ? parsed[0] : parsed;
+                    let extracted = aiData.markdown || aiData.output || aiData.text || aiData.message || refinedText;
+                    if (typeof extracted === 'string') {
+                        extracted = extracted.replace(/\\n/g, '\n');
+                    }
+                    setAiSummary(extracted);
+                } catch (e) {
+                    setAiSummary(refinedText);
+                }
+                setRefinePrompt('');
+            } else {
+                addToast({ type: 'error', title: 'AI Error', message: 'Failed to refine the brief.' });
+            }
+        } catch (error) {
+            console.error('Refine error:', error);
+            addToast({ type: 'error', title: 'Connection Error', message: 'Could not connect to AI server.' });
+        } finally {
+            setIsRefining(false);
+        }
+    };
 
     const handleNextStep = (next: any) => {
         setInitiateStep(next);
@@ -338,6 +425,10 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
                 if (accData) mappedAccountId = accData.id;
             }
 
+            const finalBrief = summaryAction === 'comments' && aiSummary
+                ? (projectBrief ? `${projectBrief}\n\n### Additional Comments\n\n${aiSummary}` : `### Additional Comments\n\n${aiSummary}`)
+                : projectBrief;
+
             const payload = {
                 project_id: finalProjectId,
                 action_move: 'Add',
@@ -347,9 +438,9 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
                 client_type: 'new',
                 client_name: lead?.client_name || lead?.name || lead?.contact_info || 'Unknown',
                 items_sold: [],
-                addons: [],
+                addons: { items: selectedAddons, other: addonsOther },
                 price: parseFloat(String(dealValue).replace(/[^0-9.]/g, '')) || 0,
-                brief: projectBrief,
+                brief: finalBrief,
                 options_required: optionsRequired ? parseInt(optionsRequired) : null,
                 attachments: attachmentsJson,
                 client_due_date: formattedClientDate,
@@ -576,7 +667,7 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
             if (dbError) throw dbError;
 
             // 2. Trigger n8n and WAIT for response
-            const N8N_WEBHOOK_URL = 'https://yousufriaz.app.n8n.cloud/webhook/bfb161af-27c7-448e-8e16-8f0526c26649';
+            const N8N_WEBHOOK_URL = 'https://kashifn8n.app.n8n.cloud/webhook/bfb161af-27c7-448e-8e16-8f0526c26649';
 
             const webhookPayload = {
                 event: 'lead_initiated',
@@ -1089,8 +1180,8 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
                                                     <button
                                                         onClick={() => setManualSender('me')}
                                                         className={`relative px-6 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all duration-300 ${manualSender === 'me'
-                                                                ? 'text-white shadow-[0_4px_12px_rgba(255,107,0,0.3)]'
-                                                                : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+                                                            ? 'text-white shadow-[0_4px_12px_rgba(255,107,0,0.3)]'
+                                                            : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
                                                             }`}
                                                     >
                                                         {manualSender === 'me' && (
@@ -1101,8 +1192,8 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
                                                     <button
                                                         onClick={() => setManualSender('client')}
                                                         className={`relative px-6 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all duration-300 ${manualSender === 'client'
-                                                                ? 'text-white shadow-[0_4px_12px_rgba(255,107,0,0.3)]'
-                                                                : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+                                                            ? 'text-white shadow-[0_4px_12px_rgba(255,107,0,0.3)]'
+                                                            : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
                                                             }`}
                                                     >
                                                         {manualSender === 'client' && (
@@ -1586,19 +1677,37 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
                             ) : (
                                 <div className="space-y-4">
                                     <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">AI Generated Summary</p>
-                                    <TextArea
-                                        value={aiSummary}
-                                        onChange={(e) => setAiSummary(e.target.value)}
-                                        className="min-h-[200px] text-sm font-medium leading-relaxed"
-                                        variant="recessed"
-                                    />
+                                    <div className="min-h-[200px] max-h-[400px] overflow-y-auto p-4 rounded-xl bg-black/40 shadow-[inset_0_2px_4px_rgba(0,0,0,0.4)] border border-white/5 text-[13px] font-medium leading-relaxed text-gray-300 custom-scrollbar">
+                                        <div className="prose prose-invert prose-sm max-w-none">
+                                            <ReactMarkdown remarkPlugins={markdownPlugins} components={markdownComponents}>
+                                                {aiSummary ? parseCodesLogicMarkdown(aiSummary) : 'Waiting for summary...'}
+                                            </ReactMarkdown>
+                                        </div>
+                                    </div>
                                     <div className="flex gap-2">
                                         <Input
                                             placeholder="Chat with AI to refine this brief... (e.g. 'Add 3D logo requirement')"
                                             className="flex-1"
                                             variant="recessed"
+                                            value={refinePrompt}
+                                            onChange={(e) => setRefinePrompt(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    handleRefineBrief();
+                                                }
+                                            }}
+                                            disabled={isRefining}
                                         />
-                                        <Button variant="secondary" className="px-6 shrink-0">Send</Button>
+                                        <Button
+                                            variant="secondary"
+                                            className="px-6 shrink-0"
+                                            onClick={handleRefineBrief}
+                                            isLoading={isRefining}
+                                            disabled={isRefining || !refinePrompt.trim()}
+                                        >
+                                            Send
+                                        </Button>
                                     </div>
                                 </div>
                             )}

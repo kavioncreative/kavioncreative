@@ -116,6 +116,12 @@ const Tasks: React.FC = () => {
         }
 
         // Status Filter
+        if (activeFilter === 'progress') {
+            query = query.eq('status', 'In Progress');
+        } else if (activeFilter === 'completed') {
+            query = query.eq('status', 'Completed');
+        }
+
         // Quick Filters
         const today = new Date().toISOString().split('T')[0];
         const yesterday = new Date(new Date().setDate(new Date().getDate() - 1)).toISOString().split('T')[0];

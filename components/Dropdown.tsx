@@ -26,7 +26,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [coords, setCoords] = useState({ top: 0, bottom: 0, left: 0, right: 0, width: 0 });
+  const [coords, setCoords] = useState({ top: 0, bottom: 0, left: 0, right: 0, width: 0, spaceBelow: 0, spaceTop: 0 });
   const dropdownRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -71,11 +71,12 @@ export const Dropdown: React.FC<DropdownProps> = ({
       const windowWidth = window.innerWidth;
       
       const spaceBelow = windowHeight - rect.bottom;
+      const spaceTop = rect.top;
       const spaceRight = windowWidth - rect.left;
 
       // Vertical placement
-      // Threshold increased to 220px to ensure it flips to top before hitting the bottom
-      if (spaceBelow < 220 && rect.top > spaceBelow) {
+      // Threshold increased to 300px to ensure it flips to top before hitting the bottom
+      if (spaceBelow < 300 && spaceTop > spaceBelow) {
         setPlacement('top');
       } else {
         setPlacement('bottom');
@@ -94,7 +95,9 @@ export const Dropdown: React.FC<DropdownProps> = ({
         bottom: rect.bottom,
         left: rect.left,
         right: rect.right,
-        width: rect.width
+        width: rect.width,
+        spaceBelow,
+        spaceTop
       });
     }
   };
@@ -229,13 +232,18 @@ export const Dropdown: React.FC<DropdownProps> = ({
         </div>
       )}
 
-      <div className="max-h-52 overflow-y-auto py-1.5 px-1.5 space-y-0.5 flex-1
-        [&::-webkit-scrollbar]:w-1.5 
-        [&::-webkit-scrollbar-track]:bg-transparent 
-        [&::-webkit-scrollbar-thumb]:bg-white/10 
-        [&::-webkit-scrollbar-thumb]:rounded-full 
-        hover:[&::-webkit-scrollbar-thumb]:bg-white/25 
-        transition-colors">
+      <div 
+        className="overflow-y-auto py-1.5 px-1.5 space-y-0.5 flex-1
+          [&::-webkit-scrollbar]:w-1.5 
+          [&::-webkit-scrollbar-track]:bg-transparent 
+          [&::-webkit-scrollbar-thumb]:bg-white/10 
+          [&::-webkit-scrollbar-thumb]:rounded-full 
+          hover:[&::-webkit-scrollbar-thumb]:bg-white/25 
+          transition-colors"
+        style={{
+          maxHeight: `${Math.min(208, Math.max(120, (placement === 'bottom' ? coords.spaceBelow : coords.spaceTop) - (showSearch ? 90 : 54)))}px`
+        }}
+      >
 
         {isMulti ? (
           <>

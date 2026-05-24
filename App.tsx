@@ -46,6 +46,7 @@ import ActivityLogs from './sections/ActivityLogs';
 import Training from './sections/Training';
 import MyNotes from './sections/MyNotes';
 import { DocViewer } from './sections/DocViewer';
+import Notifications from './sections/Notifications';
 
 import { DashboardLayout, DashboardView } from './layouts/DashboardLayout';
 import { SignInScreen } from './sections/AuthScreens';
@@ -675,6 +676,7 @@ const App: React.FC = () => {
         case 'Reminders': return <Reminders />;
         case 'Training': return <Training />;
         case 'MyNotes': return <MyNotes />;
+        case 'Notifications': return <Notifications />;
         case 'AlgorithmStudio': return <AlgorithmStudio />;
         case 'LevelsGuide': return <FreelancerLevelsGuide />;
         case 'Applicants': return <Applicants />;

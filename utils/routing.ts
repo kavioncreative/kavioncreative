@@ -39,6 +39,7 @@ const VIEW_MAP: Record<string, DashboardView> = {
     'activity-logs': 'ActivityLogs',
     'training': 'Training',
     'my-notes': 'MyNotes',
+    'notifications': 'Notifications',
 };
 
 export const PATH_MAP: Record<DashboardView, string> = Object.entries(VIEW_MAP).reduce((acc, [path, view]) => {

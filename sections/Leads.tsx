@@ -88,7 +88,7 @@ const Leads = forwardRef<LeadsHandle, { onLeadOpen?: (lead: any) => void }> (({ 
     const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
 
     const statusMap: Record<string, string> = useMemo(() => ({
-        'new': 'New Leads',
+        'new': 'New',
         'active': 'Active',
         'offer-sent': 'Offer Sent',
         'project-completed': 'Project Completed',
@@ -141,7 +141,10 @@ const Leads = forwardRef<LeadsHandle, { onLeadOpen?: (lead: any) => void }> (({ 
             
             const counts: Record<string, number> = {};
             data?.forEach(l => {
-                const tabId = Object.keys(statusMap).find(key => statusMap[key] === l.status);
+                if (!l.status) return;
+                const tabId = Object.keys(statusMap).find(
+                    key => statusMap[key].toLowerCase() === l.status.toLowerCase()
+                );
                 if (tabId) {
                     counts[tabId] = (counts[tabId] || 0) + 1;
                 }

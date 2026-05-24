@@ -51,7 +51,7 @@ import { PerformanceForm } from '../components/PerformanceForm';
 import { Dropdown } from '../components/Dropdown';
 import { updateRoute } from '../utils/routing';
 
-export type DashboardView = 'Dashboard' | 'Tasks' | 'Analytics' | 'Leads' | 'Projects' | 'Finances' | 'Earnings' | 'Accounts' | 'ActivityLogs' | 'Assets' | 'Chats' | 'Users' | 'Team' | 'Workload' | 'Tickets' | 'Channels' | 'Forms' | 'Integrations' | 'Settings' | 'Reminders' | 'Profile' | 'UserDetailsV2' | 'AlgorithmStudio' | 'LevelsGuide' | 'Applicants' | 'TeamSlabs' | 'TeamEarnings' | 'TeamDesignerEarnings' | 'Training' | 'MyNotes' | 'Guide' | 'GuideAddProject' | 'GuideRemoveProject' | 'GuideMarkCancelled' | 'GuideMarkApproved' | 'GuideTriggerDispute' | 'GuideTriggerArtHelp' | 'GuidePostComments' | 'GuideSendFiles' | 'GuideVideoIntro' | 'GuideSystemWorks' | 'GuideWorkflowSummary' | 'GuidePaymentOverview' | 'GuideJoinDesigner';
+export type DashboardView = 'Dashboard' | 'Tasks' | 'Analytics' | 'Leads' | 'Projects' | 'Finances' | 'Earnings' | 'Accounts' | 'ActivityLogs' | 'Assets' | 'Chats' | 'Users' | 'Team' | 'Workload' | 'Tickets' | 'Channels' | 'Forms' | 'Integrations' | 'Settings' | 'Reminders' | 'Profile' | 'UserDetailsV2' | 'AlgorithmStudio' | 'LevelsGuide' | 'Applicants' | 'TeamSlabs' | 'TeamEarnings' | 'TeamDesignerEarnings' | 'Training' | 'MyNotes' | 'Notifications' | 'Guide' | 'GuideAddProject' | 'GuideRemoveProject' | 'GuideMarkCancelled' | 'GuideMarkApproved' | 'GuideTriggerDispute' | 'GuideTriggerArtHelp' | 'GuidePostComments' | 'GuideSendFiles' | 'GuideVideoIntro' | 'GuideSystemWorks' | 'GuideWorkflowSummary' | 'GuidePaymentOverview' | 'GuideJoinDesigner';
 
 export const DashboardLayout: React.FC<{
   children: React.ReactNode;
@@ -986,14 +986,23 @@ export const DashboardLayout: React.FC<{
                           ))
                         )}
                       </div>
-                      {/* Footer with Mark all as read */}
-                      <div className="relative p-3 border-t border-white/10 bg-[#1A1A1A] overflow-hidden z-10">
+                      {/* Footer with View All & Mark all as read */}
+                      <div className="relative p-3 border-t border-white/10 bg-[#1A1A1A] overflow-hidden z-10 flex">
                         <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.02)_0%,rgba(255,255,255,0.05)_40%,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.05)_60%,rgba(255,255,255,0.02)_100%)] pointer-events-none opacity-40" />
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.05)_0%,transparent_70%)] pointer-events-none" />
                         <button
+                          onClick={() => {
+                            setShowNotifications(false);
+                            onItemSelect('Notifications');
+                          }}
+                          className="flex-1 py-2 text-xs font-bold uppercase tracking-wider transition-[color,opacity] duration-200 relative z-10 outline-none focus:ring-0 text-white hover:text-white/80 border-r border-white/10"
+                        >
+                          View All
+                        </button>
+                        <button
                           onClick={markAllAsRead}
                           disabled={unreadCount === 0}
-                          className={`w-full py-2 text-xs font-bold uppercase tracking-wider transition-[color,opacity] duration-200 relative z-10 outline-none focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none ring-0 border border-transparent ${unreadCount > 0 ? 'text-brand-primary hover:text-brand-primary/80' : 'text-gray-500 cursor-not-allowed'}`}
+                          className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider transition-[color,opacity] duration-200 relative z-10 outline-none focus:ring-0 ${unreadCount > 0 ? 'text-brand-primary hover:text-brand-primary/80' : 'text-gray-500 cursor-not-allowed'}`}
                         >
                           Mark all as read
                         </button>

@@ -24,6 +24,7 @@ import { useAccounts } from '../contexts/AccountContext';
 import ReactMarkdown from 'react-markdown';
 import { uploadFile } from '../utils/storage';
 import { markdownComponents, markdownPlugins, parseCodesLogicMarkdown } from './ProjectDetails';
+import { COUNTRIES } from '../utils/countries';
 
 interface ProjectsProps {
     onProjectOpen?: (id: string, data?: any) => void;
@@ -41,12 +42,12 @@ export interface ProjectsHandle {
 function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>) {
     const { onProjectOpen, onLeadOpen, isProjectOpen, isLeadOpen } = props;
 
-    useImperativeHandle(ref, () => ({
+    useImperativeHandle(ref, () => ({        // Expose refresh function to parent
         refresh: () => {
             fetchProjects();
-            fetchTabCounts();
-            fetchLeads();
-            fetchLeadsTabCounts();
+            fetchTabCounts(true);
+            fetchLeads(true);
+            fetchLeadsTabCounts(true);
         },
         switchToStatusTab: (status: string) => {
             setViewMode('projects');
@@ -203,6 +204,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
     const [previewFile, setPreviewFile] = useState<File | null>(null);
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
     const lastCountsFetchRef = useRef<number>(0);
+    const lastLeadsCountsFetchRef = useRef<number>(0);
 
     // Permission Cache Context (Optimizes main query by preventing re-fetches)
     const [permittedAccounts, setPermittedAccounts] = useState<string[] | null>(null);
@@ -253,7 +255,10 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
 
     const [leadsData, setLeadsData] = useState<any[]>([]);
     const [leadsLoading, setLeadsLoading] = useState(false);
-    const [leadsTabCounts, setLeadsTabCounts] = useState<Record<string, number>>({});
+    const [leadsTabCounts, setLeadsTabCounts] = useState<Record<string, number>>(() => {
+        const cached = localStorage.getItem('nova_leads_counts_cache');
+        return cached ? JSON.parse(cached) : {};
+    });
     const [leadsTotalCount, setLeadsTotalCount] = useState(0);
 
     // UNREAD STATES
@@ -726,7 +731,12 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
         }
     }
 
-    async function fetchLeadsTabCounts() {
+    async function fetchLeadsTabCounts(force = false) {
+        if (!profile || !effectiveRole) return;
+        const now = Date.now();
+        if (!force && now - lastLeadsCountsFetchRef.current < 5000) return; // 5s throttle
+        lastLeadsCountsFetchRef.current = now;
+
         try {
             const { data, error } = await supabase
                 .from('leads')
@@ -736,12 +746,16 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
 
             const counts: Record<string, number> = {};
             data?.forEach(l => {
-                const tabId = Object.keys(leadsStatusMap).find(key => leadsStatusMap[key] === l.status);
+                if (!l.status) return;
+                const tabId = Object.keys(leadsStatusMap).find(
+                    key => leadsStatusMap[key].toLowerCase() === l.status.toLowerCase()
+                );
                 if (tabId) {
                     counts[tabId] = (counts[tabId] || 0) + 1;
                 }
             });
             setLeadsTabCounts(counts);
+            localStorage.setItem('nova_leads_counts_cache', JSON.stringify(counts));
         } catch (err) {
             console.error('Error fetching lead counts:', err);
         }
@@ -867,7 +881,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
             setIsDeleteConfirmOpen(false);
             setLeadToDelete(null);
             fetchLeads(true);
-            fetchLeadsTabCounts();
+            fetchLeadsTabCounts(true);
         } catch (err: any) {
             console.error('Delete error:', err);
             addToast({ type: 'error', title: 'Error', message: err.message || 'Failed to delete lead.' });
@@ -1050,11 +1064,11 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
 
         if (viewMode === 'projects') {
             fetchProjects();
-            fetchTabCounts();
         } else {
             fetchLeads();
-            fetchLeadsTabCounts();
         }
+        fetchTabCounts();
+        fetchLeadsTabCounts();
         fetchRepeatClients();
     }, [
         currentPage,
@@ -1089,7 +1103,17 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                     }
                 } catch (e) { }
             }
+            const cachedLeadsCountsStr = localStorage.getItem('nova_leads_counts_cache');
+            if (cachedLeadsCountsStr) {
+                try {
+                    const counts = JSON.parse(cachedLeadsCountsStr);
+                    if (counts && Object.keys(counts).length > 0) {
+                        setLeadsTabCounts(counts);
+                    }
+                } catch (e) { }
+            }
             fetchTabCounts();
+            fetchLeadsTabCounts();
             fetchRepeatClients();
         }
     }, [profile?.id, effectiveRole, userRole, refreshSignal]);
@@ -3099,11 +3123,13 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                         {(clientType === 'new' || (clientType === 'repeat' && !isLocationDetected)) && (
                                             <div className="space-y-1 animate-in fade-in slide-in-from-top-2 duration-300">
                                                 <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-1 px-1">LOCATION</p>
-                                                <Input
+                                                <Dropdown
                                                     variant="metallic"
-                                                    placeholder="eg USA, London, etc"
+                                                    options={COUNTRIES}
                                                     value={location}
-                                                    onChange={(e) => setLocation(e.target.value)}
+                                                    onChange={(val) => setLocation(val)}
+                                                    placeholder="Select country..."
+                                                    showSearch
                                                     size="lg"
                                                 />
                                             </div>
@@ -3975,12 +4001,14 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                                                 <IconChevronRight className="w-5 h-5 text-gray-500" />
                                                             </div>
                                                         </DatePicker>
-                                                        <Input
+                                                        <Dropdown
                                                             variant="metallic"
                                                             label="Location"
-                                                            placeholder="eg USA, UK, etc"
+                                                            options={COUNTRIES}
                                                             value={location}
-                                                            onChange={(e) => setLocation(e.target.value)}
+                                                            onChange={(val) => setLocation(val)}
+                                                            placeholder="Select country..."
+                                                            showSearch
                                                         />
                                                     </div>
                                                 )}
