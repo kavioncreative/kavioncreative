@@ -3173,7 +3173,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                                                 // Smart Account Detection
                                                                 const prefix = val.split(' ')[0];
                                                                 if (prefix && prefix.length >= 2) {
-                                                                    const matchedAccount = accountOptions.find(acc => acc.value === prefix);
+                                                                    const matchedAccount = accountOptions.find(acc => acc.description?.toUpperCase() === prefix.toUpperCase());
                                                                     if (matchedAccount) {
                                                                         setSelectedAccount(matchedAccount.value);
                                                                     }
@@ -3330,7 +3330,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                                         // Smart Account Detection
                                                         const prefix = val.split(' ')[0];
                                                         if (prefix && prefix.length >= 2) {
-                                                            const matchedAccount = accountOptions.find(acc => acc.value === prefix);
+                                                            const matchedAccount = accountOptions.find(acc => acc.description?.toUpperCase() === prefix.toUpperCase());
                                                             if (matchedAccount) {
                                                                 setSelectedAccount(matchedAccount.value);
                                                             }
@@ -3341,7 +3341,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                                 {selectedAccount && (
                                                     <div className="mt-2 px-3 py-1.5 rounded-lg bg-brand-success/5 border border-brand-success/10 flex items-center gap-2 animate-in fade-in zoom-in duration-300">
                                                         <div className="w-1 h-1 rounded-full bg-brand-success animate-pulse" />
-                                                        <span className="text-[9px] font-black text-brand-success uppercase tracking-wider">Account Detected: {selectedAccount}</span>
+                                                        <span className="text-[9px] font-black text-brand-success uppercase tracking-wider">Account Detected: {accountOptions.find(acc => acc.value === selectedAccount)?.label || selectedAccount}</span>
                                                     </div>
                                                 )}
                                             </div>
@@ -4123,7 +4123,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                                             <div className="flex items-center justify-between px-1">
                                                                 <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Project ID</label>
                                                                 {selectedAccount && (
-                                                                    <span className="text-[9px] font-black text-brand-success uppercase tracking-widest bg-brand-success/5 px-2 py-0.5 rounded border border-brand-success/10">Account: {selectedAccount}</span>
+                                                                    <span className="text-[9px] font-black text-brand-success uppercase tracking-widest bg-brand-success/5 px-2 py-0.5 rounded border border-brand-success/10">Account: {accountOptions.find(acc => acc.value === selectedAccount)?.label || selectedAccount}</span>
                                                                 )}
                                                             </div>
                                                             <Input
@@ -4135,7 +4135,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                                                     setManualLogoNo(val);
                                                                     const prefix = val.split(' ')[0];
                                                                     if (prefix && prefix.length >= 2) {
-                                                                        const matchedAccount = accountOptions.find(acc => acc.value === prefix);
+                                                                        const matchedAccount = accountOptions.find(acc => acc.description?.toUpperCase() === prefix.toUpperCase());
                                                                         if (matchedAccount) setSelectedAccount(matchedAccount.value);
                                                                     }
                                                                 }}
