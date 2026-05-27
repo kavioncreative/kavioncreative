@@ -1,3 +1,4 @@
+// test change
 import React, { useState, useMemo, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { supabase } from '../lib/supabase';
 import { Tabs, Pagination } from '../components/Navigation';
@@ -537,14 +538,14 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
             if (activeTab === 'qa') {
                 // Show projects explicitly waiting for manager/lead review
                 query = query.in('qa_status', ['pending_qa', 'qa_revision'])
-                             .not('status', 'eq', 'Sent For Approval')
-                             .not('status', 'eq', 'Approved')
-                             .not('status', 'eq', 'Cancelled');
+                    .not('status', 'eq', 'Sent For Approval')
+                    .not('status', 'eq', 'Approved')
+                    .not('status', 'eq', 'Cancelled');
             } else if (activeTab === 'sent-for-qa') {
                 query = query.in('qa_status', ['pending_qa', 'qa_revision'])
-                             .not('status', 'eq', 'Sent For Approval')
-                             .not('status', 'eq', 'Approved')
-                             .not('status', 'eq', 'Cancelled');
+                    .not('status', 'eq', 'Sent For Approval')
+                    .not('status', 'eq', 'Approved')
+                    .not('status', 'eq', 'Cancelled');
             } else if (activeTab !== 'all' && !debouncedSearchQuery.trim() && !alertFilter) {
                 const targetStatus = statusMap[activeTab];
                 if (targetStatus) {
@@ -714,7 +715,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
             const to = from + ITEMS_PER_PAGE - 1;
 
             const { data, count, error } = await query.range(from, to);
-            
+
             if (error && error.code === 'PGRST103') {
                 setLeadsData([]);
             } else if (error) {
@@ -814,7 +815,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
 
             if (!error && data) {
                 setLinkedProjectData(data);
-                
+
                 // Auto-detect account for Direct Order repeat clients based on linked project prefix
                 const accPrefix = cleanId.split(' ')[0];
                 const matchedAcc = accounts.find(a => a.prefix === accPrefix);
@@ -2709,29 +2710,29 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                                                     orderType === 'Inquiry' ? (
                                                                         currentStep === 4 ? !medium :
                                                                             currentStep === 5 ? (
-                                                                                !clientName.trim() || 
+                                                                                !clientName.trim() ||
                                                                                 ((clientType === 'new' || (clientType === 'repeat' && !isLocationDetected)) && !location.trim()) ||
                                                                                 !leadIntakeDate
                                                                             ) :
                                                                                 currentStep === 6 ? !selectedAccount :
                                                                                     currentStep === 7 ? (
-                                                                                        soldItems.length === 0 || 
+                                                                                        soldItems.length === 0 ||
                                                                                         (soldItems.includes('Other') && !otherSoldText.trim())
                                                                                     ) :
                                                                                         false
                                                                     ) : (
                                                                         currentStep === 4 ? !medium :
-                                                                        currentStep === 5 ? !clientName.trim() :
-                                                                        currentStep === 6 ? !price.trim() :
-                                                                        currentStep === 7 ? !selectedAccount :
-                                                                        currentStep === 8 ? (logoNoType === 'Add Manually' && !manualLogoNo.trim()) :
-                                                                        currentStep === 9 ? (soldItems.length === 0 || (soldItems.includes('Other') && !otherSoldText.trim())) :
-                                                                         currentStep === 10 ? !projectTitle.trim() :
-                                                                         currentStep === 11 ? isUploading :
-                                                                        currentStep === 12 ? false :
-                                                                        currentStep === 13 ? (!dueDate) :
-                                                                        currentStep === 14 ? !selectedAssignee :
-                                                                        false
+                                                                            currentStep === 5 ? !clientName.trim() :
+                                                                                currentStep === 6 ? !price.trim() :
+                                                                                    currentStep === 7 ? !selectedAccount :
+                                                                                        currentStep === 8 ? (logoNoType === 'Add Manually' && !manualLogoNo.trim()) :
+                                                                                            currentStep === 9 ? (soldItems.length === 0 || (soldItems.includes('Other') && !otherSoldText.trim())) :
+                                                                                                currentStep === 10 ? !projectTitle.trim() :
+                                                                                                    currentStep === 11 ? isUploading :
+                                                                                                        currentStep === 12 ? false :
+                                                                                                            currentStep === 13 ? (!dueDate) :
+                                                                                                                currentStep === 14 ? !selectedAssignee :
+                                                                                                                    false
                                                                     )
                                                         )
                                     }
@@ -3169,7 +3170,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                                             onChange={(e) => {
                                                                 const val = e.target.value.toUpperCase();
                                                                 setPreviousLogoNo(val);
-                                                                
+
                                                                 // Smart Account Detection
                                                                 const prefix = val.split(' ')[0];
                                                                 if (prefix && prefix.length >= 2) {
@@ -3199,75 +3200,75 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                             {currentStep === 6 && selectedMove === 'Add' && orderType === 'Direct Order' && (
                                 <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
                                     <div className="space-y-6">
-                                                <div className="space-y-4">
-                                                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Project Price</p>
-                                                    <Input
-                                                        variant="metallic"
-                                                        placeholder="eg 20"
-                                                        value={price}
-                                                        onChange={(e) => setPrice(e.target.value)}
-                                                        leftIcon={<span className="text-gray-500">$</span>}
-                                                        size="lg"
-                                                    />
-                                                </div>
-
-                                                <div className="h-px bg-white/[0.05] w-full" />
-
-                                                <div className="space-y-4">
-                                                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Assignee Payout (Optional)</p>
-                                                    <Input
-                                                        variant="metallic"
-                                                        placeholder="Leave empty for Tiered (Auto)"
-                                                        value={assigneeManualPrice}
-                                                        onChange={(e) => setAssigneeManualPrice(e.target.value)}
-                                                        leftIcon={<span className="text-gray-500">$</span>}
-                                                        size="lg"
-                                                    />
-                                                </div>
-
-                                                <div className="mt-6 p-4 bg-brand-warning/10 border border-brand-warning/20 rounded-2xl">
-                                                    <div className="flex gap-3">
-                                                        <div className="w-8 h-8 rounded-full bg-brand-warning/20 flex items-center justify-center text-brand-warning shrink-0">
-                                                            <IconAlertCircle size={18} />
-                                                        </div>
-                                                        <div className="space-y-1">
-                                                            <p className="text-[10px] font-black text-brand-warning uppercase tracking-[0.2em]">NOTE:</p>
-                                                            <p className="text-[11px] font-bold text-brand-warning leading-relaxed uppercase">
-                                                                LEAVE ASSIGNEE PAYOUT (OPTIONAL) FIELD, EMPTY FOR NORMAL LOGOS. FOR SPECIAL PROJECTS (ANIMATION/WEB), DISCUSS PRICE WITH MANAGEMENT BEFORE ADDING.
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                            )}
-
-                            {((currentStep === 7 && selectedMove === 'Add' && orderType === 'Direct Order') ||
-                              (currentStep === 6 && selectedMove === 'Add' && orderType === 'Inquiry')) && (
-                                <div className="space-y-6">
-                                    <div className="space-y-4">
-                                        <div className="space-y-1">
-                                            <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-1 px-1">ACCOUNT</p>
-                                            <Dropdown
+                                        <div className="space-y-4">
+                                            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Project Price</p>
+                                            <Input
                                                 variant="metallic"
-                                                placeholder="Select Account"
-                                                options={accountOptions}
-                                                value={selectedAccount || ''}
-                                                onChange={(id) => {
-                                                    setSelectedAccount(id);
-                                                }}
-                                                showSearch
+                                                placeholder="eg 20"
+                                                value={price}
+                                                onChange={(e) => setPrice(e.target.value)}
+                                                leftIcon={<span className="text-gray-500">$</span>}
                                                 size="lg"
                                             />
-                                            {!selectedAccount && (
-                                                <p className="text-[10px] font-medium text-brand-error animate-in fade-in slide-in-from-top-1 px-1">
-                                                    Account is required
-                                                </p>
-                                            )}
+                                        </div>
+
+                                        <div className="h-px bg-white/[0.05] w-full" />
+
+                                        <div className="space-y-4">
+                                            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Assignee Payout (Optional)</p>
+                                            <Input
+                                                variant="metallic"
+                                                placeholder="Leave empty for Tiered (Auto)"
+                                                value={assigneeManualPrice}
+                                                onChange={(e) => setAssigneeManualPrice(e.target.value)}
+                                                leftIcon={<span className="text-gray-500">$</span>}
+                                                size="lg"
+                                            />
+                                        </div>
+
+                                        <div className="mt-6 p-4 bg-brand-warning/10 border border-brand-warning/20 rounded-2xl">
+                                            <div className="flex gap-3">
+                                                <div className="w-8 h-8 rounded-full bg-brand-warning/20 flex items-center justify-center text-brand-warning shrink-0">
+                                                    <IconAlertCircle size={18} />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <p className="text-[10px] font-black text-brand-warning uppercase tracking-[0.2em]">NOTE:</p>
+                                                    <p className="text-[11px] font-bold text-brand-warning leading-relaxed uppercase">
+                                                        LEAVE ASSIGNEE PAYOUT (OPTIONAL) FIELD, EMPTY FOR NORMAL LOGOS. FOR SPECIAL PROJECTS (ANIMATION/WEB), DISCUSS PRICE WITH MANAGEMENT BEFORE ADDING.
+                                                    </p>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             )}
+
+                            {((currentStep === 7 && selectedMove === 'Add' && orderType === 'Direct Order') ||
+                                (currentStep === 6 && selectedMove === 'Add' && orderType === 'Inquiry')) && (
+                                    <div className="space-y-6">
+                                        <div className="space-y-4">
+                                            <div className="space-y-1">
+                                                <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-1 px-1">ACCOUNT</p>
+                                                <Dropdown
+                                                    variant="metallic"
+                                                    placeholder="Select Account"
+                                                    options={accountOptions}
+                                                    value={selectedAccount || ''}
+                                                    onChange={(id) => {
+                                                        setSelectedAccount(id);
+                                                    }}
+                                                    showSearch
+                                                    size="lg"
+                                                />
+                                                {!selectedAccount && (
+                                                    <p className="text-[10px] font-medium text-brand-error animate-in fade-in slide-in-from-top-1 px-1">
+                                                        Account is required
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
 
                             {currentStep === 7 && selectedMove === 'Add' && orderType === 'Inquiry' && (
                                 <div className="space-y-6">
@@ -3392,8 +3393,8 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                         <button
                                             onClick={() => setBriefMode('edit')}
                                             className={`px-10 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-[0.2em] transition-all duration-500 ${briefMode === 'edit'
-                                                    ? 'bg-gradient-to-b from-[#FF6B4B] to-[#D9361A] text-white shadow-[inset_0_1.5px_0_rgba(255,255,255,0.45),0_8px_20px_-4px_rgba(217,54,26,0.4)] scale-[1.02]'
-                                                    : 'text-gray-500 hover:text-white'
+                                                ? 'bg-gradient-to-b from-[#FF6B4B] to-[#D9361A] text-white shadow-[inset_0_1.5px_0_rgba(255,255,255,0.45),0_8px_20px_-4px_rgba(217,54,26,0.4)] scale-[1.02]'
+                                                : 'text-gray-500 hover:text-white'
                                                 }`}
                                         >
                                             Edit
@@ -3401,8 +3402,8 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                         <button
                                             onClick={() => setBriefMode('preview')}
                                             className={`px-10 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-[0.2em] transition-all duration-500 ${briefMode === 'preview'
-                                                    ? 'bg-gradient-to-b from-[#FF6B4B] to-[#D9361A] text-white shadow-[inset_0_1.5px_0_rgba(255,255,255,0.45),0_8px_20px_-4px_rgba(217,54,26,0.4)] scale-[1.02]'
-                                                    : 'text-gray-500 hover:text-white'
+                                                ? 'bg-gradient-to-b from-[#FF6B4B] to-[#D9361A] text-white shadow-[inset_0_1.5px_0_rgba(255,255,255,0.45),0_8px_20px_-4px_rgba(217,54,26,0.4)] scale-[1.02]'
+                                                : 'text-gray-500 hover:text-white'
                                                 }`}
                                         >
                                             Preview
