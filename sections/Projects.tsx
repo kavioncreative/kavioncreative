@@ -2169,20 +2169,33 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                     if (currentStep === 1) return "Choose Your Move";
 
                     if (selectedMove === 'Add') {
-                        switch (currentStep) {
-                            case 2: return "Order Type";
-                            case 3: return "Client Type";
-                            case 4: return "Medium";
-                            case 5: return "Client Details";
-                            case 6: return orderType === 'Inquiry' ? "Account" : "Price";
-                            case 7: return orderType === 'Inquiry' ? "Client Interest" : "Account";
-                            case 8: return "Project Title";
-                            case 9: return "Project Brief";
-                            case 10: return "What Have You Sold?";
-                            case 11: return "Any Addons?";
-                            case 12: return "Deadline";
-                            case 13: return "Assignee";
-                            default: return "Choose Your Move";
+                        if (orderType === 'Inquiry') {
+                            switch (currentStep) {
+                                case 2: return "Order Type";
+                                case 3: return "Client Type";
+                                case 4: return "Medium";
+                                case 5: return "Client Details";
+                                case 6: return "Account";
+                                case 7: return "Client Interest";
+                                default: return "Choose Your Move";
+                            }
+                        } else {
+                            switch (currentStep) {
+                                case 2: return "Order Type";
+                                case 3: return "Client Type";
+                                case 4: return "Medium";
+                                case 5: return "Client Details";
+                                case 6: return "Price";
+                                case 7: return "Account";
+                                case 8: return "Project ID";
+                                case 9: return "What Have You Sold?";
+                                case 10: return "Project Title";
+                                case 11: return "Project Brief";
+                                case 12: return "Any Addons?";
+                                case 13: return "Deadline";
+                                case 14: return "Assignee";
+                                default: return "Choose Your Move";
+                            }
                         }
                     } else if (selectedMove === 'Remove') {
                         switch (currentStep) {
@@ -2712,9 +2725,9 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                                                         currentStep === 6 ? !price.trim() :
                                                                         currentStep === 7 ? !selectedAccount :
                                                                         currentStep === 8 ? (logoNoType === 'Add Manually' && !manualLogoNo.trim()) :
-                                                                        currentStep === 9 ? !projectTitle.trim() :
-                                                                        currentStep === 10 ? isUploading :
-                                                                        currentStep === 11 ? (soldItems.length === 0 || (soldItems.includes('Other') && !otherSoldText.trim())) :
+                                                                        currentStep === 9 ? (soldItems.length === 0 || (soldItems.includes('Other') && !otherSoldText.trim())) :
+                                                                         currentStep === 10 ? !projectTitle.trim() :
+                                                                         currentStep === 11 ? isUploading :
                                                                         currentStep === 12 ? false :
                                                                         currentStep === 13 ? (!dueDate) :
                                                                         currentStep === 14 ? !selectedAssignee :
@@ -3337,7 +3350,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                 </div>
                             )}
 
-                            {currentStep === 9 && selectedMove === 'Add' && orderType === 'Direct Order' && (
+                            {currentStep === 10 && selectedMove === 'Add' && orderType === 'Direct Order' && (
                                 <div className="space-y-6">
                                     <div className="space-y-4">
                                         <div className="space-y-1">
@@ -3354,7 +3367,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                 </div>
                             )}
 
-                            {currentStep === 10 && selectedMove === 'Add' && orderType === 'Direct Order' && (
+                            {currentStep === 11 && selectedMove === 'Add' && orderType === 'Direct Order' && (
                                 <div className="flex flex-col space-y-6">
                                     {/* Options Required Section */}
                                     <div className="space-y-2">
@@ -3592,7 +3605,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
 
                             {/* Price block has been moved to Step 5 */}
 
-                            {currentStep === 11 && selectedMove === 'Add' && orderType === 'Direct Order' && (
+                            {currentStep === 9 && selectedMove === 'Add' && orderType === 'Direct Order' && (
                                 <div className="space-y-6">
                                     <div className="space-y-4">
                                         {/* For Direct Order, Step 9 is now Items Sold */}
