@@ -24,7 +24,7 @@ export const Input: React.FC<InputProps> = ({
   const sizes = {
     xs: 'h-8 px-2 py-1 text-xs',
     sm: 'h-10 px-3 py-2 text-sm',
-    md: 'h-12 px-4 py-2 text-base',
+    md: 'h-11 px-4 py-2 text-sm',
     lg: 'h-14 px-5 py-3 text-lg',
     xl: 'h-16 px-6 py-4 text-xl',
     '2xl': 'h-20 px-8 py-5 text-2xl',
@@ -59,7 +59,7 @@ export const Input: React.FC<InputProps> = ({
         <input
           type={inputType}
           className={`w-full transition-[background-color,color,opacity,transform,filter,backdrop-filter] duration-300 outline-none focus:outline-none focus:ring-0 focus:ring-offset-0 rounded-xl ${sizes[size]} ${variant === 'metallic'
-            ? 'bg-black/60 border-none text-white font-bold placeholder:text-gray-600 shadow-[inset_0_2px_12px_rgba(0,0,0,0.8)] focus:bg-black/80'
+            ? 'bg-black/40 border-none text-white font-bold placeholder:text-gray-600 shadow-[inset_0_2px_8px_rgba(0,0,0,0.6)] focus:bg-black/60'
             : variant === 'recessed'
               ? 'bg-black/60 border border-white/[0.05] shadow-[inset_0_2px_12px_rgba(0,0,0,0.8)] text-white placeholder:text-gray-600 focus:border-white/[0.05] focus:bg-black/80 outline-none focus:outline-none focus:ring-0'
               : variant === 'flat'
@@ -75,6 +75,10 @@ export const Input: React.FC<InputProps> = ({
             <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-b from-black/60 to-transparent" />
             {/* Subtle Diagonal Machined Sheen */}
             <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.02)_48%,rgba(255,255,255,0.05)_50%,rgba(255,255,255,0.02)_52%,transparent_100%)] opacity-30" />
+            {/* Bottom Rim Light (For depth) */}
+            {variant === 'metallic' && (
+              <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-white/[0.06] shadow-[0_-1px_2px_rgba(255,255,255,0.05)]" />
+            )}
           </div>
         )}
         {isPassword ? (

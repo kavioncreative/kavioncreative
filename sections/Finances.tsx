@@ -1504,15 +1504,22 @@ const CompanyEarnings: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [projectsData, setProjectsData] = useState<any[]>([]);
     const [activeSummaryFilter, setActiveSummaryFilter] = useState<'all' | 'pipeline' | 'secured'>('pipeline');
+    const [errorLog, setErrorLog] = useState<string | null>(null);
 
     useEffect(() => {
         // Only run if user data is ready
         if (!effectiveRole || !profile?.id || accountsLoading) return;
 
         const loadInitialData = async () => {
-            const loadedCommissions = await fetchPlatformCommissions();
-            const loadedSlabs = await fetchPricingSlabs();
-            await fetchProjects(true, loadedCommissions, accounts, loadedSlabs);
+            try {
+                setLoading(true);
+                const loadedCommissions = await fetchPlatformCommissions();
+                const loadedSlabs = await fetchPricingSlabs();
+                await fetchProjects(true, loadedCommissions, accounts, loadedSlabs);
+            } catch (err) {
+                console.error("Error loading initial company earnings data:", err);
+                setLoading(false);
+            }
         };
         loadInitialData();
 
@@ -1532,7 +1539,7 @@ const CompanyEarnings: React.FC = () => {
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [accounts, accountsLoading, effectiveRole, profile?.id]);
+    }, [accountsLoading, effectiveRole, profile?.id]);
 
 
 
@@ -1545,7 +1552,7 @@ const CompanyEarnings: React.FC = () => {
 
             let query = supabase
                 .from('projects')
-                .select('*, accounts(prefix)')
+                .select('project_id, project_title, status, order_type, client_name, price, tip_amount, account_id, account, designer_fee, clearance_start_date, converted_by, created_at, accounts(prefix)')
                 .neq('status', 'Removed')
                 .neq('status', 'Cancelled');
 
@@ -1569,6 +1576,7 @@ const CompanyEarnings: React.FC = () => {
             const { data, error } = await query.order('created_at', { ascending: false });
 
             if (error) throw error;
+            setErrorLog(null);
             if (data) {
                 const enriched = data.map(p => {
                     const price = Number(p.price || 0);
@@ -1586,7 +1594,7 @@ const CompanyEarnings: React.FC = () => {
                         if (matchedAcc) accountId = matchedAcc.id;
                     }
 
-                    const commission = activeCommissions.find(pc => pc.assigned_account_ids.includes(accountId));
+                    const commission = activeCommissions.find(pc => pc.assigned_account_ids?.includes(accountId));
                     const commissionFactor = commission ? (Number(commission.commission_percentage) > 1 ? Number(commission.commission_percentage) / 100 : Number(commission.commission_percentage)) : 0;
 
                     const platformCut = price * commissionFactor;
@@ -1608,8 +1616,8 @@ const CompanyEarnings: React.FC = () => {
                     const prefix = (p as any).accounts?.prefix || 'Unassigned Account';
 
                     // FIX: Avoid prefix duplication and handle unassigned state
-                    let formattedId = p.project_id;
-                    if (prefix !== 'Unassigned Account' && !formattedId.startsWith(prefix)) {
+                    let formattedId = p.project_id || '';
+                    if (prefix !== 'Unassigned Account' && formattedId && !formattedId.startsWith(prefix)) {
                         formattedId = `${prefix} ${formattedId}`;
                     }
 
@@ -1628,8 +1636,9 @@ const CompanyEarnings: React.FC = () => {
 
                 setProjectsData(enriched);
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error('Error fetching company projects:', err);
+            setErrorLog(err?.message || String(err));
         } finally {
             if (isInitial) setLoading(false);
         }
@@ -1725,16 +1734,10 @@ const CompanyEarnings: React.FC = () => {
     const handleQuickFilter = (type: string) => {
         const now = new Date();
 
-        // Toggle Off Logic: If already active, reset to default (Last 30 Days)
+        // Toggle Off Logic: If already active, clear date filters
         if (activeFilter === type) {
-            const start = new Date(now);
-            start.setDate(now.getDate() - 29);
-            start.setHours(0, 0, 0, 0);
-            const end = new Date(now);
-            end.setHours(23, 59, 59, 999);
-
-            setFromDate(start);
-            setToDate(end);
+            setFromDate(null);
+            setToDate(null);
             setActiveFilter(null);
             return;
         }

@@ -2247,7 +2247,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                                         ? (!approveDate || !approveTips || (approveTips === 'Yes' && !approveAmount) || !approveProjectId.match(/^[A-Z]{2,4}\s\d{6}$/))
                                                         : (orderType === 'Inquiry'
                                                             ? (!clientName.trim() || !leadIntakeDate || !location.trim())
-                                                            : (!selectedAssignee || !dueDate || !projectTitle.trim() || !selectedAccount)
+                                                            : (!selectedAssignee || !dueDate || !dueTime || !clientDueDate || !clientDueTime || !projectTitle.trim() || !selectedAccount)
                                                         )
                                         )
                                     }
@@ -2730,7 +2730,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                                                                                 currentStep === 10 ? !projectTitle.trim() :
                                                                                                     currentStep === 11 ? isUploading :
                                                                                                         currentStep === 12 ? false :
-                                                                                                            currentStep === 13 ? (!dueDate) :
+                                                                                                            currentStep === 13 ? (!clientDueDate || !clientDueTime || !dueDate || !dueTime) :
                                                                                                                 currentStep === 14 ? !selectedAssignee :
                                                                                                                     false
                                                                     )
@@ -3201,7 +3201,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                 <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
                                     <div className="space-y-6">
                                         <div className="space-y-4">
-                                            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Project Price</p>
+                                            <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-1 px-1">PROJECT PRICE</p>
                                             <Input
                                                 variant="metallic"
                                                 placeholder="eg 20"
@@ -3215,7 +3215,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                         <div className="h-px bg-white/[0.05] w-full" />
 
                                         <div className="space-y-4">
-                                            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Assignee Payout (Optional)</p>
+                                            <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-1 px-1">ASSIGNEE PAYOUT (OPTIONAL)</p>
                                             <Input
                                                 variant="metallic"
                                                 placeholder="Leave empty for Tiered (Auto)"
@@ -3226,19 +3226,9 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                             />
                                         </div>
 
-                                        <div className="mt-6 p-4 bg-brand-warning/10 border border-brand-warning/20 rounded-2xl">
-                                            <div className="flex gap-3">
-                                                <div className="w-8 h-8 rounded-full bg-brand-warning/20 flex items-center justify-center text-brand-warning shrink-0">
-                                                    <IconAlertCircle size={18} />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <p className="text-[10px] font-black text-brand-warning uppercase tracking-[0.2em]">NOTE:</p>
-                                                    <p className="text-[11px] font-bold text-brand-warning leading-relaxed uppercase">
-                                                        LEAVE ASSIGNEE PAYOUT (OPTIONAL) FIELD, EMPTY FOR NORMAL LOGOS. FOR SPECIAL PROJECTS (ANIMATION/WEB), DISCUSS PRICE WITH MANAGEMENT BEFORE ADDING.
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </div>
+                                        <p className="text-[10px] font-black text-brand-warning uppercase tracking-[0.2em] px-1 mt-4 leading-relaxed">
+                                             • NOTE: LEAVE ASSIGNEE PAYOUT (OPTIONAL) FIELD EMPTY FOR NORMAL LOGOS. FOR SPECIAL PROJECTS (ANIMATION/WEB), DISCUSS PRICE WITH MANAGEMENT BEFORE ADDING.
+                                         </p>
                                     </div>
                                 </div>
                             )}
@@ -3261,10 +3251,10 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                                     size="lg"
                                                 />
                                                 {!selectedAccount && (
-                                                    <p className="text-[10px] font-medium text-brand-error animate-in fade-in slide-in-from-top-1 px-1">
-                                                        Account is required
-                                                    </p>
-                                                )}
+                                                     <p className="text-[10px] font-black text-brand-error uppercase tracking-[0.2em] px-1 mt-2">
+                                                         • Account is required
+                                                     </p>
+                                                 )}
                                             </div>
                                         </div>
                                     </div>
@@ -3691,6 +3681,11 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                                     disabled={isReviewLoading}
                                                 />
                                             </div>
+                                            {(!clientDueDate || !clientDueTime) && (
+                                                 <p className="text-[10px] font-black text-brand-error uppercase tracking-[0.2em] px-1 mt-2">
+                                                     • Both Client Date and Time are required
+                                                 </p>
+                                             )}
                                         </div>
 
                                         {/* Assignee Deadline Section */}
@@ -3743,6 +3738,11 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                                         disabled={isReviewLoading}
                                                     />
                                                 </div>
+                                                {(!dueDate || !dueTime) && (
+                                                     <p className="text-[10px] font-black text-brand-error uppercase tracking-[0.2em] px-1 mt-2">
+                                                         • Both Assignee Date and Time are required
+                                                     </p>
+                                                 )}
                                             </div>
                                         </div>
                                     </div>
