@@ -23,6 +23,7 @@ interface UserProfile {
     preferred_payment_method?: string;
     daily_capacity?: number | null;
     whatsapp_number?: string;
+    additional_permissions?: string[];
 }
 
 interface UserContextType {
@@ -104,7 +105,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return permissions.includes(code);
     };
 
-    const fetchPermissions = async (role: string) => {
+    const fetchPermissions = async (role: string, additionalPerms: string[] = []) => {
         try {
             const { data, error } = await supabase
                 .from('role_permissions')
@@ -112,7 +113,8 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 .eq('role_name', role);
 
             if (error) throw error;
-            setPermissions(data?.map(p => p.permission_code) || []);
+            const rolePerms = data?.map(p => p.permission_code) || [];
+            setPermissions([...new Set([...rolePerms, ...additionalPerms])]);
         } catch (error) {
             console.error('Error fetching role permissions:', error);
             setPermissions([]);
@@ -126,12 +128,12 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         if (effectiveRole) {
             setPermissionsLoaded(false);
-            fetchPermissions(effectiveRole);
+            fetchPermissions(effectiveRole, profile?.additional_permissions || []);
         } else {
             setPermissions([]);
             setPermissionsLoaded(true);
         }
-    }, [effectiveRole, loading]);
+    }, [effectiveRole, loading, profile?.additional_permissions]);
 
     const fetchProfile = async () => {
         setLoading(true);
@@ -143,7 +145,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 setPermissions([]);
                 setPermissionsLoaded(true);
                 setLoading(false);
-                return;
+                return null;
             }
 
             const { data, error } = await supabase
@@ -155,16 +157,19 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (!error && data) {
                 setProfile(data);
                 localStorage.setItem('user_profile_cache', JSON.stringify(data));
+                return data;
             } else {
                 setProfile(null);
                 setPermissions([]);
                 setPermissionsLoaded(true);
+                return null;
             }
         } catch (err) {
             console.error('Unexpected error fetching profile:', err);
             setProfile(null);
             setPermissions([]);
             setPermissionsLoaded(true);
+            return null;
         } finally {
             setLoading(false);
         }
@@ -246,8 +251,10 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }, [profile?.id]);
 
     const refreshProfile = async () => {
-        await fetchProfile();
-        if (effectiveRole) await fetchPermissions(effectiveRole);
+        const freshProfile = await fetchProfile();
+        if (effectiveRole) {
+            await fetchPermissions(effectiveRole, freshProfile?.additional_permissions || []);
+        }
     };
 
     return (

@@ -543,9 +543,10 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
   });
   const [isSolveModalOpen, setIsSolveModalOpen] = useState(false);
   const [solveForm, setSolveForm] = useState({
-    action: 'reassign' as 'reassign' | 'upload',
+    action: 'reassign' as 'reassign' | 'upload' | 'message',
     reassignTo: '',
     files: [] as any[],
+    message: '',
     step: 1
   });
 
@@ -1822,6 +1823,10 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
       addToast({ title: "Required", message: "Please select user to reassign", type: "error" });
       return;
     }
+    if (solveForm.action === 'message' && !solveForm.message.trim()) {
+      addToast({ title: "Required", message: "Please enter your instruction/message", type: "error" });
+      return;
+    }
 
     setIsAlertActionLoading(true);
     try {
@@ -1855,6 +1860,9 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
 
         await supabase.from('projects').update(updates).eq('project_id', canonicalId);
         logContent = `Project has been **reassigned** to **${targetName}** by ${resolverName}.`;
+      } else if (solveForm.action === 'message') {
+        await supabase.from('projects').update({ alert_status: 'resolved' }).eq('project_id', canonicalId);
+        logContent = `Case resolved by **${resolverName}** with instruction:\n\n${solveForm.message}`;
       } else {
         // Upload Design
         await supabase.from('projects').update({ alert_status: 'resolved' }).eq('project_id', canonicalId);
@@ -1871,7 +1879,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
 
       addToast({ title: "Resolved", message: "Case marked as resolved. Pending PM confirmation.", type: "success" });
       setIsSolveModalOpen(false);
-      setSolveForm(prev => ({ ...prev, step: 1, reassignTo: '', files: [] }));
+      setSolveForm(prev => ({ ...prev, step: 1, reassignTo: '', files: [], message: '' }));
       fetchProject();
       fetchComments();
     } catch (err: any) {
@@ -7032,11 +7040,16 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
                 placeholder="Select TL or Super Admin"
                 showSearch
               >
-                <div className="w-full h-14 bg-black/25 border border-surface-border/40 rounded-xl px-5 flex items-center justify-between cursor-pointer hover:border-white/10 transition-all shadow-inner">
-                   <span className="text-sm font-medium text-gray-300">
-                      {resolvers.find(r => r.id === alertForm.resolverId)?.name || "Select TL or Super Admin"}
-                   </span>
-                   <IconUser size={18} className="text-gray-600" />
+                <div className="w-full h-14 bg-black/40 border border-white/[0.05] rounded-xl px-5 flex items-center justify-between cursor-pointer hover:bg-black/55 transition-all shadow-[inset_0_2px_12px_rgba(0,0,0,0.6)] relative overflow-hidden group">
+                  {/* Depth Overlay */}
+                  <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-xl">
+                    <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-b from-black/60 to-transparent" />
+                    <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.02)_48%,rgba(255,255,255,0.05)_50%,rgba(255,255,255,0.02)_52%,transparent_100%)] opacity-30" />
+                  </div>
+                  <span className="text-sm font-medium text-gray-400 group-hover:text-white transition-colors relative z-10">
+                     {resolvers.find(r => r.id === alertForm.resolverId)?.name || "Select TL or Super Admin"}
+                  </span>
+                  <IconUser size={18} className="text-gray-500 group-hover:text-white transition-colors relative z-10" />
                 </div>
               </Dropdown>
             </div>
@@ -7128,6 +7141,20 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
                       </div>
                       <IconChevronRight size={20} className="text-gray-700 group-hover:text-brand-primary transition-all" />
                     </button>
+
+                    <button 
+                      onClick={() => setSolveForm(prev => ({ ...prev, action: 'message', step: 2 }))}
+                      className="flex items-center gap-5 p-6 rounded-3xl border border-white/5 bg-white/[0.03] hover:bg-brand-primary/5 hover:border-brand-primary/30 transition-all group text-left"
+                    >
+                      <div className="p-4 rounded-2xl bg-white/5 text-gray-500 group-hover:bg-brand-primary/20 group-hover:text-brand-primary transition-all">
+                        <IconMessageSquare size={24} />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-base font-bold text-white tracking-tight">Write Instruction</p>
+                        <p className="text-xs text-gray-500 mt-0.5">Solve directly by writing a message or instruction for the designer.</p>
+                      </div>
+                      <IconChevronRight size={20} className="text-gray-700 group-hover:text-brand-primary transition-all" />
+                    </button>
                   </div>
                </div>
              ) : (
@@ -7135,7 +7162,11 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
                   <div className="flex flex-col gap-1 px-1">
                     <p className="text-[10px] font-black text-brand-primary uppercase tracking-[0.2em]">Step 02 / 02</p>
                     <h3 className="text-lg font-bold text-white tracking-tight">
-                       {solveForm.action === 'reassign' ? "Select New Assignee" : "Upload Result Files"}
+                       {solveForm.action === 'reassign' 
+                          ? "Select New Assignee" 
+                          : solveForm.action === 'message' 
+                          ? "Write Instruction" 
+                          : "Upload Result Files"}
                     </h3>
                     <p className="text-xs text-gray-500">Provide the final details to mark this case as resolved.</p>
                   </div>
@@ -7162,6 +7193,18 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
                       </Dropdown>
                       <p className="text-[10px] text-gray-500 italic px-2">Project will be moved to the new assignee and marked as pending confirmation.</p>
                     </div>
+                  ) : solveForm.action === 'message' ? (
+                     <div className="space-y-4 animate-in fade-in duration-300">
+                       <label className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] block px-1">Instruction / Message</label>
+                       <TextArea
+                         variant="recessed"
+                         value={solveForm.message}
+                         onChange={(e) => setSolveForm(prev => ({ ...prev, message: e.target.value }))}
+                         placeholder="Write detailed instructions or comments for the designer..."
+                         inputClassName="min-h-[140px] p-5 text-sm font-medium"
+                       />
+                       <p className="text-[10px] text-gray-500 italic px-2">This message will be posted directly to the project timeline as feedback.</p>
+                     </div>
                   ) : (
                      <div className="space-y-4">
                         <div className="relative group">

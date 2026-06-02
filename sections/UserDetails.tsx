@@ -34,6 +34,25 @@ import { addToast } from '../components/Toast';
 import { formatDisplayName } from '../utils/formatter';
 import { useUser } from '../contexts/UserContext';
 
+const PERMISSION_HIERARCHY: Record<string, { parent: string; children: string[] }> = {
+    'Finances': {
+        parent: 'view_finances',
+        children: ['view_company_earnings', 'view_freelancer_earnings', 'manage_finance_config']
+    },
+    'Projects': {
+        parent: 'view_projects',
+        children: ['create_projects', 'edit_projects', 'delete_projects', 'delete_timeline_items']
+    },
+    'Users': {
+        parent: 'view_users',
+        children: ['manage_users', 'view_applicants', 'create_users', 'edit_users', 'delete_users', 'manage_teams']
+    },
+    'Analytics': {
+        parent: 'view_analytics',
+        children: ['view_gig_stats', 'view_sales_analytics']
+    }
+};
+
 interface UserDetailsProps {
     userId: string;
     onBack: () => void;
@@ -63,9 +82,15 @@ const UserDetails: React.FC<UserDetailsProps> = ({ userId, onBack, onStatusChang
     const [uploadingSide, setUploadingSide] = useState<'front' | 'back' | null>(null);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isSavingPayout, setIsSavingPayout] = useState(false);
+    const [payoutData, setPayoutData] = useState<{ strategy: string; rate: number }>({
+        strategy: 'slab',
+        rate: 0
+    });
     const [updatingPreferred, setUpdatingPreferred] = useState(false);
-    const [payoutData, setPayoutData] = useState({ strategy: 'slab', rate: 0 });
     const [preferredMethod, setPreferredMethod] = useState<string>('');
+    const [availablePermissions, setAvailablePermissions] = useState<any[]>([]);
+    const [selectedOverrides, setSelectedOverrides] = useState<string[]>([]);
+    const [isSavingOverrides, setIsSavingOverrides] = useState(false);
 
     useEffect(() => {
         fetchUserDetails();
@@ -89,6 +114,19 @@ const UserDetails: React.FC<UserDetailsProps> = ({ userId, onBack, onStatusChang
                 rate: data.fixed_payout_rate || 0
             });
             setPreferredMethod(data.preferred_payment_method || '');
+            
+            // Set overrides
+            setSelectedOverrides(data.additional_permissions || []);
+
+            // Fetch available permissions
+            const { data: allPerms, error: permsError } = await supabase
+                .from('permissions')
+                .select('*')
+                .order('category', { ascending: true });
+                
+            if (!permsError && allPerms) {
+                setAvailablePermissions(allPerms);
+            }
 
             // Sync this specific user back into the general users cache
             const cachedUsers = localStorage.getItem('nova_users_cache');
@@ -329,6 +367,38 @@ const UserDetails: React.FC<UserDetailsProps> = ({ userId, onBack, onStatusChang
             addToast({ type: 'error', title: 'Update Failed', message: error.message });
         } finally {
             setIsSavingPayout(false);
+        }
+    };
+
+    const handleUpdateOverrides = async () => {
+        setIsSavingOverrides(true);
+        try {
+            const { error } = await supabase
+                .from('profiles')
+                .update({ additional_permissions: selectedOverrides })
+                .eq('id', userId);
+
+            if (error) throw error;
+            
+            setUser({ ...user, additional_permissions: selectedOverrides });
+            
+            // Sync cache
+            const cachedUsers = localStorage.getItem('nova_users_cache');
+            if (cachedUsers) {
+                const users = JSON.parse(cachedUsers);
+                const index = users.findIndex((u: any) => u.id === userId);
+                if (index !== -1) {
+                    users[index] = { ...users[index], additional_permissions: selectedOverrides };
+                    localStorage.setItem('nova_users_cache', JSON.stringify(users));
+                }
+            }
+            
+            addToast({ type: 'success', title: 'Permissions Saved', message: 'User custom permission overrides updated successfully.' });
+        } catch (error: any) {
+            console.error('Error updating permission overrides:', error);
+            addToast({ type: 'error', title: 'Update Failed', message: error.message });
+        } finally {
+            setIsSavingOverrides(false);
         }
     };
 
@@ -803,6 +873,202 @@ const UserDetails: React.FC<UserDetailsProps> = ({ userId, onBack, onStatusChang
                                     isLoading={isSavingPayout}
                                 >
                                     Save Configuration
+                                </Button>
+                            </div>
+                        </div>
+                    </ElevatedMetallicCard>
+                </div>
+            )}
+
+            {/* Permission Overrides */}
+            {canEdit && availablePermissions.length > 0 && (
+                <div className="w-full">
+                    <ElevatedMetallicCard
+                        title="Granular Permission Overrides"
+                        bodyClassName="p-8 space-y-8"
+                        className="w-full"
+                    >
+                        <div className="space-y-6">
+                            <div className="flex items-center gap-5">
+                                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-primary/20 to-brand-primary/5 border border-brand-primary/20 flex items-center justify-center text-brand-primary shadow-lg shadow-brand-primary/5">
+                                    <IconLock size={28} />
+                                </div>
+                                <div className="space-y-1">
+                                    <h3 className="text-lg font-black text-white tracking-tight leading-none">Custom Access Control</h3>
+                                    <p className="text-xs text-gray-500 font-medium tracking-tight">Assign user-specific override capabilities outside of their default role scope</p>
+                                </div>
+                            </div>
+
+                            {/* Group permissions by Category */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {(Object.entries(
+                                    availablePermissions.reduce((acc, perm) => {
+                                        if (!acc[perm.category]) acc[perm.category] = [];
+                                        acc[perm.category].push(perm);
+                                        return acc;
+                                    }, {} as Record<string, any[]>)
+                                ) as [string, any[]][]).map(([category, perms]) => (
+                                    <div key={category} className="space-y-3 bg-white/[0.01] border border-white/5 p-5 rounded-2xl">
+                                        <h4 className="text-xs font-black text-brand-primary uppercase tracking-widest border-b border-white/5 pb-2 mb-3">
+                                            {category}
+                                        </h4>
+                                        <div className="space-y-3.5">
+                                            {(() => {
+                                                const hierarchy = PERMISSION_HIERARCHY[category];
+                                                if (hierarchy) {
+                                                    const parentPerm = perms.find(p => p.code === hierarchy.parent);
+                                                    const childPerms = perms.filter(p => hierarchy.children.includes(p.code));
+                                                    const otherPerms = perms.filter(p => p.code !== hierarchy.parent && !hierarchy.children.includes(p.code));
+
+                                                    const isParentChecked = parentPerm ? selectedOverrides.includes(parentPerm.code) : false;
+
+                                                    return (
+                                                        <div className="space-y-4">
+                                                            {/* Parent Permission */}
+                                                            {parentPerm && (
+                                                                <label className="flex items-start gap-3 cursor-pointer group select-none">
+                                                                    <input 
+                                                                        type="checkbox"
+                                                                        checked={isParentChecked}
+                                                                        onChange={(e) => {
+                                                                            if (e.target.checked) {
+                                                                                setSelectedOverrides(prev => [...prev, parentPerm.code]);
+                                                                            } else {
+                                                                                // Disable parent and also uncheck all children to prevent confusion
+                                                                                setSelectedOverrides(prev => prev.filter(c => c !== parentPerm.code && !hierarchy.children.includes(c)));
+                                                                            }
+                                                                        }}
+                                                                        className="mt-1 w-4 h-4 rounded border-white/10 bg-black/20 text-brand-primary focus:ring-brand-primary cursor-pointer"
+                                                                    />
+                                                                    <div className="flex flex-col">
+                                                                        <span className="text-sm font-bold text-white group-hover:text-brand-primary transition-colors flex items-center gap-1.5">
+                                                                            {parentPerm.name}
+                                                                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-brand-primary/10 text-brand-primary font-black uppercase tracking-wider">Master Access</span>
+                                                                        </span>
+                                                                        {parentPerm.description && (
+                                                                            <span className="text-[10px] text-gray-500 font-medium">
+                                                                                {parentPerm.description}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </label>
+                                                            )}
+
+                                                            {/* Child Permissions (Indented & Disabled if Parent is Unchecked) */}
+                                                            {childPerms.length > 0 && (
+                                                                <div className={`pl-6 ml-2 border-l border-white/5 space-y-3.5 transition-all duration-300 ${isParentChecked ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
+                                                                    {childPerms.map((perm) => {
+                                                                        const isChecked = selectedOverrides.includes(perm.code);
+                                                                        return (
+                                                                            <label key={perm.code} className={`flex items-start gap-3 select-none ${isParentChecked ? 'cursor-pointer group' : 'cursor-not-allowed'}`}>
+                                                                                <input 
+                                                                                    type="checkbox"
+                                                                                    checked={isChecked && isParentChecked}
+                                                                                    disabled={!isParentChecked}
+                                                                                    onChange={(e) => {
+                                                                                        if (e.target.checked) {
+                                                                                            setSelectedOverrides(prev => [...prev, perm.code]);
+                                                                                        } else {
+                                                                                            setSelectedOverrides(prev => prev.filter(c => c !== perm.code));
+                                                                                        }
+                                                                                    }}
+                                                                                    className="mt-1 w-4 h-4 rounded border-white/10 bg-black/20 text-brand-primary focus:ring-brand-primary cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                                />
+                                                                                <div className="flex flex-col">
+                                                                                    <span className={`text-sm font-bold text-white transition-colors ${isParentChecked ? 'group-hover:text-brand-primary' : 'text-gray-500'}`}>
+                                                                                        {perm.name}
+                                                                                    </span>
+                                                                                    {perm.description && (
+                                                                                        <span className="text-[10px] text-gray-500 font-medium">
+                                                                                            {perm.description}
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                            </label>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            )}
+
+                                                            {/* Other permissions in the category */}
+                                                            {otherPerms.map((perm) => {
+                                                                const isChecked = selectedOverrides.includes(perm.code);
+                                                                return (
+                                                                    <label key={perm.code} className="flex items-start gap-3 cursor-pointer group select-none pt-2">
+                                                                        <input 
+                                                                            type="checkbox"
+                                                                            checked={isChecked}
+                                                                            onChange={(e) => {
+                                                                                if (e.target.checked) {
+                                                                                    setSelectedOverrides(prev => [...prev, perm.code]);
+                                                                                } else {
+                                                                                    setSelectedOverrides(prev => prev.filter(c => c !== perm.code));
+                                                                                }
+                                                                            }}
+                                                                            className="mt-1 w-4 h-4 rounded border-white/10 bg-black/20 text-brand-primary focus:ring-brand-primary cursor-pointer"
+                                                                        />
+                                                                        <div className="flex flex-col">
+                                                                            <span className="text-sm font-bold text-white group-hover:text-brand-primary transition-colors">
+                                                                                {perm.name}
+                                                                            </span>
+                                                                            {perm.description && (
+                                                                                <span className="text-[10px] text-gray-500 font-medium">
+                                                                                    {perm.description}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    </label>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    );
+                                                }
+
+                                                // Fallback flat layout for other categories
+                                                return perms.map((perm) => {
+                                                    const isChecked = selectedOverrides.includes(perm.code);
+                                                    return (
+                                                        <label key={perm.code} className="flex items-start gap-3 cursor-pointer group select-none">
+                                                            <input 
+                                                                type="checkbox"
+                                                                checked={isChecked}
+                                                                onChange={(e) => {
+                                                                    if (e.target.checked) {
+                                                                        setSelectedOverrides(prev => [...prev, perm.code]);
+                                                                    } else {
+                                                                        setSelectedOverrides(prev => prev.filter(c => c !== perm.code));
+                                                                    }
+                                                                }}
+                                                                className="mt-1 w-4 h-4 rounded border-white/10 bg-black/20 text-brand-primary focus:ring-brand-primary cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            />
+                                                            <div className="flex flex-col">
+                                                                <span className="text-sm font-bold text-white group-hover:text-brand-primary transition-colors">
+                                                                    {perm.name}
+                                                                </span>
+                                                                {perm.description && (
+                                                                    <span className="text-[10px] text-gray-500 font-medium">
+                                                                        {perm.description}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </label>
+                                                    );
+                                                });
+                                            })()}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="pt-4 flex justify-end">
+                                <Button 
+                                    variant="metallic"
+                                    size="sm"
+                                    className="px-12 shadow-lg shadow-brand-primary/10"
+                                    onClick={handleUpdateOverrides}
+                                    isLoading={isSavingOverrides}
+                                >
+                                    Save Permissions
                                 </Button>
                             </div>
                         </div>

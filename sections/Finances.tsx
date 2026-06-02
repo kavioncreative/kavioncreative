@@ -2057,6 +2057,7 @@ const CompanyEarnings: React.FC = () => {
                         {
                             header: 'Project ID',
                             key: 'formatted_project_id',
+                            className: 'text-center',
                             render: (item: any) => (
                                 <span className="font-semibold text-white/90">{item.formatted_project_id}</span>
                             )
@@ -2071,20 +2072,24 @@ const CompanyEarnings: React.FC = () => {
                         {
                             header: 'Status',
                             key: 'status',
+                            className: 'text-center',
                             render: (p: any) => {
                                 const status = p.status || 'In Progress';
                                 return (
-                                    <span className={getStatusCapsuleClasses(status)}>
-                                        {status}
-                                    </span>
+                                    <div className="flex justify-center">
+                                        <span className={getStatusCapsuleClasses(status)}>
+                                            {status}
+                                        </span>
+                                    </div>
                                 );
                             }
                         },
                         {
                             header: 'Order Type',
                             key: 'order_type',
+                            className: 'text-center',
                             render: (item: any) => (
-                                <div className="flex flex-col">
+                                <div className="flex flex-col items-center justify-center">
                                     <span className={`text-[10px] font-black uppercase tracking-wider ${item.order_type === 'Query' ? 'text-brand-primary' : 'text-gray-400'}`}>
                                         {item.order_type || 'Direct Order'}
                                     </span>
@@ -2097,12 +2102,12 @@ const CompanyEarnings: React.FC = () => {
                         {
                             header: 'Client',
                             key: 'client',
-                            className: 'text-gray-400'
+                            className: 'text-center text-gray-400'
                         },
                         {
                             header: 'Price',
                             key: 'price',
-                            className: 'text-right',
+                            className: 'text-center',
                             render: (item: any) => (
                                 <span className="text-white font-bold">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(item.price || 0)}</span>
                             )
@@ -2110,7 +2115,7 @@ const CompanyEarnings: React.FC = () => {
                         {
                             header: 'Platform Commission',
                             key: 'platform_cut',
-                            className: 'text-gray-400 text-right',
+                            className: 'text-gray-400 text-center',
                             render: (item: any) => (
                                 <span>{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(item.platform_cut || 0)}</span>
                             )
@@ -2118,7 +2123,7 @@ const CompanyEarnings: React.FC = () => {
                         {
                             header: 'Freelancer Cut',
                             key: 'freelancer_cut',
-                            className: 'text-gray-400 text-right',
+                            className: 'text-gray-400 text-center',
                             render: (item: any) => (
                                 <span>{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(item.freelancer_cut || 0)}</span>
                             )
@@ -2126,7 +2131,7 @@ const CompanyEarnings: React.FC = () => {
                         {
                             header: 'Company Earning',
                             key: 'company_earning',
-                            className: 'text-right',
+                            className: 'text-center',
                             render: (item: any) => (
                                 <span className="text-brand-success font-bold">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(item.company_earning || 0)}</span>
                             )
@@ -2134,7 +2139,7 @@ const CompanyEarnings: React.FC = () => {
                         ...(activeSummaryFilter !== 'pipeline' ? [{
                             header: 'Tips',
                             key: 'tip_amount',
-                            className: 'text-gray-400 text-right',
+                            className: 'text-gray-400 text-center',
                             render: (item: any) => (
                                 <span className={item.tip_amount ? 'text-brand-success font-medium' : ''}>
                                     {item.tip_amount ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(item.tip_amount) : '-'}
@@ -2144,12 +2149,12 @@ const CompanyEarnings: React.FC = () => {
                         {
                             header: 'Account',
                             key: 'account_prefix',
-                            className: 'text-gray-400 font-bold uppercase tracking-wider'
+                            className: 'text-gray-400 font-bold uppercase tracking-wider text-center'
                         },
                         {
                             header: 'Created At',
                             key: 'created_date',
-                            className: 'text-right text-gray-400',
+                            className: 'text-center text-gray-400',
                             render: (item: any) => (
                                 <span>{item.created_date}</span>
                             )
@@ -2157,7 +2162,7 @@ const CompanyEarnings: React.FC = () => {
                         ...(activeSummaryFilter !== 'pipeline' ? [{
                             header: 'Approved On',
                             key: 'date',
-                            className: 'text-right text-gray-400',
+                            className: 'text-center text-gray-400',
                             render: (item: any) => (
                                 <span>{item.date}</span>
                             )

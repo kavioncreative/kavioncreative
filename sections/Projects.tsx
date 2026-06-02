@@ -344,7 +344,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
 
     // 0. Permission Pre-Query Logic (Cache in memory to avoid blocking latency)
     useEffect(() => {
-        if (!profile?.id || !userRole || effectiveRole === 'Super Admin') return;
+        if (!profile?.id || !userRole || effectiveRole === 'Super Admin' || effectiveRole === 'Finance Manager') return;
 
         async function prefetchPermissions() {
             setIsPermissionsLoading(true);
@@ -409,7 +409,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
 
 
     const isPermissionsReady = useMemo(() => {
-        if (effectiveRole === 'Super Admin') return true;
+        if (effectiveRole === 'Super Admin' || effectiveRole === 'Finance Manager') return true;
         const isAdminLike = ['admin', 'project operations manager'].includes(userRole);
         const isLeadRole = userRole.includes('team lead');
         const isPM = userRole === 'project manager' || isLeadRole;
@@ -451,8 +451,8 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
             const hasCachedData = !!localStorage.getItem('nova_projects_cache');
             if (isForce && !hasCachedData) setLoading(true); // Replaced isInitial with isForce
 
-            // 0. Ensure permissions are loaded before proceeding (unless Super Admin)
-            const isSuperAdmin = effectiveRole === 'Super Admin';
+            // 0. Ensure permissions are loaded before proceeding (unless Super Admin or Finance Manager)
+            const isSuperAdmin = effectiveRole === 'Super Admin' || effectiveRole === 'Finance Manager';
             if (!isSuperAdmin && !permittedAccounts && !collabProjectIds && !pmAccountIds) {
                 // If permissions haven't even started loading, or we're waiting for them
                 // fetchProjects will be re-triggered by the permissions useEffect anyway
@@ -1220,7 +1220,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                     setProjectCounts({ all: 0, dispute: 0, arthelp: 0, late: 0 });
                     return;
                 }
-            } else if (effectiveRole !== 'Super Admin') {
+            } else if (effectiveRole !== 'Super Admin' && effectiveRole !== 'Finance Manager') {
                 setProjectCounts({ all: 0, dispute: 0, arthelp: 0, late: 0 });
                 return;
             }

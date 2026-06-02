@@ -61,7 +61,7 @@ export const Input: React.FC<InputProps> = ({
           className={`w-full transition-[background-color,color,opacity,transform,filter,backdrop-filter] duration-300 outline-none focus:outline-none focus:ring-0 focus:ring-offset-0 rounded-xl ${sizes[size]} ${variant === 'metallic'
             ? 'bg-black/40 border-none text-white font-bold placeholder:text-gray-600 shadow-[inset_0_2px_8px_rgba(0,0,0,0.6)] focus:bg-black/60'
             : variant === 'recessed'
-              ? 'bg-black/60 border border-white/[0.05] shadow-[inset_0_2px_12px_rgba(0,0,0,0.8)] text-white placeholder:text-gray-600 focus:border-white/[0.05] focus:bg-black/80 outline-none focus:outline-none focus:ring-0'
+              ? 'bg-black/40 border border-white/[0.05] shadow-[inset_0_2px_12px_rgba(0,0,0,0.6)] text-white placeholder:text-gray-600 focus:border-white/10 focus:bg-black/55 outline-none focus:outline-none focus:ring-0'
               : variant === 'flat'
                 ? 'bg-transparent border-none text-white placeholder:text-gray-600 focus:bg-white/[0.02] outline-none focus:outline-none focus:ring-0 shadow-none'
                 : `bg-surface-input border-2 text-white placeholder:text-gray-600 focus:border-brand-primary ${error ? 'border-brand-error' : success ? 'border-brand-success' : 'border-surface-border'}`
@@ -124,7 +124,7 @@ export const TextArea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTML
           className={`w-full transition-[background-color,color,opacity,transform,filter,backdrop-filter] duration-300 outline-none focus:outline-none focus:ring-0 focus:ring-offset-0 rounded-xl px-4 py-3 min-h-[140px] resize-none overflow-hidden ${onExpand ? 'pr-12' : ''} ${variant === 'metallic'
             ? 'bg-black/60 border-white/[0.05] text-white font-bold placeholder:text-gray-600 shadow-[inset_0_2px_12px_rgba(0,0,0,0.8)] focus:bg-black/80'
             : variant === 'recessed'
-              ? 'bg-black/60 border border-white/[0.05] text-white placeholder:text-gray-600 shadow-[inset_0_2px_12px_rgba(0,0,0,0.8)] focus:shadow-[inset_0_2px_16px_rgba(0,0,0,0.9)] focus:border-white/10'
+              ? 'bg-black/40 border border-white/[0.05] text-white placeholder:text-gray-600 shadow-[inset_0_2px_12px_rgba(0,0,0,0.6)] focus:shadow-[inset_0_2px_16px_rgba(0,0,0,0.7)] focus:border-white/10 focus:bg-black/55'
               : variant === 'flat'
                 ? 'bg-transparent border-none text-white placeholder:text-gray-600 focus:bg-white/[0.02] outline-none focus:outline-none focus:ring-0 shadow-none'
                 : `bg-surface-input border-2 text-white placeholder:text-gray-600 focus:border-brand-primary ${error ? 'border-brand-error' : 'border-surface-border'}`
