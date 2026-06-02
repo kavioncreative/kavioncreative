@@ -224,7 +224,13 @@ export const SuccessModal: React.FC<SuccessModalProps> = ({
   );
 };
 
-export const Tooltip: React.FC<{ content: React.ReactNode; children: React.ReactNode; className?: string; hideArrow?: boolean }> = ({ content, children, className = '', hideArrow = false }) => {
+export const Tooltip: React.FC<{ 
+  content: React.ReactNode; 
+  children: React.ReactNode; 
+  className?: string; 
+  hideArrow?: boolean;
+  wrapperClassName?: string;
+}> = ({ content, children, className = '', hideArrow = false, wrapperClassName = 'relative inline-block' }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
   const triggerRef = useRef<HTMLDivElement>(null);
@@ -242,7 +248,7 @@ export const Tooltip: React.FC<{ content: React.ReactNode; children: React.React
 
   return (
     <div
-      className="relative inline-block"
+      className={wrapperClassName}
       ref={triggerRef}
       onMouseEnter={() => {
         updateCoords();

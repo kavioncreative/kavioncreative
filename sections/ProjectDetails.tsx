@@ -4319,13 +4319,14 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
 
 
                   {/* Initiator Confirmation */}
-                  {project?.alert_status === 'resolved' && (isAdmin || isProjectManager) && (
+                  {((project?.alert_status === 'resolved' && (isAdmin || isProjectManager)) ||
+                    ((project?.has_art_help || project?.has_dispute) && effectiveRole === "Super Admin")) && (
                     <Button
                       variant="metallic-success"
                       className="w-full h-11 text-[11px] font-black uppercase tracking-widest"
                       onClick={() => setIsConfirmModalOpen(true)}
                     >
-                      Confirm Resolution
+                      {project?.alert_status === 'resolved' ? "Confirm Resolution" : "Force Close Alert"}
                     </Button>
                   )}
                 </div>

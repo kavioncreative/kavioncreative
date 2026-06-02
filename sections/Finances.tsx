@@ -1630,7 +1630,8 @@ const CompanyEarnings: React.FC = () => {
                         formatted_project_id: formattedId,
                         client: p.client_name || 'General Client',
                         date: p.clearance_start_date ? systemFormatDate(new Date(p.clearance_start_date)) : 'N/A',
-                        rawDate: p.clearance_start_date
+                        rawDate: p.clearance_start_date,
+                        created_date: p.created_at ? systemFormatDate(new Date(p.created_at)) : 'N/A'
                     };
                 });
 
@@ -2048,7 +2049,7 @@ const CompanyEarnings: React.FC = () => {
             </div>
 
 
-            <div className="space-y-4">
+            <div className="space-y-4 w-full overflow-hidden">
                 <Table
                     columns={[
 
@@ -2146,17 +2147,26 @@ const CompanyEarnings: React.FC = () => {
                             className: 'text-gray-400 font-bold uppercase tracking-wider'
                         },
                         {
-                            header: 'Date',
-                            key: 'date',
-                            className: 'text-right',
+                            header: 'Created At',
+                            key: 'created_date',
+                            className: 'text-right text-gray-400',
                             render: (item: any) => (
-                                <span className="text-gray-400">{item.date}</span>
+                                <span>{item.created_date}</span>
                             )
-                        }
+                        },
+                        ...(activeSummaryFilter !== 'pipeline' ? [{
+                            header: 'Approved On',
+                            key: 'date',
+                            className: 'text-right text-gray-400',
+                            render: (item: any) => (
+                                <span>{item.date}</span>
+                            )
+                        }] : [])
                     ]}
                     data={filteredProjects}
                     isLoading={loading}
                     isMetallicHeader={true}
+                    dense={true}
                 />
             </div>
         </div>

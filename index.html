@@ -271,7 +271,6 @@
     /* Target specifically the 1265 x 559 viewport and below to reduce overall UI scale */
     /* 12. Responsive Overrides for Compact View (Desktop/Tablet) */
     @media (min-width: 1024px) and (max-width: 1265px) {
-
       /* 1. Global Scale Reductions */
       html {
         font-size: 13px !important;
@@ -288,91 +287,6 @@
         font-size: 1.1rem !important;
       }
 
-      /* 3. Sidebar */
-      aside.w-20 {
-        width: 4.5rem !important;
-      }
-
-      /* Collapsed */
-      aside.w-56 {
-        width: 11rem !important;
-      }
-
-      /* Expanded */
-
-      /* Centering for ALL collapsed buttons */
-      aside.w-20 button {
-        width: 2.7rem !important;
-        height: 2.7rem !important;
-        margin-left: auto !important;
-        margin-right: auto !important;
-        margin-top: 0.4rem !important;
-        margin-bottom: 0.4rem !important;
-        padding: 0 !important;
-        display: flex !important;
-        justify-content: center !important;
-        align-items: center !important;
-        border-radius: 0.85rem !important;
-        overflow: hidden !important;
-      }
-
-      /* Hide text labels completely to prevent pushing icons */
-      aside.w-20 button span:not(.shrink-0),
-      aside.w-20 button .relative.z-10 span:not(.shrink-0) {
-        display: none !important;
-      }
-
-      /* Remove any container padding that might offset icons */
-      aside.w-20 nav,
-      aside.w-20 .mt-auto .relative.z-10 {
-        padding-left: 0 !important;
-        padding-right: 0 !important;
-        margin-left: 0 !important;
-        margin-right: 0 !important;
-      }
-
-      /* Ensure the flex wrapper inside bottom buttons is centered */
-      aside.w-20 button .relative.z-10 {
-        width: 100% !important;
-        display: flex !important;
-        justify-content: center !important;
-        align-items: center !important;
-        margin: 0 !important;
-      }
-
-      aside.w-56 button {
-        height: 2.4rem !important;
-        margin-top: 0.25rem !important;
-        margin-bottom: 0.25rem !important;
-      }
-
-      aside .h-20 {
-        height: 4.8rem !important;
-      }
-
-      /* Sidebar Profile Info Scaling */
-      aside .h-20 span.text-sm {
-        font-size: 0.82rem !important;
-      }
-
-      /* Name */
-      aside .h-20 span.text-\[10px\] {
-        font-size: 9px !important;
-        letter-spacing: 0.1em !important;
-      }
-
-      /* Role */
-      aside .h-20 .shrink-0 .Avatar,
-      aside .h-20 .shrink-0 div {
-        transform: scale(0.9) !important;
-      }
-
-      /* Avatar scale */
-
-      /* 4. Navigation Tabs & Buttons */
-      aside button span {
-        font-size: 0.75rem !important;
-      }
 
       /* 4. Navigation Tabs & Buttons */
       .flex-wrap,
@@ -754,6 +668,97 @@
       .ProjectDetails header.h-20 {
         height: 3.5rem !important; /* h-14 equivalent for mobile */
       }
+    }
+
+    @keyframes marquee-horizontal {
+      0% {
+        transform: translateX(0);
+      }
+      100% {
+        transform: translateX(-5%);
+      }
+    }
+
+    .animate-marquee-slow {
+      display: inline-block;
+      animation: marquee-horizontal 15s linear infinite;
+    }
+
+    .marquee-container {
+      display: inline-flex;
+      align-items: center;
+      max-width: 220px;
+      overflow: hidden;
+      white-space: nowrap;
+      position: relative;
+      cursor: help;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 10px !important;
+      font-weight: 800 !important;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      -webkit-mask-image: linear-gradient(to right, transparent, #fff 15%, #fff 85%, transparent);
+      mask-image: linear-gradient(to right, transparent, #fff 15%, #fff 85%, transparent);
+      
+      /* Subtle drop shadow for floating metal plaque effect */
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+    }
+
+    .marquee-container.text-brand-success {
+      background: 
+        linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(0, 0, 0, 0.12) 100%),
+        rgba(34, 197, 94, 0.06) !important;
+      border: 1px solid rgba(34, 197, 94, 0.15) !important;
+      color: #22c55e !important;
+      text-shadow: 0 0 8px rgba(34, 197, 94, 0.15);
+    }
+
+    .marquee-container.text-brand-warning {
+      background: 
+        linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(0, 0, 0, 0.12) 100%),
+        rgba(234, 179, 8, 0.06) !important;
+      border: 1px solid rgba(234, 179, 8, 0.15) !important;
+      color: #eab308 !important;
+      text-shadow: 0 0 8px rgba(234, 179, 8, 0.15);
+    }
+
+    .marquee-container.text-brand-error {
+      background: 
+        linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(0, 0, 0, 0.12) 100%),
+        rgba(239, 68, 68, 0.06) !important;
+      border: 1px solid rgba(239, 68, 68, 0.15) !important;
+      color: #ef4444 !important;
+      text-shadow: 0 0 8px rgba(239, 68, 68, 0.15);
+    }
+
+    .marquee-container.text-brand-purple {
+      background: 
+        linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(0, 0, 0, 0.12) 100%),
+        rgba(147, 51, 234, 0.06) !important;
+      border: 1px solid rgba(147, 51, 234, 0.15) !important;
+      color: #c084fc !important;
+      text-shadow: 0 0 8px rgba(147, 51, 234, 0.15);
+    }
+
+    .text-brand-purple {
+      color: #c084fc !important;
+    }
+
+    .marquee-container:hover .animate-marquee-slow {
+      animation-play-state: paused;
+    }
+
+    .marquee-container.merged {
+      position: absolute;
+      left: 24px;
+      right: 24px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: inline-flex;
+      align-items: center;
+      max-width: calc(100% - 48px);
+      height: 28px;
     }
   </style>
   <script type="importmap">

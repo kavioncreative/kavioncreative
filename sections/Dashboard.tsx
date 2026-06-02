@@ -347,14 +347,14 @@ const TaskWidget = memo(({ profile, role, onTaskClick, onMarkComplete }: { profi
                             <table className="w-full text-left border-collapse table-fixed">
                                 <thead>
                                     <tr>
-                                        <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-white w-20 whitespace-nowrap text-center">S. NO.</th>
-                                        <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-white text-left">TASK</th>
-                                        <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-white w-32 whitespace-nowrap text-center">CREATED BY</th>
-                                        <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-white w-32 whitespace-nowrap text-center">ASSIGNEE</th>
-                                        <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-white w-32 whitespace-nowrap text-center">STATUS</th>
-                                        <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-white w-40 whitespace-nowrap text-center">DEADLINE</th>
-                                        <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-white w-40 whitespace-nowrap text-center">TIME LEFT</th>
-                                        <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-white w-28 whitespace-nowrap text-center">ACTIONS</th>
+                                        <th className="px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white w-20 whitespace-nowrap text-center">S. NO.</th>
+                                        <th className="px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white text-left">TASK</th>
+                                        <th className="px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white w-32 whitespace-nowrap text-center">CREATED BY</th>
+                                        <th className="px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white w-32 whitespace-nowrap text-center">ASSIGNEE</th>
+                                        <th className="px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white w-32 whitespace-nowrap text-center">STATUS</th>
+                                        <th className="px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white w-40 whitespace-nowrap text-center">DEADLINE</th>
+                                        <th className="px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white w-40 whitespace-nowrap text-center">TIME LEFT</th>
+                                        <th className="px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white w-28 whitespace-nowrap text-center">ACTIONS</th>
                                     </tr>
                                 </thead>
                             </table>
@@ -378,68 +378,84 @@ const TaskWidget = memo(({ profile, role, onTaskClick, onMarkComplete }: { profi
                                             <tr 
                                                 key={task.id} 
                                                 className="hover:bg-white/[0.06] transition-all group cursor-pointer border-b border-surface-border/40"
-                                                style={{ height: '58px' }}
+                                                style={{ height: '48px' }}
                                                 onClick={() => onTaskClick(task)}
                                             >
-                                                <td className="px-6 py-3 text-sm font-bold text-gray-500 w-20 text-center">
+                                                <td className="px-3.5 py-1.5 text-xs font-bold text-gray-500 w-20 text-center">
                                                     {index + 1}
                                                 </td>
-                                                <td className="px-6 py-3 bg-white/[0.02] text-left">
-                                                    <p className="text-sm font-bold text-white truncate max-w-full group-hover:text-brand-primary transition-colors text-left">
+                                                <td className="px-3.5 py-1.5 bg-white/[0.02] text-left">
+                                                    <p className="text-xs font-bold text-white truncate max-w-full group-hover:text-brand-primary transition-colors text-left">
                                                         {task.task}
                                                     </p>
                                                 </td>
-                                                <td className="px-6 py-3 text-sm text-gray-400 w-32 text-center whitespace-nowrap overflow-hidden text-ellipsis">
+                                                <td className="px-3.5 py-1.5 text-xs text-gray-400 w-32 text-center whitespace-nowrap overflow-hidden text-ellipsis">
                                                     {task.creator_profile?.name || 'System'}
                                                 </td>
-                                                <td className="px-6 py-3 text-sm text-gray-400 bg-white/[0.02] w-32 text-center whitespace-nowrap overflow-hidden text-ellipsis">
+                                                <td className="px-3.5 py-1.5 text-xs text-gray-400 bg-white/[0.02] w-32 text-center whitespace-nowrap overflow-hidden text-ellipsis">
                                                     {task.assignee_profile?.name || 'Unassigned'}
                                                 </td>
-                                                <td className="px-6 py-3 text-center w-32">
-                                                    <span className={`${getStatusCapsuleClasses(task.status)} whitespace-nowrap`}>
+                                                <td className="px-3.5 py-1.5 text-center w-32">
+                                                    <span className={`${getStatusCapsuleClasses(task.status)} whitespace-nowrap text-[10px]`}>
                                                         {task.status}
                                                     </span>
                                                 </td>
-                                                <td className="px-6 py-3 bg-white/[0.02] w-40 text-center">
+                                                <td className="px-3.5 py-1.5 bg-white/[0.02] w-40 text-center">
                                                     <div className="flex flex-col items-center whitespace-nowrap">
-                                                        <span className="text-sm text-white font-bold">{formatDeadlineDate(task.deadline_date)}</span>
-                                                        <span className="text-[10px] text-brand-primary font-black uppercase tracking-widest">
+                                                        <span className="text-xs text-white font-bold">{formatDeadlineDate(task.deadline_date)}</span>
+                                                        <span className="text-[9px] text-brand-primary font-black uppercase tracking-widest">
                                                             {task.deadline_time ? formatTime(task.deadline_time) : '12:00 AM'}
                                                         </span>
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-3 text-center w-40">
-                                                    <span className={`text-sm font-bold uppercase tracking-wider ${timeLeft.color} whitespace-nowrap`}>
+                                                <td className="px-3.5 py-1.5 text-center w-40">
+                                                    <span className={`text-xs font-bold uppercase tracking-wider ${timeLeft.color} whitespace-nowrap`}>
                                                         {timeLeft.label || (task.status === 'Completed' ? 'Completed' : '')}
                                                     </span>
                                                 </td>
-                                                <td className="px-6 py-3 text-center bg-white/[0.02] w-28">
+                                                <td className="px-3.5 py-1.5 text-center bg-white/[0.02] w-28">
                                                     <div className="flex justify-center gap-2 pr-2">
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 onMarkComplete(task.id);
                                                             }}
-                                                            className="p-2 hover:bg-brand-success/10 rounded-lg text-gray-700 hover:text-brand-success transition-all group/btn"
+                                                            className="p-1 hover:bg-brand-success/10 rounded-lg text-gray-700 hover:text-brand-success transition-all group/btn"
                                                             title="Mark as Complete"
                                                         >
-                                                            <IconCheckCircle className="w-5 h-5 transition-transform duration-200 group-hover/btn:scale-110" />
+                                                            <IconCheckCircle className="w-4 h-4 transition-transform duration-200 group-hover/btn:scale-110" />
                                                         </button>
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 onTaskClick(task);
                                                             }}
-                                                            className="p-2 hover:bg-white/5 rounded-lg text-gray-700 hover:text-white transition-all group/btn"
+                                                            className="p-1 hover:bg-white/5 rounded-lg text-gray-700 hover:text-white transition-all group/btn"
                                                             title="View Details"
                                                         >
-                                                            <IconChevronRight className="w-5 h-5 transition-transform duration-200 group-hover/btn:translate-x-0.5" />
+                                                            <IconChevronRight className="w-4 h-4 transition-transform duration-200 group-hover/btn:translate-x-0.5" />
                                                         </button>
                                                     </div>
                                                 </td>
                                             </tr>
                                         );
                                     })}
+                                    {tasks.length > 0 && tasks.length < 5 && Array.from({ length: 5 - tasks.length }).map((_, i) => (
+                                        <tr 
+                                            key={`empty-${i}`} 
+                                            className="border-b border-surface-border/20 opacity-[0.12] pointer-events-none"
+                                            style={{ height: '48px' }}
+                                        >
+                                            <td className="px-3.5 py-1.5 text-center text-xs font-bold text-gray-700 w-20">-</td>
+                                            <td className="px-3.5 py-1.5 text-left text-xs text-gray-600">-</td>
+                                            <td className="px-3.5 py-1.5 text-center text-xs text-gray-600 w-32">-</td>
+                                            <td className="px-3.5 py-1.5 text-center text-xs text-gray-600 w-32">-</td>
+                                            <td className="px-3.5 py-1.5 text-center w-32">-</td>
+                                            <td className="px-3.5 py-1.5 text-center w-40">-</td>
+                                            <td className="px-3.5 py-1.5 text-center w-40">-</td>
+                                            <td className="px-3.5 py-1.5 text-center w-28">-</td>
+                                        </tr>
+                                    ))}
                                 </tbody>
                             </table>
                         </div>
