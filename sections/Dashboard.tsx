@@ -5,7 +5,7 @@ import Button from '../components/Button';
 import { Input } from '../components/Input';
 import { supabase } from '../lib/supabase';
 import { addToast } from '../components/Toast';
-import { IconClock, IconZap, IconTrendingUp, IconCalendar, IconTicket, IconPlay, IconList, IconChevronRight, IconAlertTriangle, IconCheckCircle, IconX, IconSend, IconMoreVertical, IconUser } from '../components/Icons';
+import { IconClock, IconZap, IconTrendingUp, IconCalendar, IconTicket, IconPlay, IconList, IconChevronRight, IconAlertTriangle, IconCheckCircle, IconX, IconSend, IconMoreVertical, IconUser, IconAward, IconStar } from '../components/Icons';
 import { ElevatedMetallicCard } from '../components/Surfaces';
 import { getStatusCapsuleClasses } from '../components/Badge';
 import { formatDeadlineDate, getTimeLeft, formatTime } from '../utils/formatter';
@@ -466,6 +466,227 @@ const TaskWidget = memo(({ profile, role, onTaskClick, onMarkComplete }: { profi
     );
 });
 
+const LeaderboardWidget = memo(() => {
+    const [entries, setEntries] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    const fetchLeaderboard = async () => {
+        try {
+            setLoading(true);
+            
+            // 1. Fetch profiles
+            const { data: users, error: usersError } = await supabase
+                .from('profiles')
+                .select('id, name, role, avatar_url')
+                .eq('status', 'Active');
+
+            if (usersError) throw usersError;
+
+            const deliveryRoles = ['freelancer', 'team lead', 'team designer', 'presentation designer'];
+            const activeDeliverers = users?.filter(u => deliveryRoles.includes(u.role?.toLowerCase() || '')) || [];
+
+            // 2. Fetch comments from last 30 days
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+            const { data: comments, error: commentsError } = await supabase
+                .from('project_comments')
+                .select('content, author_id')
+                .like('content', 'STATUS_CHANGED:%')
+                .gte('created_at', thirtyDaysAgo.toISOString())
+                .limit(5000);
+
+            if (commentsError) throw commentsError;
+
+            // 3. Process scores
+            const rawEntries = activeDeliverers.map(u => {
+                const userComments = comments?.filter(c => c.author_id === u.id) || [];
+                const total = userComments.length;
+                const late = userComments.filter(c => {
+                    const parts = c.content.split(':');
+                    return parts[3] === 'LATE';
+                }).length;
+                const timely = total - late;
+                const score = total > 0 ? Math.round((timely / total) * 100) : 100;
+                return {
+                    id: u.id,
+                    name: u.name || 'Unknown User',
+                    role: u.role || 'Freelancer',
+                    avatar_url: u.avatar_url,
+                    total,
+                    late,
+                    timely,
+                    score
+                };
+            });
+
+            // Filter out 0-delivery users if there's at least one active user
+            const activeEntries = rawEntries.filter(e => e.total > 0);
+            const finalEntries = activeEntries.length > 0 ? activeEntries : rawEntries;
+
+            // Sort by score desc, then total desc, then name asc
+            finalEntries.sort((a, b) => {
+                if (b.score !== a.score) return b.score - a.score;
+                if (b.total !== a.total) return b.total - a.total;
+                return a.name.localeCompare(b.name);
+            });
+
+            setEntries(finalEntries);
+        } catch (err) {
+            console.error('Error fetching leaderboard:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchLeaderboard();
+
+        // Subscribe to changes in project_comments to auto-update leaderboard
+        const channel = supabase
+            .channel('leaderboard_comments')
+            .on('postgres_changes', { event: '*', table: 'project_comments', schema: 'public' }, () => {
+                fetchLeaderboard();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, []);
+
+    const navigateToUser = (userId: string) => {
+        window.history.pushState(null, '', `/users/${encodeURIComponent(userId)}`);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+    };
+
+    const getRankStyle = (rank: number) => {
+        if (rank === 1) return { bg: 'bg-yellow-500/10 border-yellow-500/30 text-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.1)]', icon: <IconAward size={14} className="text-yellow-500 fill-yellow-500/20" /> };
+        if (rank === 2) return { bg: 'bg-slate-300/10 border-slate-300/30 text-slate-300', icon: <IconAward size={14} className="text-slate-300 fill-slate-300/10" /> };
+        if (rank === 3) return { bg: 'bg-amber-700/15 border-amber-700/30 text-amber-600', icon: <IconAward size={14} className="text-amber-700 fill-amber-700/10" /> };
+        return { bg: 'bg-white/5 border-white/10 text-gray-500', icon: null };
+    };
+
+    return (
+        <ElevatedMetallicCard
+            title={
+                <div className="flex items-center gap-2">
+                    <IconAward className="w-4 h-4 text-brand-primary" />
+                    <span className="text-sm font-bold text-brand-primary uppercase tracking-wider">On-Time Delivery Leaderboard</span>
+                </div>
+            }
+            bodyClassName="p-0 flex flex-col overflow-hidden"
+            className="w-full"
+        >
+            <div className="p-6 border-b border-white/5 bg-white/[0.01]">
+                <p className="text-xs text-gray-400 font-medium">
+                    Leaderboard ranks active deliverers based on their rolling 30-day On-Time Delivery (OTD) score and volume.
+                </p>
+            </div>
+
+            {loading ? (
+                <div className="p-12 flex flex-col items-center justify-center space-y-3">
+                    <div className="w-8 h-8 border-2 border-brand-primary/20 border-t-brand-primary rounded-full animate-spin" />
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Loading Leaderboard...</p>
+                </div>
+            ) : entries.length === 0 ? (
+                <div className="p-12 flex flex-col items-center justify-center text-center space-y-3">
+                    <div className="p-3 rounded-xl bg-white/[0.03] text-gray-600">
+                        <IconAward className="w-6 h-6" />
+                    </div>
+                    <div>
+                        <p className="text-sm font-bold text-white">No Active Deliverers</p>
+                        <p className="text-[10px] text-gray-500 font-medium uppercase tracking-widest mt-1">No deliveries logged in the last 30 days</p>
+                    </div>
+                </div>
+            ) : (
+                <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent">
+                    <table className="w-full text-left border-collapse table-fixed min-w-[700px]">
+                        <thead>
+                            <tr className="border-b border-white/5 bg-white/[0.02]">
+                                <th className="px-6 py-3.5 text-[10px] font-black uppercase tracking-widest text-white/50 w-20 text-center">Rank</th>
+                                <th className="px-6 py-3.5 text-[10px] font-black uppercase tracking-widest text-white/50 text-left">Member</th>
+                                <th className="px-6 py-3.5 text-[10px] font-black uppercase tracking-widest text-white/50 w-40 text-center">Role</th>
+                                <th className="px-6 py-3.5 text-[10px] font-black uppercase tracking-widest text-white/50 w-28 text-center">OTD Score</th>
+                                <th className="px-6 py-3.5 text-[10px] font-black uppercase tracking-widest text-white/50 w-32 text-center">Total Deliveries</th>
+                                <th className="px-6 py-3.5 text-[10px] font-black uppercase tracking-widest text-white/50 w-28 text-center">Timely</th>
+                                <th className="px-6 py-3.5 text-[10px] font-black uppercase tracking-widest text-white/50 w-24 text-center">Late</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                            {entries.map((entry, index) => {
+                                const rank = index + 1;
+                                const rankStyle = getRankStyle(rank);
+                                
+                                return (
+                                    <tr 
+                                        key={entry.id}
+                                        onClick={() => navigateToUser(entry.id)}
+                                        className="hover:bg-white/[0.03] transition-all group cursor-pointer"
+                                    >
+                                        <td className="px-6 py-4 text-center w-20">
+                                            <div className="flex justify-center">
+                                                <span className={`w-7 h-7 rounded-full border flex items-center justify-center text-xs font-black uppercase tracking-wider ${rankStyle.bg}`}>
+                                                    {rankStyle.icon ? rankStyle.icon : rank}
+                                                </span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-left">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-full bg-white/[0.04] border border-white/10 flex items-center justify-center overflow-hidden shrink-0 group-hover:border-white/20 transition-all">
+                                                    {entry.avatar_url ? (
+                                                        <img src={entry.avatar_url} alt={entry.name} className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <span className="text-xs font-black text-gray-500 uppercase">
+                                                            {entry.name.slice(0, 2).toUpperCase()}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div>
+                                                    <span className="text-xs font-bold text-white group-hover:text-brand-primary transition-colors block">
+                                                        {entry.name}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-center text-xs text-gray-400 font-medium whitespace-nowrap overflow-hidden text-ellipsis w-40">
+                                            {entry.role}
+                                        </td>
+                                        <td className="px-6 py-4 text-center w-28">
+                                            <div className="flex justify-center">
+                                                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                                                    entry.score >= 90 
+                                                        ? 'bg-brand-success/10 text-brand-success border-brand-success/20 shadow-[0_0_10px_rgba(34,197,94,0.1)]' 
+                                                        : entry.score >= 75 
+                                                            ? 'bg-brand-warning/10 text-brand-warning border-brand-warning/20' 
+                                                            : 'bg-brand-error/10 text-brand-error border-brand-error/20 shadow-[0_0_10px_rgba(239,68,68,0.1)]'
+                                                }`}>
+                                                    {entry.score}%
+                                                </span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-center text-xs font-bold text-white w-32 bg-white/[0.01]">
+                                            {entry.total}
+                                        </td>
+                                        <td className="px-6 py-4 text-center text-xs font-bold text-brand-success w-28">
+                                            {entry.timely}
+                                        </td>
+                                        <td className="px-6 py-4 text-center text-xs font-bold w-24">
+                                            <span className={entry.late > 0 ? 'text-brand-error' : 'text-gray-500'}>
+                                                {entry.late}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+        </ElevatedMetallicCard>
+    );
+});
+
 const Dashboard: React.FC = () => {
     const { profile, effectiveRole, refreshProfile } = useUser();
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -481,6 +702,79 @@ const Dashboard: React.FC = () => {
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
     const [loadingTasks, setLoadingTasks] = useState(false);
+
+    // OTD Scorecard states for delivery roles
+    const [otdScore, setOtdScore] = useState<number | null>(null);
+    const [totalDeliveries, setTotalDeliveries] = useState(0);
+    const [lateCount, setLateCount] = useState(0);
+    const [timelyCount, setTimelyCount] = useState(0);
+    const [isOtdLoading, setIsOtdLoading] = useState(false);
+
+    const fetchMyOtdStats = async () => {
+        if (!profile?.id) return;
+        const roleLower = effectiveRole?.toLowerCase().trim() || '';
+        const isDeliveryRole = ['freelancer', 'team lead', 'team designer', 'presentation designer'].includes(roleLower);
+        if (!isDeliveryRole) return;
+
+        setIsOtdLoading(true);
+        try {
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            
+            const { data, error } = await supabase
+                .from('project_comments')
+                .select('content')
+                .eq('author_id', profile.id)
+                .like('content', 'STATUS_CHANGED:%')
+                .gte('created_at', thirtyDaysAgo.toISOString());
+
+            if (error) throw error;
+
+            let total = 0;
+            let late = 0;
+            let timely = 0;
+
+            if (data) {
+                data.forEach(item => {
+                    total++;
+                    const parts = item.content.split(':');
+                    if (parts[3] === 'LATE') {
+                        late++;
+                    } else {
+                        timely++;
+                    }
+                });
+            }
+
+            setTotalDeliveries(total);
+            setLateCount(late);
+            setTimelyCount(timely);
+            setOtdScore(total > 0 ? Math.round((timely / total) * 100) : 100);
+        } catch (err) {
+            console.error('Error fetching OTD stats:', err);
+        } finally {
+            setIsOtdLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchMyOtdStats();
+
+        const roleLower = effectiveRole?.toLowerCase().trim() || '';
+        const isDeliveryRole = ['freelancer', 'team lead', 'team designer', 'presentation designer'].includes(roleLower);
+        if (!profile?.id || !isDeliveryRole) return;
+
+        const channel = supabase
+            .channel('my_dashboard_comments')
+            .on('postgres_changes', { event: '*', table: 'project_comments', schema: 'public' }, () => {
+                fetchMyOtdStats();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [profile?.id, effectiveRole]);
 
     const fetchInitialTicket = async () => {
         const roleLower = effectiveRole?.toLowerCase().trim();
@@ -672,70 +966,217 @@ const Dashboard: React.FC = () => {
 
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 fill-mode-both">
-            {/* Capacity Management for Freelancers/Team Leads */}
-            {(effectiveRole?.toLowerCase().trim() === 'freelancer' || effectiveRole?.toLowerCase().trim() === 'team lead' || effectiveRole?.toLowerCase().trim() === 'team designer') && (
+            {/* Delivery Performance and Capacity Section */}
+            {['freelancer', 'team lead', 'team designer', 'presentation designer'].includes(effectiveRole?.toLowerCase().trim() || '') && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <div className="lg:col-span-1">
+                    {/* Capacity Management - Only for Freelancer, Team Lead, and Team Designer */}
+                    {['freelancer', 'team lead', 'team designer'].includes(effectiveRole?.toLowerCase().trim() || '') && (
+                        <div className="lg:col-span-1">
+                            <ElevatedMetallicCard
+                                title={
+                                    <div className="flex items-center gap-2">
+                                        <IconTicket className="w-4 h-4 text-brand-primary" />
+                                        <span className="text-sm font-bold text-brand-primary uppercase tracking-wider">Daily Project Capacity</span>
+                                    </div>
+                                }
+                                className="h-full"
+                                bodyClassName="p-6"
+                            >
+                                <div className="space-y-6">
+                                    <div className="flex items-center justify-between">
+                                        <div className="space-y-1">
+                                            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Active Limit</p>
+                                            <p className="text-2xl font-black text-white">
+                                                {profile?.daily_capacity || 0} <span className="text-sm font-medium text-gray-500">projects / day</span>
+                                            </p>
+                                        </div>
+                                        <div className="w-12 h-12 rounded-xl bg-brand-primary/10 flex items-center justify-center text-brand-primary">
+                                            <IconTrendingUp className="w-6 h-6" />
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-4 py-4 border-y border-white/5">
+                                        <div className="p-2 rounded-lg bg-white/5 text-gray-400">
+                                            <IconCalendar size={16} />
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Allocation Start</p>
+                                            <p className="text-sm font-bold text-white">
+                                                {initialTicket?.start_datetime ? formatDeadlineDate(initialTicket.start_datetime) : 'N/A'}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-3">
+                                        <Button
+                                            variant="recessed"
+                                            size="sm"
+                                            className="flex-1 border-white/5 hover:bg-white/5"
+                                            onClick={() => {
+                                                setNewCapacity('');
+                                                setIsDecreaseModalOpen(true);
+                                            }}
+                                        >
+                                            Decrease Limit
+                                        </Button>
+                                        <Button
+                                            variant="metallic"
+                                            size="sm"
+                                            className="flex-1"
+                                            onClick={() => {
+                                                setNewCapacity('');
+                                                setIsIncreaseModalOpen(true);
+                                            }}
+                                        >
+                                            Increase Limit
+                                        </Button>
+                                    </div>
+                                </div>
+                            </ElevatedMetallicCard>
+                        </div>
+                    )}
+
+                    {/* My On-Time Delivery Performance Scorecard */}
+                    <div className={['freelancer', 'team lead', 'team designer'].includes(effectiveRole?.toLowerCase().trim() || '') ? 'lg:col-span-2' : 'lg:col-span-3'}>
                         <ElevatedMetallicCard
                             title={
                                 <div className="flex items-center gap-2">
-                                    <IconTicket className="w-4 h-4 text-brand-primary" />
-                                    <span className="text-sm font-bold text-brand-primary uppercase tracking-wider">Daily Project Capacity</span>
+                                    <IconAward className="w-4 h-4 text-brand-primary" />
+                                    <span className="text-sm font-bold text-brand-primary uppercase tracking-wider">My On-Time Delivery Scorecard</span>
                                 </div>
                             }
-                            className="h-full"
-                            bodyClassName="p-6"
+                            className="h-full animate-in fade-in duration-500"
+                            bodyClassName="p-6 h-full flex flex-col justify-between"
                         >
-                            <div className="space-y-6">
-                                <div className="flex items-center justify-between">
-                                    <div className="space-y-1">
-                                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Active Limit</p>
-                                        <p className="text-2xl font-black text-white">
-                                            {profile?.daily_capacity || 0} <span className="text-sm font-medium text-gray-500">projects / day</span>
-                                        </p>
-                                    </div>
-                                    <div className="w-12 h-12 rounded-xl bg-brand-primary/10 flex items-center justify-center text-brand-primary">
-                                        <IconTrendingUp className="w-6 h-6" />
-                                    </div>
+                            {isOtdLoading ? (
+                                <div className="h-full flex items-center justify-center py-8">
+                                    <div className="w-6 h-6 border-2 border-brand-primary/20 border-t-brand-primary rounded-full animate-spin" />
                                 </div>
+                            ) : (
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch h-full">
+                                    {/* Left Column: Circular OTD Indicator */}
+                                    <div className="flex flex-col items-center justify-center p-6 bg-black/40 border border-white/5 rounded-2xl shadow-[inset_0_2px_8px_rgba(0,0,0,0.5)] relative overflow-hidden group h-full min-h-[170px]">
+                                        {/* Active Backdrop Glow Overlay */}
+                                        <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-28 h-28 rounded-full blur-[30px] opacity-15 pointer-events-none transition-all duration-700 ${
+                                            otdScore === null ? 'bg-transparent' : otdScore >= 90 ? 'bg-emerald-500' : otdScore >= 75 ? 'bg-amber-500' : 'bg-red-500'
+                                        }`} />
+                                        
+                                        <div className="relative w-24 h-24 flex items-center justify-center z-10">
+                                            <svg className="w-full h-full transform -rotate-90">
+                                                <circle
+                                                    cx="48"
+                                                    cy="48"
+                                                    r="40"
+                                                    className="stroke-white/[0.04]"
+                                                    strokeWidth="6"
+                                                    fill="transparent"
+                                                />
+                                                <circle
+                                                    cx="48"
+                                                    cy="48"
+                                                    r="40"
+                                                    className={`transition-all duration-1000 ease-out ${
+                                                        otdScore === null ? 'stroke-transparent' : otdScore >= 90 ? 'stroke-brand-success' : otdScore >= 75 ? 'stroke-brand-warning' : 'stroke-brand-error'
+                                                    }`}
+                                                    strokeWidth="6"
+                                                    fill="transparent"
+                                                    strokeDasharray={2 * Math.PI * 40}
+                                                    strokeDashoffset={2 * Math.PI * 40 * (1 - (otdScore || 100) / 100)}
+                                                    strokeLinecap="round"
+                                                />
+                                            </svg>
+                                            <div className="absolute flex flex-col items-center justify-center z-20">
+                                                <span className="text-base font-black text-white tracking-tight">{otdScore}%</span>
+                                                <span className="text-[6.5px] font-bold text-gray-500 uppercase tracking-widest mt-0.5">OTD SCORE</span>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="text-center w-full z-10 mt-3">
+                                            <div className="flex justify-center mb-1">
+                                                {totalDeliveries === 0 ? (
+                                                    <span className="px-2.5 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-wider bg-white/5 text-gray-400 border border-white/10 shadow-inner">
+                                                        New Deliverer
+                                                    </span>
+                                                ) : otdScore === 100 && totalDeliveries >= 5 ? (
+                                                    <span className="px-2.5 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-wider bg-brand-success/15 text-brand-success border border-brand-success/30 shadow-[0_0_10px_rgba(34,197,94,0.2)]">
+                                                        Flawless
+                                                    </span>
+                                                ) : otdScore >= 90 ? (
+                                                    <span className="px-2.5 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-wider bg-brand-success/10 text-brand-success border border-brand-success/20">
+                                                        Reliable
+                                                    </span>
+                                                ) : otdScore >= 75 ? (
+                                                    <span className="px-2.5 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-wider bg-brand-warning/10 text-brand-warning border border-brand-warning/20">
+                                                        Satisfactory
+                                                    </span>
+                                                ) : (
+                                                    <span className="px-2.5 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-wider bg-brand-error/15 text-brand-error border border-brand-error/30 animate-pulse flex items-center gap-0.5 justify-center">
+                                                        <IconAlertTriangle size={8} className="stroke-[3px]" />
+                                                        Late Deliverer
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-[8px] text-gray-500 font-bold uppercase tracking-wider">
+                                                Last 30 Rolling Days
+                                            </p>
+                                        </div>
+                                    </div>
 
-                                <div className="flex items-center gap-4 py-4 border-y border-white/5">
-                                    <div className="p-2 rounded-lg bg-white/5 text-gray-400">
-                                        <IconCalendar size={16} />
-                                    </div>
-                                    <div>
-                                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Allocation Start</p>
-                                        <p className="text-sm font-bold text-white">
-                                            {initialTicket?.start_datetime ? formatDeadlineDate(initialTicket.start_datetime) : 'N/A'}
-                                        </p>
-                                    </div>
-                                </div>
+                                    {/* Right Column: Rating Details & Stats Grid */}
+                                    <div className="lg:col-span-2 flex flex-col justify-between h-full py-1">
+                                        <div className="space-y-1">
+                                            <h3 className="text-sm font-black text-white tracking-tight">On-Time Performance</h3>
+                                            <p className="text-[11px] text-gray-400 leading-relaxed">
+                                                Your delivery rating is calculated over a rolling 30-day window. Staying above 90% OTD maintains high eligibility for priority project allocations.
+                                            </p>
+                                        </div>
 
-                                <div className="flex gap-3">
-                                    <Button
-                                        variant="recessed"
-                                        size="sm"
-                                        className="flex-1 border-white/5 hover:bg-white/5"
-                                        onClick={() => {
-                                            setNewCapacity('');
-                                            setIsDecreaseModalOpen(true);
-                                        }}
-                                    >
-                                        Decrease Limit
-                                    </Button>
-                                    <Button
-                                        variant="metallic"
-                                        size="sm"
-                                        className="flex-1"
-                                        onClick={() => {
-                                            setNewCapacity('');
-                                            setIsIncreaseModalOpen(true);
-                                        }}
-                                    >
-                                        Increase Limit
-                                    </Button>
+                                        <div className="grid grid-cols-3 gap-3 mt-4">
+                                            {/* Total Deliveries Card */}
+                                            <div className="bg-white/[0.02] border border-white/5 p-4 rounded-xl flex flex-col justify-between hover:border-white/10 hover:bg-white/[0.03] transition-all group relative overflow-hidden min-h-[90px]">
+                                                <div className="absolute top-2 right-2 text-gray-500/20 group-hover:text-gray-500/40 transition-colors">
+                                                    <IconZap size={14} />
+                                                </div>
+                                                <span className="text-[8px] font-bold text-gray-500 uppercase tracking-wider">Total</span>
+                                                <div className="flex items-baseline gap-1 mt-2">
+                                                    <span className="text-2xl font-black text-white tracking-tight group-hover:scale-105 transition-transform origin-left duration-300">{totalDeliveries}</span>
+                                                    <span className="text-[8px] text-gray-600 font-bold uppercase">Tasks</span>
+                                                </div>
+                                            </div>
+
+                                            {/* On-Time / Early Card */}
+                                            <div className="bg-brand-success/[0.02] border border-brand-success/5 p-4 rounded-xl flex flex-col justify-between hover:border-brand-success/15 hover:bg-brand-success/[0.04] transition-all group relative overflow-hidden min-h-[90px]">
+                                                <div className="absolute top-2 right-2 text-brand-success/20 group-hover:text-brand-success/40 transition-colors">
+                                                    <IconCheckCircle size={14} />
+                                                </div>
+                                                <span className="text-[8px] font-bold text-brand-success/70 uppercase tracking-wider">On-Time</span>
+                                                <div className="flex items-baseline gap-1 mt-2">
+                                                    <span className="text-2xl font-black text-brand-success tracking-tight group-hover:scale-105 transition-transform origin-left duration-300">{timelyCount}</span>
+                                                    <span className="text-[8px] text-brand-success/50 font-bold uppercase">Timely</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Late Deliveries Card */}
+                                            <div className={`border p-4 rounded-xl flex flex-col justify-between transition-all group relative overflow-hidden min-h-[90px] ${
+                                                lateCount > 0 
+                                                    ? 'bg-brand-error/[0.02] border-brand-error/15 hover:border-brand-error/30 hover:bg-brand-error/[0.04]' 
+                                                    : 'bg-white/[0.02] border-white/5 hover:border-white/10 hover:bg-white/[0.03]'
+                                            }`}>
+                                                <div className={`absolute top-2 right-2 transition-colors ${
+                                                    lateCount > 0 ? 'text-brand-error/30 group-hover:text-brand-error/50' : 'text-gray-500/20 group-hover:text-gray-500/40'
+                                                }`}>
+                                                    <IconAlertTriangle size={14} />
+                                                </div>
+                                                <span className={`text-[8px] font-bold uppercase tracking-wider ${lateCount > 0 ? 'text-brand-error/80' : 'text-gray-500'}`}>Late</span>
+                                                <div className="flex items-baseline gap-1 mt-2">
+                                                    <span className={`text-2xl font-black tracking-tight group-hover:scale-105 transition-transform origin-left duration-300 ${lateCount > 0 ? 'text-brand-error' : 'text-gray-500'}`}>{lateCount}</span>
+                                                    <span className={`text-[8px] font-bold uppercase ${lateCount > 0 ? 'text-brand-error/50' : 'text-gray-500'}`}>Delay</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
+                            )}
                         </ElevatedMetallicCard>
                     </div>
                 </div>
@@ -758,11 +1199,7 @@ const Dashboard: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Placeholder for future modules */}
-                    <div className="flex flex-col items-center justify-center min-h-[150px] text-center border border-dashed border-white/5 rounded-3xl bg-white/[0.01]">
-                        <p className="text-[10px] font-black text-gray-600 uppercase tracking-[0.2em] mb-2">More Modules Coming Soon</p>
-                        <p className="text-[11px] text-gray-500 max-w-sm uppercase font-medium tracking-widest">We are integrating Projects, Earnings, and Analytics widgets into your workspace.</p>
-                    </div>
+                    <LeaderboardWidget />
                 </div>
             )}
 

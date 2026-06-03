@@ -87,11 +87,60 @@ const UserDetailsV2: React.FC<UserDetailsV2Props> = ({ userId, onBack, onStatusC
     const [projectsDone, setProjectsDone] = useState<number | null>(null);
     const [loadingStats, setLoadingStats] = useState(true);
 
+    // OTD Scorecard states
+    const [otdScore, setOtdScore] = useState<number | null>(null);
+    const [totalDeliveries, setTotalDeliveries] = useState(0);
+    const [lateCount, setLateCount] = useState(0);
+    const [timelyCount, setTimelyCount] = useState(0);
+    const [isOtdLoading, setIsOtdLoading] = useState(false);
+
     useEffect(() => {
         fetchUserDetails();
     }, [userId]);
 
     // Removed the separate useEffect for reviews to gather everything in fetchUserDetails
+
+    const fetchOtdStats = async (targetUserId: string) => {
+        setIsOtdLoading(true);
+        try {
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            
+            const { data, error } = await supabase
+                .from('project_comments')
+                .select('content')
+                .eq('author_id', targetUserId)
+                .like('content', 'STATUS_CHANGED:%')
+                .gte('created_at', thirtyDaysAgo.toISOString());
+
+            if (error) throw error;
+
+            let total = 0;
+            let late = 0;
+            let timely = 0;
+
+            if (data) {
+                data.forEach(item => {
+                    total++;
+                    const parts = item.content.split(':');
+                    if (parts[3] === 'LATE') {
+                        late++;
+                    } else {
+                        timely++;
+                    }
+                });
+            }
+
+            setTotalDeliveries(total);
+            setLateCount(late);
+            setTimelyCount(timely);
+            setOtdScore(total > 0 ? Math.round((timely / total) * 100) : 100);
+        } catch (err) {
+            console.error('Error fetching OTD statistics:', err);
+        } finally {
+            setIsOtdLoading(false);
+        }
+    };
 
     const fetchUserDetails = async () => {
         if (!user) setLoading(true);
@@ -113,19 +162,30 @@ const UserDetailsV2: React.FC<UserDetailsV2Props> = ({ userId, onBack, onStatusC
             setPreferredMethod(data.preferred_payment_method || '');
 
             // Parallelize counters fetching
+            const fetches: Promise<any>[] = [];
             if (data.name) {
-                await Promise.all([
-                    fetchUserReviews(data.name),
-                    (async () => {
-                        const { count: approvedCount } = await supabase
-                            .from('projects')
-                            .select('*', { count: 'exact', head: true })
-                            .eq('assignee', data.name)
-                            .eq('status', 'Approved');
-                        setProjectsDone(approvedCount || 0);
-                    })()
-                ]);
+                fetches.push(fetchUserReviews(data.name));
+                fetches.push((async () => {
+                    const { count: approvedCount } = await supabase
+                        .from('projects')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('assignee', data.name)
+                        .eq('status', 'Approved');
+                    setProjectsDone(approvedCount || 0);
+                })());
             }
+
+            const isDeliveryRole = ['freelancer', 'team lead', 'team designer'].includes(data.role?.toLowerCase() || '');
+            if (isDeliveryRole) {
+                fetches.push(fetchOtdStats(userId));
+            } else {
+                setOtdScore(null);
+                setTotalDeliveries(0);
+                setLateCount(0);
+                setTimelyCount(0);
+            }
+
+            await Promise.all(fetches);
 
             setLoadingStats(false);
         } catch (error: any) {
@@ -879,6 +939,151 @@ const UserDetailsV2: React.FC<UserDetailsV2Props> = ({ userId, onBack, onStatusC
 
                     {activeTab === 'performance' && (
                         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            {/* On-Time Delivery Scorecard (Only for delivery roles) */}
+                            {otdScore !== null && (
+                                <div className="w-full relative z-10 rounded-3xl overflow-hidden border border-white/10 bg-[#1A1A1A] shadow-[0_24px_48px_-12px_rgba(0,0,0,0.6)]">
+                                    <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.02)_0%,rgba(255,255,255,0.06)_40%,rgba(255,255,255,0.12)_50%,rgba(255,255,255,0.06)_60%,rgba(255,255,255,0.02)_100%)] pointer-events-none opacity-70" />
+                                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.07)_0%,transparent_65%)] pointer-events-none" />
+                                    
+                                    <div className="px-8 py-5 border-b border-white/[0.05] bg-white/[0.02] relative z-20 flex items-center justify-between">
+                                        <h3 className="text-sm font-bold text-brand-primary uppercase tracking-widest flex items-center gap-2">
+                                            <IconActivity className="w-4 h-4" />
+                                            On-Time Delivery Scorecard
+                                        </h3>
+                                    </div>
+                                    
+                                    <div className="p-8 relative z-20">
+                                        {isOtdLoading && (
+                                            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-30 flex items-center justify-center rounded-b-3xl">
+                                                <div className="flex items-center gap-3 bg-black/60 border border-white/10 px-5 py-3 rounded-2xl shadow-xl">
+                                                    <IconLoader className="w-5 h-5 text-brand-primary animate-spin" />
+                                                    <span className="text-xs font-bold text-white uppercase tracking-wider">Recalculating Score...</span>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                            {/* Left Column: Score & Rating Gauge Card */}
+                                            <div className="lg:col-span-1 flex flex-col items-center justify-center p-6 rounded-2xl bg-black/40 border border-white/5 shadow-[inset_0_2px_8px_rgba(0,0,0,0.5)] relative overflow-hidden group">
+                                                <div className="absolute inset-0 bg-[linear-gradient(125deg,rgba(255,255,255,0.01)_0%,transparent_50%,rgba(255,255,255,0.01)_100%)] pointer-events-none" />
+
+                                                <div className="relative w-32 h-32 flex items-center justify-center mb-4">
+                                                    <div className={`absolute inset-0 rounded-full blur-[12px] opacity-20 transition-all duration-500 ${
+                                                        otdScore >= 90 ? "bg-brand-success" :
+                                                        otdScore >= 75 ? "bg-brand-warning" : "bg-brand-error"
+                                                    }`} />
+
+                                                    <svg className="w-full h-full transform -rotate-90 relative z-10">
+                                                        <circle
+                                                            cx="64"
+                                                            cy="64"
+                                                            r="52"
+                                                            className="stroke-white/[0.03]"
+                                                            strokeWidth="8"
+                                                            fill="transparent"
+                                                        />
+                                                        <circle
+                                                            cx="64"
+                                                            cy="64"
+                                                            r="52"
+                                                            className={
+                                                                otdScore >= 90 ? "stroke-brand-success" :
+                                                                otdScore >= 75 ? "stroke-brand-warning" : "stroke-brand-error"
+                                                            }
+                                                            strokeWidth="8"
+                                                            fill="transparent"
+                                                            strokeDasharray={`${2 * Math.PI * 52}`}
+                                                            strokeDashoffset={`${2 * Math.PI * 52 * (1 - otdScore / 100)}`}
+                                                            strokeLinecap="round"
+                                                            style={{ transition: 'stroke-dashoffset 0.8s ease-in-out' }}
+                                                        />
+                                                    </svg>
+                                                    <div className="absolute flex flex-col items-center justify-center z-20">
+                                                        <span className="text-2xl font-black text-white tracking-tight">{otdScore}%</span>
+                                                        <span className="text-[7.5px] font-bold text-gray-500 uppercase tracking-widest mt-0.5">OTD SCORE</span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="text-center space-y-2 w-full">
+                                                    <div className="flex justify-center">
+                                                        {totalDeliveries === 0 ? (
+                                                            <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-white/5 text-gray-400 border border-white/10 shadow-inner">
+                                                                New Deliverer
+                                                            </span>
+                                                        ) : otdScore === 100 && totalDeliveries >= 5 ? (
+                                                            <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-brand-success/15 text-brand-success border border-brand-success/30 shadow-[0_0_15px_rgba(34,197,94,0.25)]">
+                                                                Flawless Delivery
+                                                            </span>
+                                                        ) : otdScore >= 90 ? (
+                                                            <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-brand-success/10 text-brand-success border border-brand-success/20">
+                                                                Highly Reliable
+                                                            </span>
+                                                        ) : otdScore >= 75 ? (
+                                                            <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-brand-warning/10 text-brand-warning border border-brand-warning/20">
+                                                                Satisfactory
+                                                            </span>
+                                                        ) : (
+                                                            <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-brand-error/15 text-brand-error border border-brand-error/30 animate-pulse flex items-center gap-1 justify-center">
+                                                                <IconAlertTriangle size={10} className="stroke-[3px]" />
+                                                                Frequent Late Deliverer
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider leading-relaxed">
+                                                        Last 30 Rolling Days
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            {/* Right Column: Rating Details & Stats Grid */}
+                                            <div className="lg:col-span-2 flex flex-col justify-between space-y-6">
+                                                <div className="space-y-2">
+                                                    <h3 className="text-xl font-black text-white tracking-tight">Performance Rating</h3>
+                                                    <p className="text-sm text-gray-400 leading-relaxed max-w-xl">
+                                                        This rating measures on-time delivery. Staying above 90% ensures top eligibility status, while consistent late deliveries impact team allocations.
+                                                    </p>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                                    <div className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl flex flex-col justify-between hover:border-white/10 hover:bg-white/[0.03] transition-all group shadow-md relative overflow-hidden">
+                                                        <div className="absolute top-0 right-0 w-16 h-16 bg-white/[0.01] rounded-bl-full pointer-events-none group-hover:bg-white/[0.02] transition-colors" />
+                                                        <span className="text-[9px] font-bold text-gray-500 uppercase tracking-[0.2em] mb-4">Total Deliveries</span>
+                                                        <div className="flex items-baseline gap-1">
+                                                            <span className="text-4xl font-black text-white tracking-tight group-hover:scale-105 transition-transform origin-left duration-300">{totalDeliveries}</span>
+                                                            <span className="text-xs text-gray-500 font-bold uppercase tracking-wider">Total</span>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="bg-brand-success/[0.02] border border-brand-success/5 p-5 rounded-2xl flex flex-col justify-between hover:border-brand-success/15 hover:bg-brand-success/[0.04] transition-all group shadow-md relative overflow-hidden">
+                                                        <div className="absolute top-0 right-0 w-16 h-16 bg-brand-success/[0.02] rounded-bl-full pointer-events-none group-hover:bg-brand-success/[0.04] transition-colors" />
+                                                        <span className="text-[9px] font-bold text-brand-success/70 uppercase tracking-[0.2em] mb-4">On-Time / Early</span>
+                                                        <div className="flex items-baseline gap-1">
+                                                            <span className="text-4xl font-black text-brand-success tracking-tight group-hover:scale-105 transition-transform origin-left duration-300">{timelyCount}</span>
+                                                            <span className="text-xs text-brand-success/60 font-bold uppercase tracking-wider">Timely</span>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className={`border p-5 rounded-2xl flex flex-col justify-between transition-all group shadow-md relative overflow-hidden ${
+                                                        lateCount > 0 
+                                                            ? 'bg-brand-error/[0.02] border-brand-error/15 hover:border-brand-error/30 hover:bg-brand-error/[0.04]' 
+                                                            : 'bg-white/[0.02] border-white/5 hover:border-white/10 hover:bg-white/[0.03]'
+                                                    }`}>
+                                                        <div className={`absolute top-0 right-0 w-16 h-16 rounded-bl-full pointer-events-none transition-colors ${
+                                                            lateCount > 0 ? 'bg-brand-error/[0.02] group-hover:bg-brand-error/[0.04]' : 'bg-white/[0.01]'
+                                                        }`} />
+                                                        <span className={`text-[9px] font-bold uppercase tracking-[0.2em] mb-4 ${lateCount > 0 ? 'text-brand-error/80' : 'text-gray-500'}`}>Late Deliveries</span>
+                                                        <div className="flex items-baseline gap-1">
+                                                            <span className={`text-4xl font-black tracking-tight group-hover:scale-105 transition-transform origin-left duration-300 ${lateCount > 0 ? 'text-brand-error' : 'text-gray-500'}`}>{lateCount}</span>
+                                                            <span className={`text-xs font-bold uppercase tracking-wider ${lateCount > 0 ? 'text-brand-error/60' : 'text-gray-500'}`}>Late</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             {loadingReviews ? (
                                 <div className="h-[400px] w-full relative z-10 rounded-2xl overflow-hidden border border-white/5 bg-white/[0.02] flex items-center justify-center text-gray-500">
                                     <div className="flex flex-col items-center gap-4">

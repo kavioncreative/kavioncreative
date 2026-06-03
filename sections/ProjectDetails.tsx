@@ -2087,7 +2087,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
     const isSubmittingWork = 
       activityTab === "timeline" && 
       payloadAttachments.length > 0 && 
-      isFreelancer;
+      (isFreelancer || isTeamLead);
 
     if (isSubmittingWork) {
       const current = (project?.status || "In Progress").trim().toLowerCase();
@@ -2137,6 +2137,17 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
       // 2. Auto Status Update
       if (isSubmittingWork && finalStatus !== project?.status) {
         const previousStatus = project?.status || "In Progress";
+
+        let isLateSubmission = false;
+        if (project?.due_date) {
+          const timeStr = project.due_time || "23:59:59";
+          const fullTimeStr = timeStr.length === 5 ? timeStr + ":00" : timeStr;
+          const deadline = new Date(`${project.due_date}T${fullTimeStr}`);
+          isLateSubmission = new Date() > deadline;
+        }
+
+        const logContent = `STATUS_CHANGED:${previousStatus}:${finalStatus}${isLateSubmission ? ":LATE" : ""}`;
+
         const { error: statusError } = await supabase
           .from("projects")
           .update({
@@ -2151,7 +2162,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
           // 2a. Log status change in timeline for visual feedback
           const logPayload = {
             project_id: canonicalId,
-            content: `STATUS_CHANGED:${previousStatus}:${finalStatus}`,
+            content: logContent,
             author_name: profile?.name || "User",
             author_role: currentRole,
             author_id: profile?.id, // For unread tracking
@@ -5146,24 +5157,33 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
                                     const parts = comment.content.split(":");
                                     const oldStatus = parts[1];
                                     const newStatus = parts[2];
+                                    const isLate = parts[3] === "LATE";
                                     return (
                                       <div className="space-y-8 mb-8">
                                         <div className="bg-surface-card border border-surface-border rounded-3xl overflow-hidden group shadow-[0_24px_48px_-12px_rgba(0,0,0,0.5)] transition-all duration-300">
                                           <div className="px-6 py-4 border-b border-surface-border bg-white/[0.03] relative z-20 overflow-hidden">
                                             <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.04)_50%,transparent_100%)] pointer-events-none" />
                                             <div className="flex justify-between items-center relative z-10 w-full">
-                                              <span
-                                                className={`text-[10px] font-bold uppercase tracking-widest ${getStatusCapsuleClasses(
-                                                  newStatus,
-                                                )
-                                                    .split(" ")
-                                                    .find((c) =>
-                                                      c.includes("text-"),
-                                                    ) || "text-brand-primary"
-                                                  }`}
-                                              >
-                                                STATUS CHANGED
-                                              </span>
+                                              <div className="flex items-center gap-3">
+                                                <span
+                                                  className={`text-[10px] font-bold uppercase tracking-widest ${getStatusCapsuleClasses(
+                                                    newStatus,
+                                                  )
+                                                      .split(" ")
+                                                      .find((c) =>
+                                                        c.includes("text-"),
+                                                      ) || "text-brand-primary"
+                                                    }`}
+                                                >
+                                                  STATUS CHANGED
+                                                </span>
+                                                {isLate && (
+                                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-brand-error/10 text-brand-error border border-brand-error/20 animate-pulse">
+                                                    <IconAlertTriangle size={10} className="stroke-[3px]" />
+                                                    Late Submission
+                                                  </span>
+                                                )}
+                                              </div>
                                               {isEditing &&
                                                 (hasPermission(
                                                   "delete_timeline_items",
@@ -5468,15 +5488,26 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
                                             <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">
                                               Date
                                             </span>
-                                            <span className="text-[11px] font-bold text-white uppercase tracking-widest">
-                                              {new Date(
-                                                createdAt || comment.created_at,
-                                              ).toLocaleDateString("en-GB", {
-                                                day: "2-digit",
-                                                month: "long",
-                                                year: "numeric",
-                                              })}
-                                            </span>
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-[11px] font-bold text-white uppercase tracking-widest">
+                                                {new Date(
+                                                  createdAt || comment.created_at,
+                                                ).toLocaleDateString("en-GB", {
+                                                  day: "2-digit",
+                                                  month: "long",
+                                                  year: "numeric",
+                                                })}
+                                              </span>
+                                              <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">
+                                                {new Date(createdAt || comment.created_at)
+                                                  .toLocaleTimeString("en-GB", {
+                                                    hour: "numeric",
+                                                    minute: "2-digit",
+                                                    hour12: true,
+                                                  })
+                                                  .toUpperCase()}
+                                              </span>
+                                            </div>
                                           </div>
                                         </div>
                                       </div>
