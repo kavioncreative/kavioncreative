@@ -410,9 +410,13 @@ export const DashboardLayout: React.FC<{
     { name: 'Profile', label: 'My Profile', icon: <IconUser />, permission: 'view_profile' },
     { name: 'Training', icon: <IconFileVideo />, permission: 'view_training' },
     { name: 'MyNotes', label: 'My Notes', icon: <IconFileText />, permission: 'view_my_notes' },
+    { name: 'Reminders', icon: <IconBell />, permission: 'access_reminders' },
     { name: 'Settings', icon: <IconSettings />, permission: 'view_settings' },
   ] as const).filter(item => {
     const hasPerm = hasPermission(item.permission);
+
+    // Show Reminders in sidebar ONLY for Super Admin
+    if (item.name === 'Reminders' && effectiveRole !== 'Super Admin') return false;
 
     // Explicitly hide My Profile for Super Admin as they access it via Settings > Profile tab
     if (item.name === 'Profile' && effectiveRole === 'Super Admin') return false;
