@@ -1770,23 +1770,42 @@ const CompanyEarnings: React.FC = () => {
     const handleExportCSV = () => {
         if (filteredProjects.length === 0) return;
 
-        const headers = ['Project ID', 'Project Title', 'Status', 'Client', 'Price', 'Platform Commission', 'Freelancer Cut', 'Company Earning', 'Account', 'Order Type', 'Converted By', 'Date'];
+        const isPipeline = activeSummaryFilter === 'pipeline';
+
+        const headers = [
+            'Project ID',
+            'Project Title',
+            'Status',
+            'Client',
+            'Price',
+            'Platform Commission',
+            'Freelancer Cut',
+            'Company Earning',
+            ...(isPipeline ? [] : ['Tips']),
+            'Account',
+            'Order Type',
+            'Converted By',
+            'Created At',
+            ...(isPipeline ? [] : ['Approved On'])
+        ];
         const csvRows = [headers.join(',')];
 
         filteredProjects.forEach(p => {
             const row = [
                 `"${p.formatted_project_id}"`,
-                `"${p.project_title || 'Untitled Project'}"`,
+                `"${(p.project_title || 'Untitled Project').replace(/"/g, '""')}"`,
                 `"${p.status}"`,
                 `"${p.client}"`,
                 `"${(p.price || 0).toFixed(2)}"`,
                 `"${(p.platform_cut || 0).toFixed(2)}"`,
                 `"${(p.freelancer_cut || 0).toFixed(2)}"`,
                 `"${(p.company_earning || 0).toFixed(2)}"`,
+                ...(isPipeline ? [] : [`"${(p.tip_amount || 0).toFixed(2)}"`]),
                 `"${p.account_prefix}"`,
                 `"${p.order_type || 'Direct Order'}"`,
                 `"${p.converted_by || '-'}"`,
-                `"${p.date}"`
+                `"${p.created_date || 'N/A'}"`,
+                ...(isPipeline ? [] : [`"${p.date || 'N/A'}"`])
             ];
             csvRows.push(row.join(','));
         });
@@ -1796,7 +1815,7 @@ const CompanyEarnings: React.FC = () => {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.setAttribute('href', url);
-        link.setAttribute('download', `company_earnings_${new Date().toISOString().split('T')[0]}.csv`);
+        link.setAttribute('download', `${isPipeline ? 'pipeline' : 'secured'}_earnings_${new Date().toISOString().split('T')[0]}.csv`);
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();
