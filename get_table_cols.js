@@ -1,9 +1,13 @@
-
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient('https://efrborampxloagtlphyf.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVmcmJvcmFtcHhsb2FndGxwaHlmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4MDg0MDYsImV4cCI6MjA4NDM4NDQwNn0.axCcmJDy-x-752VsC82_Qbg4YHJtsbQoQqNNCBYG188');
 
 async function check() {
+    await supabase.auth.signInWithPassword({
+        email: 'mansoorulhassan83@gmail.com',
+        password: '12345//'
+    });
+
     const { data, error } = await supabase.from('projects').select('*').limit(1);
     if (error) {
         console.error(error);
@@ -11,8 +15,9 @@ async function check() {
     }
     if (data && data.length > 0) {
         console.log('TABLE_COLUMNS:', JSON.stringify(Object.keys(data[0])));
+        console.log('Sample data:', JSON.stringify(data[0], null, 2));
     } else {
-        console.log('No data in projects table to determine columns');
+        console.log('No data in projects table to determine columns even after login');
     }
 }
 
