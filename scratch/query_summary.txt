@@ -1,0 +1,31 @@
+=== 1. user_account_access counts ===
+Total Rows in user_account_access: 96
+Users with account access: {
+  "82c76684-4db3-4039-9dba-c9a9cf35d7f7": 25,
+  "eb36c3f6-c7c5-4b3f-b9fa-77b5e0539caf": 25,
+  "1e533ae7-dd35-4378-b5d1-d5bcafa99572": 16,
+  "c2b7421b-f511-4928-97be-59f2fd29562e": 20,
+  "52eede17-e0a4-45c4-91d4-786bdfd30c04": 5,
+  "d8a6e098-a5a1-42ce-bf75-d210b64a01fe": 5
+}
+
+=== 2. platform_commissions query test ===
+Total platform_commissions: 1
+Platform: Fiverr (0.2)
+  Accounts linked count: 4
+  Accounts linked detail: [{"account_id":"de6b5c5a-5182-4ebf-a72b-8e0c17ebc8ea"},{"account_id":"349aafac-57d8-45b3-b63a-5ab0d6fe44cf"},{"account_id":"8b1a1b3f-cf22-4ebf-9d88-7d2b8bf8afb5"},{"account_id":"00b0870f-d003-4552-b20f-15e3883cfae8"}]
+
+=== 3. pricing_slabs query test ===
+Total pricing_slabs: 9
+  Slab: $0 to $5 -> Freelancer: 100%
+  Slab: $6 to $10 -> Freelancer: 50%
+  Slab: $11 to $15 -> Freelancer: 35%
+  Slab: $16 to $19 -> Freelancer: 28%
+  Slab: $20 to $49 -> Freelancer: 25%
+  Slab: $50 to $99 -> Freelancer: 20%
+  Slab: $100 to $149 -> Freelancer: 18%
+  Slab: $150 to $199 -> Freelancer: 15%
+  Slab: $200 to $299 -> Freelancer: 10%
+
+=== 4. projects count ===
+Total Projects in DB: 226

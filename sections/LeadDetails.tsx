@@ -77,7 +77,15 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
 
     // Initiate Project Wizard States
     const [isInitiateModalOpen, setIsInitiateModalOpen] = useState(false);
-    const [initiateStep, setInitiateStep] = useState<'summary' | 'brief' | 'price' | 'project_id' | 'addons' | 'deadline' | 'assignee' | 'review'>('summary');
+    const [initiateStep, setInitiateStep] = useState<'converted_by' | 'summary' | 'brief' | 'price' | 'project_id' | 'addons' | 'deadline' | 'assignee' | 'review'>('converted_by');
+    const [projectManagers, setProjectManagers] = useState<any[]>([]);
+    const [selectedConvertedById, setSelectedConvertedById] = useState<string>('');
+
+    useEffect(() => {
+        if (profile?.id) {
+            setSelectedConvertedById(profile.id);
+        }
+    }, [profile]);
 
     const [aiSummary, setAiSummary] = useState('');
     const [isAiLoading, setIsAiLoading] = useState(false);
@@ -161,6 +169,18 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
 
             if (!usersError && usersData) {
                 setTeamMembers(usersData);
+            }
+
+            // Fetch Project Managers (roles containing admin or manager)
+            const { data: pmData, error: pmError } = await supabase
+                .from('profiles')
+                .select('id, name, email, role')
+                .eq('status', 'Active')
+                .or('role.ilike.%admin%,role.ilike.%manager%')
+                .order('name', { ascending: true });
+
+            if (!pmError && pmData) {
+                setProjectManagers(pmData);
             }
 
             // Fetch Workload
@@ -447,7 +467,7 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
                 client_due_time: clientDueTime || null,
                 due_date: formattedDate,
                 due_time: internalDueTime || null,
-                converted_by: profile?.id,
+                converted_by: selectedConvertedById || profile?.id,
                 order_type: 'Inquiry',
                 assignee: teamMembers.find(m => m.id === selectedAssigneeId)?.name || teamMembers.find(m => m.id === selectedAssigneeId)?.email || '',
                 assignee_id: selectedAssigneeId,
@@ -847,7 +867,7 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
                                 leftIcon={<IconBriefcase size={16} />}
                                 onClick={() => {
                                     setIsInitiateModalOpen(true);
-                                    setInitiateStep('summary');
+                                    setInitiateStep('converted_by');
                                     // Here we will trigger the webhook
                                 }}
                             >
@@ -1605,26 +1625,28 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
                 isOpen={isInitiateModalOpen}
                 onClose={() => setIsInitiateModalOpen(false)}
                 title={
-                    initiateStep === 'summary' ? 'Summarize Project Details' :
-                        initiateStep === 'brief' ? 'Finalize Brief' :
-                            initiateStep === 'price' ? 'Price' :
-                                initiateStep === 'project_id' ? 'Project ID' :
-                                    initiateStep === 'addons' ? 'Addons' :
-                                        initiateStep === 'deadline' ? 'Deadline' :
-                                            initiateStep === 'assignee' ? 'Assignee' :
-                                                initiateStep === 'review' ? 'Review & Initiate' :
-                                                    'Initiate Project'
+                    initiateStep === 'converted_by' ? 'Select Project Manager' :
+                        initiateStep === 'summary' ? 'Summarize Project Details' :
+                            initiateStep === 'brief' ? 'Finalize Brief' :
+                                initiateStep === 'price' ? 'Price' :
+                                    initiateStep === 'project_id' ? 'Project ID' :
+                                        initiateStep === 'addons' ? 'Addons' :
+                                            initiateStep === 'deadline' ? 'Deadline' :
+                                                initiateStep === 'assignee' ? 'Assignee' :
+                                                    initiateStep === 'review' ? 'Review & Initiate' :
+                                                        'Initiate Project'
                 }
                 size="lg"
                 isElevatedHeader
                 noBodyPadding
                 footer={
                     <div className="flex justify-between items-center w-full">
-                        {initiateStep === 'summary' ? (
+                        {initiateStep === 'converted_by' ? (
                             <Button variant="recessed" onClick={() => setIsInitiateModalOpen(false)}>Cancel</Button>
                         ) : (
                             <Button variant="recessed" onClick={() => {
-                                if (initiateStep === 'brief') handleNextStep('summary');
+                                if (initiateStep === 'summary') handleNextStep('converted_by');
+                                else if (initiateStep === 'brief') handleNextStep('summary');
                                 else if (initiateStep === 'price') handleNextStep('brief');
                                 else if (initiateStep === 'project_id') handleNextStep('price');
                                 else if (initiateStep === 'addons') handleNextStep('project_id');
@@ -1634,6 +1656,11 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
                             }}>Back</Button>
                         )}
                         <div className="flex gap-3">
+                            {initiateStep === 'converted_by' && (
+                                <Button variant="metallic" onClick={() => handleNextStep('summary')} disabled={!selectedConvertedById}>
+                                    Next
+                                </Button>
+                            )}
                             {initiateStep === 'summary' && !isAiLoading && (
                                 <>
                                     <Button variant="secondary" onClick={() => {
@@ -1667,6 +1694,28 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
                 }
             >
                 <div className="px-6 py-6 lg:px-10 lg:py-8 space-y-6 min-h-[400px]">
+                    {initiateStep === 'converted_by' && (
+                        <div className="space-y-6 py-4 animate-in fade-in duration-300">
+                            <div className="flex flex-col gap-2">
+                                <label className="text-sm font-bold text-white uppercase tracking-wider">Converted By</label>
+                                <p className="text-xs text-gray-500">Select the Project Manager who successfully converted this lead/inquiry.</p>
+                            </div>
+                            <Dropdown
+                                variant="metallic"
+                                label="Select Project Manager"
+                                placeholder="Choose a manager..."
+                                showSearch
+                                options={(projectManagers || []).map(pm => ({
+                                    label: pm.name || pm.email,
+                                    value: pm.id,
+                                    description: pm.role
+                                }))}
+                                value={selectedConvertedById}
+                                onChange={(val) => setSelectedConvertedById(val as string)}
+                            />
+                        </div>
+                    )}
+
                     {initiateStep === 'summary' && (
                         <div className="space-y-6 animate-in fade-in duration-500">
                             {isAiLoading ? (

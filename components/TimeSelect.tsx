@@ -153,7 +153,7 @@ export const TimeSelect: React.FC<TimeSelectProps & { children?: React.ReactNode
           setIsOpen(!isOpen);
         }
       }}
-      className={`w-full flex items-center justify-between transition-all duration-300 ease-out outline-none rounded-xl px-4 py-3 text-white disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer relative overflow-hidden focus:outline-none focus:ring-0 ${variant === 'metallic'
+      className={`w-full h-11 flex items-center justify-between transition-all duration-300 ease-out outline-none rounded-xl px-4 text-white disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer relative overflow-hidden focus:outline-none focus:ring-0 ${variant === 'metallic'
         ? 'bg-black/40 border-none font-bold shadow-[inset_0_2px_8px_rgba(0,0,0,0.6)] focus:bg-black/60'
         : variant === 'recessed'
           ? 'bg-black/40 border border-white/[0.05] shadow-[inset_0_2px_8px_rgba(0,0,0,0.4)] focus:border-white/[0.08] focus:bg-black/50'

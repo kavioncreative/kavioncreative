@@ -511,6 +511,8 @@ const PlatformCommission: React.FC = () => {
 
 const SellerCommissionConfigs: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isEditMode, setIsEditMode] = useState(false);
+    const [selectedCommissionId, setSelectedCommissionId] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [commissions, setCommissions] = useState<any[]>([]);
@@ -581,6 +583,13 @@ const SellerCommissionConfigs: React.FC = () => {
         setLoading(false);
     };
 
+    const handleCloseModal = () => {
+        setIsModalOpen(false);
+        setIsEditMode(false);
+        setSelectedCommissionId(null);
+        setFormData({ sellerId: '', percentage: '', clearanceDays: '14', assignedAccountIds: [] });
+    };
+
     const handleSave = async () => {
         if (!formData.sellerId || !formData.percentage) {
             addToast({ type: 'error', title: 'Missing Fields', message: 'Seller and Commission % are required.' });
@@ -588,31 +597,62 @@ const SellerCommissionConfigs: React.FC = () => {
         }
         setSubmitting(true);
         const factor = parseFloat(formData.percentage) / 100;
-        const payload = {
-            seller_id: formData.sellerId,
-            commission_percentage: factor,
-            clearance_days: parseInt(formData.clearanceDays || '14')
-        };
         
-        const { data, error } = await supabase.from('seller_commissions').insert([payload]).select().single();
-        if (error) {
-            addToast({ type: 'error', title: 'Save Failed', message: error.message });
-            setSubmitting(false);
-            return;
-        }
+        if (isEditMode && selectedCommissionId) {
+            const { error } = await supabase
+                .from('seller_commissions')
+                .update({
+                    seller_id: formData.sellerId,
+                    commission_percentage: factor
+                })
+                .eq('id', selectedCommissionId);
 
-        if (data && formData.assignedAccountIds.length > 0) {
-            const accPayload = formData.assignedAccountIds.map(accId => ({
-                seller_commission_id: data.id,
-                account_id: accId
-            }));
-            await supabase.from('seller_commission_accounts').insert(accPayload);
+            if (error) {
+                addToast({ type: 'error', title: 'Update Failed', message: error.message });
+                setSubmitting(false);
+                return;
+            }
+
+            // Sync account mappings (delete and insert new)
+            await supabase.from('seller_commission_accounts').delete().eq('seller_commission_id', selectedCommissionId);
+
+            if (formData.assignedAccountIds.length > 0) {
+                const accPayload = formData.assignedAccountIds.map(accId => ({
+                    seller_commission_id: selectedCommissionId,
+                    account_id: accId
+                }));
+                await supabase.from('seller_commission_accounts').insert(accPayload);
+            }
+
+            addToast({ type: 'success', title: 'Updated', message: 'Seller commission updated' });
+            handleCloseModal();
+            fetchCommissions();
+        } else {
+            const payload = {
+                seller_id: formData.sellerId,
+                commission_percentage: factor,
+                clearance_days: 14 // Synced dynamically, default 14
+            };
+            
+            const { data, error } = await supabase.from('seller_commissions').insert([payload]).select().single();
+            if (error) {
+                addToast({ type: 'error', title: 'Save Failed', message: error.message });
+                setSubmitting(false);
+                return;
+            }
+
+            if (data && formData.assignedAccountIds.length > 0) {
+                const accPayload = formData.assignedAccountIds.map(accId => ({
+                    seller_commission_id: data.id,
+                    account_id: accId
+                }));
+                await supabase.from('seller_commission_accounts').insert(accPayload);
+            }
+            
+            addToast({ type: 'success', title: 'Saved', message: 'Seller commission saved' });
+            handleCloseModal();
+            fetchCommissions();
         }
-        
-        addToast({ type: 'success', title: 'Saved', message: 'Seller commission saved' });
-        setIsModalOpen(false);
-        setFormData({ sellerId: '', percentage: '', clearanceDays: '14', assignedAccountIds: [] });
-        fetchCommissions();
         setSubmitting(false);
     };
 
@@ -624,7 +664,10 @@ const SellerCommissionConfigs: React.FC = () => {
                     variant="metallic"
                     size="sm"
                     leftIcon={<IconPlus className="w-4 h-4" />}
-                    onClick={() => setIsModalOpen(true)}
+                    onClick={() => {
+                        setIsEditMode(false);
+                        setIsModalOpen(true);
+                    }}
                     className="w-full sm:w-auto"
                 >
                     Add Seller Commission
@@ -659,11 +702,11 @@ const SellerCommissionConfigs: React.FC = () => {
                         )
                     },
                     {
-                        header: 'Clearance Days',
+                        header: 'Clearance Period',
                         key: 'clearance_days',
                         className: 'w-44',
                         render: (item: any) => (
-                            <span className="text-gray-400">{item.clearance_days || 0} Days</span>
+                            <span className="text-gray-400">Monthly (Next Month 15th)</span>
                         )
                     },
                     {
@@ -693,7 +736,17 @@ const SellerCommissionConfigs: React.FC = () => {
                         render: (item: any) => (
                             <KebabMenu
                                 options={[
-                                    { label: 'Edit', icon: <IconEdit className="w-4 h-4" />, onClick: () => { } },
+                                    { label: 'Edit', icon: <IconEdit className="w-4 h-4" />, onClick: () => {
+                                        setIsEditMode(true);
+                                        setSelectedCommissionId(item.id);
+                                        setFormData({
+                                            sellerId: item.seller_id || '',
+                                            percentage: (item.commission_percentage * 100).toString(),
+                                            clearanceDays: (item.clearance_days || 14).toString(),
+                                            assignedAccountIds: item.assigned_account_ids || []
+                                        });
+                                        setIsModalOpen(true);
+                                    } },
                                     { label: 'Delete', icon: <IconTrash className="w-4 h-4" />, variant: 'danger', onClick: async () => {
                                         await supabase.from('seller_commissions').delete().eq('id', item.id);
                                         fetchCommissions();
@@ -708,14 +761,16 @@ const SellerCommissionConfigs: React.FC = () => {
 
             <Modal
                 isOpen={isModalOpen}
-                onClose={() => setIsModalOpen(false)}
-                title="Add Seller Commission"
+                onClose={handleCloseModal}
+                title={isEditMode ? "Edit Seller Commission" : "Add Seller Commission"}
                 size="md"
                 isElevatedFooter={true}
                 footer={(
                     <div className="flex justify-end gap-3">
-                        <Button variant="recessed" onClick={() => setIsModalOpen(false)}>Cancel</Button>
-                        <Button variant="metallic" onClick={handleSave} isLoading={submitting}>Save Commission</Button>
+                        <Button variant="recessed" onClick={handleCloseModal}>Cancel</Button>
+                        <Button variant="metallic" onClick={handleSave} isLoading={submitting}>
+                            {isEditMode ? "Update Commission" : "Save Commission"}
+                        </Button>
                     </div>
                 )}
             >
@@ -748,14 +803,6 @@ const SellerCommissionConfigs: React.FC = () => {
                             onChange={(e) => setFormData({ ...formData, percentage: e.target.value })}
                         />
                     </div>
-                    <Input
-                        variant="metallic"
-                        label="Clearance Days"
-                        placeholder="14"
-                        type="number"
-                        value={formData.clearanceDays}
-                        onChange={(e) => setFormData({ ...formData, clearanceDays: e.target.value })}
-                    />
                     <Dropdown
                         variant="metallic"
                         isMulti
@@ -825,11 +872,34 @@ const SellerEarnings: React.FC = () => {
                 });
             });
 
+            const getDaysLeft = (startDateStr: string) => {
+                if (!startDateStr) return 0;
+                const now = new Date();
+                const currentKarachi = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+                currentKarachi.setHours(0,0,0,0);
+                
+                const startDate = new Date(startDateStr);
+                const startKarachi = new Date(startDate.toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+                
+                let targetMonth = startKarachi.getMonth() + 1;
+                let targetYear = startKarachi.getFullYear();
+                if (targetMonth > 11) {
+                    targetMonth = 0;
+                    targetYear += 1;
+                }
+                const targetRelease = new Date(targetYear, targetMonth, 15, 0, 0, 0, 0);
+                
+                const diffMs = targetRelease.getTime() - currentKarachi.getTime();
+                const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+                return Math.max(0, days);
+            };
+
             const scMap = new Map();
             (sellRes.data || []).forEach(s => {
                 const profileName = Array.isArray(s.profiles) ? s.profiles[0]?.name : (s.profiles as any)?.name;
                 s.seller_commission_accounts?.forEach((a: any) => {
-                    scMap.set(a.account_id, {
+                    const key = `${s.seller_id}_${a.account_id}`;
+                    scMap.set(key, {
                         ...s,
                         sFactor: Number(s.commission_percentage || 0),
                         sellerName: profileName || 'Unknown'
@@ -847,10 +917,11 @@ const SellerEarnings: React.FC = () => {
                 const platformCut = price * pFactor;
 
                 // Seller Math
-                const sComm = scMap.get(accId);
+                const sComm = scMap.get(`${p.converted_by}_${accId}`);
                 const sFactor = sComm?.sFactor || 0;
-                const sellerCut = price * sFactor;
-                const sellerName = sComm?.sellerName || p.primary_manager?.name || p.assignee || 'Unassigned';
+                const isConverted = ['Inquiry', 'Converted'].includes(p.order_type);
+                const sellerCut = isConverted ? (price * sFactor) : 0;
+                const sellerName = sComm?.sellerName || 'Unassigned';
 
                 // Freelancer Math
                 let freelancerCut = 0;
@@ -864,6 +935,7 @@ const SellerEarnings: React.FC = () => {
 
                 // Company Earning
                 const companyEarning = price - platformCut - freelancerCut;
+                const daysLeft = p.clearance_start_date ? getDaysLeft(p.clearance_start_date) : 0;
 
                 return {
                     ...p,
@@ -872,6 +944,7 @@ const SellerEarnings: React.FC = () => {
                     freelancerCut,
                     companyEarning,
                     sellerName,
+                    daysLeft,
                     clientName: (p.client_name && p.client_name !== 'repeat') ? p.client_name : (p.client_type === 'repeat' ? 'Repeat Buyer' : (p.client_type || '-')),
                     project_id: p.project_id || p.id,
                     project_title: p.project_title || 'Untitled',
@@ -969,6 +1042,18 @@ const SellerEarnings: React.FC = () => {
                         className: 'text-right',
                         render: (item: any) => (
                             <span className="text-brand-success font-black tracking-wider drop-shadow-sm">${item.companyEarning.toFixed(2)}</span>
+                        )
+                    },
+                    {
+                        header: 'Clearance',
+                        key: 'daysLeft',
+                        className: 'text-right text-xs',
+                        render: (item: any) => (
+                            item.daysLeft === 0 ? (
+                                <span className="text-brand-success font-bold">Cleared</span>
+                            ) : (
+                                <span className="text-gray-400 font-semibold">{item.daysLeft} Days Left</span>
+                            )
                         )
                     },
                     {
@@ -1499,21 +1584,30 @@ const CompanyEarnings: React.FC = () => {
     const [activeFilter, setActiveFilter] = useState<string | null>('month');
     const [platformCommissions, setPlatformCommissions] = useState<any[]>([]);
     const [pricingSlabs, setPricingSlabs] = useState<any[]>([]);
+    const [sellerCommissions, setSellerCommissions] = useState<any[]>([]);
     const [commissionsLoading, setCommissionsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [loading, setLoading] = useState(true);
     const [projectsData, setProjectsData] = useState<any[]>([]);
     const [activeSummaryFilter, setActiveSummaryFilter] = useState<'all' | 'pipeline' | 'secured' | 'cancelled'>('pipeline');
     const [cancellationReasonModal, setCancellationReasonModal] = useState({ isOpen: false, text: '' });
+    const [errorLog, setErrorLog] = useState<string | null>(null);
 
     useEffect(() => {
         // Only run if user data is ready
         if (!effectiveRole || !profile?.id || accountsLoading) return;
 
         const loadInitialData = async () => {
-            const loadedCommissions = await fetchPlatformCommissions();
-            const loadedSlabs = await fetchPricingSlabs();
-            await fetchProjects(true, loadedCommissions, accounts, loadedSlabs);
+            try {
+                setLoading(true);
+                const loadedCommissions = await fetchPlatformCommissions();
+                const loadedSlabs = await fetchPricingSlabs();
+                const loadedSellers = await fetchSellerCommissions();
+                await fetchProjects(true, loadedCommissions, accounts, loadedSlabs, loadedSellers);
+            } catch (err) {
+                console.error("Error loading initial company earnings data:", err);
+                setLoading(false);
+            }
         };
         loadInitialData();
 
@@ -1533,11 +1627,11 @@ const CompanyEarnings: React.FC = () => {
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [accounts, accountsLoading, effectiveRole, profile?.id]);
+    }, [accountsLoading, effectiveRole, profile?.id]);
 
 
 
-    const fetchProjects = async (isInitial = false, passedCommissions?: any[], passedAccounts?: any[], passedSlabs?: any[]) => {
+    const fetchProjects = async (isInitial = false, passedCommissions?: any[], passedAccounts?: any[], passedSlabs?: any[], passedSellers?: any[]) => {
         try {
             if (isInitial) setLoading(true);
             const isSuperAdmin = effectiveRole === 'Super Admin';
@@ -1569,6 +1663,7 @@ const CompanyEarnings: React.FC = () => {
             const { data, error } = await query.order('created_at', { ascending: false });
 
             if (error) throw error;
+            setErrorLog(null);
             if (data) {
                 const enriched = data.map(p => {
                     const price = Number(p.price || 0);
@@ -1579,6 +1674,7 @@ const CompanyEarnings: React.FC = () => {
 
                     const activeAccounts = passedAccounts || accounts;
                     const activeCommissions = passedCommissions || platformCommissions;
+                    const activeSellers = passedSellers || sellerCommissions;
 
                     // Fallback: If account_id is missing in data, find it by name/prefix from the accounts state
                     if (!accountId && p.account) {
@@ -1586,7 +1682,7 @@ const CompanyEarnings: React.FC = () => {
                         if (matchedAcc) accountId = matchedAcc.id;
                     }
 
-                    const commission = activeCommissions.find(pc => pc.assigned_account_ids.includes(accountId));
+                    const commission = activeCommissions.find(pc => pc.assigned_account_ids?.includes(accountId));
                     const commissionFactor = commission ? (Number(commission.commission_percentage) > 1 ? Number(commission.commission_percentage) / 100 : Number(commission.commission_percentage)) : 0;
 
                     const platformCut = price * commissionFactor;
@@ -1602,14 +1698,32 @@ const CompanyEarnings: React.FC = () => {
                         freelancerCut = (price - platformCut) * (freelancerPct / 100);
                     }
 
-                    // Company earning is the remainder
-                    const companyEarning = price - platformCut - freelancerCut;
+                    // Seller Commission Cut: only applies to converted/inquiry orders
+                    const isConverted = ['Inquiry', 'Converted'].includes(p.order_type);
+                    let sellerCut = 0;
+                    if (isConverted && p.converted_by && accountId) {
+                        const sellerComm = activeSellers.find(sc => 
+                            sc.seller_id === p.converted_by && 
+                            sc.assigned_account_ids?.includes(accountId)
+                        );
+                        if (sellerComm) {
+                            const sellerFactor = sellerComm.commission_percentage ? (
+                                Number(sellerComm.commission_percentage) > 1 
+                                    ? Number(sellerComm.commission_percentage) / 100 
+                                    : Number(sellerComm.commission_percentage)
+                            ) : 0;
+                            sellerCut = price * sellerFactor;
+                        }
+                    }
+
+                    // Company earning is the remainder after platform cut, freelancer cut, and seller commission cut
+                    const companyEarning = price - platformCut - freelancerCut - sellerCut;
 
                     const prefix = (p as any).accounts?.prefix || 'Unassigned Account';
 
                     // FIX: Avoid prefix duplication and handle unassigned state
-                    let formattedId = p.project_id;
-                    if (prefix !== 'Unassigned Account' && !formattedId.startsWith(prefix)) {
+                    let formattedId = p.project_id || '';
+                    if (prefix !== 'Unassigned Account' && formattedId && !formattedId.startsWith(prefix)) {
                         formattedId = `${prefix} ${formattedId}`;
                     }
 
@@ -1618,6 +1732,7 @@ const CompanyEarnings: React.FC = () => {
                         company_earning: companyEarning,
                         platform_cut: platformCut,
                         freelancer_cut: freelancerCut,
+                        seller_cut: sellerCut,
                         account_prefix: prefix,
                         formatted_project_id: formattedId,
                         client: p.client_name || 'General Client',
@@ -1625,14 +1740,16 @@ const CompanyEarnings: React.FC = () => {
                         approved_on_formatted: p.clearance_start_date ? systemFormatDate(new Date(p.clearance_start_date)) : 'N/A',
                         cancelled_at_formatted: p.updated_at ? systemFormatDate(new Date(p.updated_at)) : 'N/A',
                         date: p.clearance_start_date ? systemFormatDate(new Date(p.clearance_start_date)) : 'N/A',
-                        rawDate: p.clearance_start_date
+                        rawDate: p.clearance_start_date,
+                        created_date: p.created_at ? systemFormatDate(new Date(p.created_at)) : 'N/A'
                     };
                 });
 
                 setProjectsData(enriched);
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error('Error fetching company projects:', err);
+            setErrorLog(err?.message || String(err));
         } finally {
             if (isInitial) setLoading(false);
         }
@@ -1750,19 +1867,37 @@ const CompanyEarnings: React.FC = () => {
         return [];
     };
 
+    const fetchSellerCommissions = async () => {
+        const { data, error } = await supabase
+            .from('seller_commissions')
+            .select(`
+                id,
+                seller_id,
+                commission_percentage,
+                clearance_days,
+                seller_commission_accounts (
+                    account_id
+                )
+            `);
+
+        if (!error && data) {
+            const mapped = data.map(item => ({
+                ...item,
+                assigned_account_ids: item.seller_commission_accounts?.map((r: any) => r.account_id) || []
+            }));
+            setSellerCommissions(mapped);
+            return mapped;
+        }
+        return [];
+    };
+
     const handleQuickFilter = (type: string) => {
         const now = new Date();
 
-        // Toggle Off Logic: If already active, reset to default (Last 30 Days)
+        // Toggle Off Logic: If already active, clear date filters
         if (activeFilter === type) {
-            const start = new Date(now);
-            start.setDate(now.getDate() - 29);
-            start.setHours(0, 0, 0, 0);
-            const end = new Date(now);
-            end.setHours(23, 59, 59, 999);
-
-            setFromDate(start);
-            setToDate(end);
+            setFromDate(null);
+            setToDate(null);
             setActiveFilter(null);
             return;
         }
@@ -1794,23 +1929,44 @@ const CompanyEarnings: React.FC = () => {
     const handleExportCSV = () => {
         if (filteredProjects.length === 0) return;
 
-        const headers = ['Project ID', 'Project Title', 'Status', 'Client', 'Price', 'Platform Commission', 'Freelancer Cut', 'Company Earning', 'Account', 'Order Type', 'Converted By', 'Date'];
+        const isPipeline = activeSummaryFilter === 'pipeline';
+
+        const headers = [
+            'Project ID',
+            'Project Title',
+            'Status',
+            'Client',
+            'Price',
+            'Platform Commission',
+            'Freelancer Cut',
+            'Seller Commission',
+            'Company Earning',
+            ...(isPipeline ? [] : ['Tips']),
+            'Account',
+            'Order Type',
+            'Converted By',
+            'Created At',
+            ...(isPipeline ? [] : ['Approved On'])
+        ];
         const csvRows = [headers.join(',')];
 
         filteredProjects.forEach(p => {
             const row = [
                 `"${p.formatted_project_id}"`,
-                `"${p.project_title || 'Untitled Project'}"`,
+                `"${(p.project_title || 'Untitled Project').replace(/"/g, '""')}"`,
                 `"${p.status}"`,
                 `"${p.client}"`,
                 `"${(p.price || 0).toFixed(2)}"`,
                 `"${(p.platform_cut || 0).toFixed(2)}"`,
                 `"${(p.freelancer_cut || 0).toFixed(2)}"`,
+                `"${(p.seller_cut || 0).toFixed(2)}"`,
                 `"${(p.company_earning || 0).toFixed(2)}"`,
+                ...(isPipeline ? [] : [`"${(p.tip_amount || 0).toFixed(2)}"`]),
                 `"${p.account_prefix}"`,
                 `"${p.order_type || 'Direct Order'}"`,
                 `"${p.converted_by || '-'}"`,
-                `"${p.date}"`
+                `"${p.created_date || 'N/A'}"`,
+                ...(isPipeline ? [] : [`"${p.date || 'N/A'}"`])
             ];
             csvRows.push(row.join(','));
         });
@@ -1820,7 +1976,7 @@ const CompanyEarnings: React.FC = () => {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.setAttribute('href', url);
-        link.setAttribute('download', `company_earnings_${new Date().toISOString().split('T')[0]}.csv`);
+        link.setAttribute('download', `${isPipeline ? 'pipeline' : 'secured'}_earnings_${new Date().toISOString().split('T')[0]}.csv`);
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();
@@ -2158,7 +2314,7 @@ const CompanyEarnings: React.FC = () => {
                 />
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-4 w-full overflow-hidden">
                 <Table
                     columns={[
 
@@ -2166,6 +2322,7 @@ const CompanyEarnings: React.FC = () => {
                         {
                             header: 'Project ID',
                             key: 'formatted_project_id',
+                            className: 'text-center',
                             render: (item: any) => (
                                 <span className="font-semibold text-white/90">{item.formatted_project_id}</span>
                             )
@@ -2184,9 +2341,11 @@ const CompanyEarnings: React.FC = () => {
                             render: (p: any) => {
                                 const status = p.status || 'In Progress';
                                 return (
-                                    <span className={getStatusCapsuleClasses(status)}>
-                                        {status}
-                                    </span>
+                                    <div className="flex justify-center">
+                                        <span className={getStatusCapsuleClasses(status)}>
+                                            {status}
+                                        </span>
+                                    </div>
                                 );
                             }
                         },
@@ -2195,7 +2354,7 @@ const CompanyEarnings: React.FC = () => {
                             key: 'order_type',
                             className: 'text-center',
                             render: (item: any) => (
-                                <div className="flex flex-col items-center">
+                                <div className="flex flex-col items-center justify-center">
                                     <span className={`text-[10px] font-black uppercase tracking-wider ${item.order_type === 'Query' ? 'text-brand-primary' : 'text-gray-400'}`}>
                                         {item.order_type || 'Direct Order'}
                                     </span>
@@ -2208,7 +2367,7 @@ const CompanyEarnings: React.FC = () => {
                         {
                             header: 'Client',
                             key: 'client',
-                            className: 'text-gray-400 text-center'
+                            className: 'text-center text-gray-400'
                         },
                         {
                             header: 'Price',
@@ -2232,6 +2391,14 @@ const CompanyEarnings: React.FC = () => {
                             className: 'text-gray-400 text-center',
                             render: (item: any) => (
                                 <span>{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(item.freelancer_cut || 0)}</span>
+                            )
+                        },
+                        {
+                            header: 'Seller Commission',
+                            key: 'seller_cut',
+                            className: 'text-gray-400 text-center',
+                            render: (item: any) => (
+                                <span>{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(item.seller_cut || 0)}</span>
                             )
                         },
                         {
@@ -2309,7 +2476,7 @@ const CompanyEarnings: React.FC = () => {
                     data={filteredProjects}
                     isLoading={loading}
                     isMetallicHeader={true}
-                    isDense={true}
+                    dense={true}
                 />
             </div>
 
@@ -2719,13 +2886,27 @@ const FreelancerEarnings: React.FC = () => {
 
             if (!error && data) {
                 const formatted = data.map(p => {
-                    // Calculate days left in real-time
+                    // Calculate days left in real-time (Next-Month 15th Karachi Time)
                     let daysLeft = 0;
-                    if (p.clearance_start_date && p.clearance_days && p.funds_status === 'Pending') {
-                        const startDate = new Date(p.clearance_start_date);
+                    if (p.clearance_start_date && p.funds_status === 'Pending') {
                         const now = new Date();
-                        const daysPassed = Math.floor((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-                        daysLeft = Math.max(0, p.clearance_days - daysPassed);
+                        const currentKarachi = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+                        currentKarachi.setHours(0, 0, 0, 0);
+
+                        const startDate = new Date(p.clearance_start_date);
+                        const startKarachi = new Date(startDate.toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+
+                        let targetMonth = startKarachi.getMonth() + 1;
+                        let targetYear = startKarachi.getFullYear();
+                        if (targetMonth > 11) {
+                            targetMonth = 0;
+                            targetYear += 1;
+                        }
+                        const targetRelease = new Date(targetYear, targetMonth, 15, 0, 0, 0, 0);
+
+                        const diffMs = targetRelease.getTime() - currentKarachi.getTime();
+                        const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+                        daysLeft = Math.max(0, days);
                     }
 
                     // Auto-correct status if clearance expired

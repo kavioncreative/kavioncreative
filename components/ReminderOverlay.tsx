@@ -8,7 +8,7 @@ import { IconBell, IconSend, IconCloudUpload, IconX, IconCheckCircle, IconLoader
 import { addToast } from './Toast';
 
 // The path to the custom ringtone provided in the public folder
-const NOTIFICATION_SOUND_URL = '/universfield-new-notification-033-480571.mp3';
+const NOTIFICATION_SOUND_URL = '/Ringtone 1.mp3';
 
 interface Reminder {
     id: string;
@@ -36,6 +36,9 @@ export const ReminderOverlay: React.FC = () => {
         }
         return true;
     });
+    const [snoozedReminders, setSnoozedReminders] = useState<{ [key: string]: number }>({});
+    const [isSnoozing, setIsSnoozing] = useState(false);
+    const [snoozeMinutes, setSnoozeMinutes] = useState('5');
 
     // Track last trigger time for each reminder in memory
     const lastTriggerRef = useRef<{ [key: string]: number }>({});
@@ -90,7 +93,8 @@ export const ReminderOverlay: React.FC = () => {
             console.log('📡 ReminderOverlay: Fetching latest reminders from DB...');
             const { data, error } = await supabase
                 .from('reminders')
-                .select('*');
+                .select('*')
+                .eq('user_id', userId);
 
             if (error) {
                 console.error('❌ ReminderOverlay: Fetch error:', error);
@@ -98,9 +102,7 @@ export const ReminderOverlay: React.FC = () => {
             }
 
             if (data) {
-                const myReminders = data.filter((r: any) =>
-                    r.project_managers && r.project_managers.includes(userId)
-                );
+                const myReminders = data;
 
                 console.log(`✅ ReminderOverlay: Found ${myReminders.length} matching reminders for you.`);
 
@@ -159,6 +161,7 @@ export const ReminderOverlay: React.FC = () => {
         console.log('💥 ReminderOverlay: TRIGGERING POPUP for:', reminder.message);
         setCurrentTriggeredReminder(reminder);
         setIsPopupOpen(true);
+        setIsSnoozing(false);
         playAlertSound();
     };
 
@@ -171,63 +174,175 @@ export const ReminderOverlay: React.FC = () => {
             const nowTs = now.getTime();
 
             activeReminders.forEach(r => {
+                const snoozedUntil = snoozedReminders[r.id] || 0;
                 const lastTrigger = lastTriggerRef.current[r.id] || 0;
                 let shouldTrigger = false;
 
-                switch (r.recurrence_type) {
-                    case 'seconds': {
-                        const seconds = r.recurrence_data.seconds || 30;
-                        if (nowTs - lastTrigger >= seconds * 1000) shouldTrigger = true;
-                        break;
+                if (snoozedUntil > 0) {
+                    if (nowTs >= snoozedUntil) {
+                        shouldTrigger = true;
                     }
-                    case 'minutes': {
-                        const minutes = r.recurrence_data.minutes || 15;
-                        if (nowTs - lastTrigger >= minutes * 60 * 1000) shouldTrigger = true;
-                        break;
-                    }
-                    case 'hourly': {
-                        const minOfHour = r.recurrence_data.minuteOfHour || 0;
-                        if (now.getMinutes() === minOfHour && now.getSeconds() === 0) {
-                            if (nowTs - lastTrigger > 60000) shouldTrigger = true;
+                } else {
+                    switch (r.recurrence_type) {
+                        case 'seconds': {
+                            const seconds = r.recurrence_data.seconds || 30;
+                            if (nowTs - lastTrigger >= seconds * 1000) shouldTrigger = true;
+                            break;
                         }
-                        break;
-                    }
-                    case 'daily': {
-                        const [h, m] = r.time.split(':').map(Number);
-                        if (now.getHours() === h && now.getMinutes() === m && now.getSeconds() === 0) {
-                            if (nowTs - lastTrigger > 60000) shouldTrigger = true;
+                        case 'minutes': {
+                            const minutes = r.recurrence_data.minutes || 15;
+                            if (nowTs - lastTrigger >= minutes * 60 * 1000) shouldTrigger = true;
+                            break;
                         }
-                        break;
-                    }
-                    case 'weekly': {
-                        const days = r.recurrence_data.daysOfWeek || [];
-                        const dayName = now.toLocaleDateString('en-US', { weekday: 'short' });
-                        const [h, m] = r.time.split(':').map(Number);
-                        if (days.includes(dayName) && now.getHours() === h && now.getMinutes() === m && now.getSeconds() === 0) {
-                            if (nowTs - lastTrigger > 60000) shouldTrigger = true;
+                        case 'hourly': {
+                            const minOfHour = r.recurrence_data.minuteOfHour || 0;
+                            if (now.getMinutes() === minOfHour) {
+                                if (nowTs - lastTrigger > 60000) shouldTrigger = true;
+                            }
+                            break;
                         }
-                        break;
-                    }
-                    case 'monthly': {
-                        const dayOfMonth = r.recurrence_data.dayOfMonth || 1;
-                        const [h, m] = r.time.split(':').map(Number);
-                        if (now.getDate() === dayOfMonth && now.getHours() === h && now.getMinutes() === m && now.getSeconds() === 0) {
-                            if (nowTs - lastTrigger > 60000) shouldTrigger = true;
+                        case 'daily': {
+                            const [h, m] = r.time.split(':').map(Number);
+                            if (now.getHours() === h && now.getMinutes() === m) {
+                                if (nowTs - lastTrigger > 60000) shouldTrigger = true;
+                            }
+                            break;
                         }
-                        break;
+                        case 'weekly': {
+                            const days = r.recurrence_data.daysOfWeek || [];
+                            const dayName = now.toLocaleDateString('en-US', { weekday: 'short' });
+                            const [h, m] = r.time.split(':').map(Number);
+                            if (days.includes(dayName) && now.getHours() === h && now.getMinutes() === m) {
+                                if (nowTs - lastTrigger > 60000) shouldTrigger = true;
+                            }
+                            break;
+                        }
+                        case 'monthly': {
+                            const dayOfMonth = r.recurrence_data.dayOfMonth || 1;
+                            const [h, m] = r.time.split(':').map(Number);
+                            if (now.getDate() === dayOfMonth && now.getHours() === h && now.getMinutes() === m) {
+                                if (nowTs - lastTrigger > 60000) shouldTrigger = true;
+                            }
+                            break;
+                        }
+                        case 'once': {
+                            const targetDate = r.recurrence_data.date;
+                            const [h, m] = r.time.split(':').map(Number);
+                            
+                            // Format today's date in local time as YYYY-MM-DD
+                            const todayStr = now.getFullYear() + '-' + 
+                                            String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+                                            String(now.getDate()).padStart(2, '0');
+                            
+                            if (targetDate === todayStr && now.getHours() === h && now.getMinutes() === m) {
+                                if (nowTs - lastTrigger > 60000) shouldTrigger = true;
+                            }
+                            break;
+                        }
                     }
                 }
 
                 if (shouldTrigger) {
                     console.log('⏰ ReminderOverlay: Schedule reached for:', r.id);
                     lastTriggerRef.current[r.id] = nowTs;
+
+                    // Clear snooze record so it doesn't trigger on subsequent runs
+                    if (snoozedReminders[r.id]) {
+                        setSnoozedReminders(prev => {
+                            const copy = { ...prev };
+                            delete copy[r.id];
+                            return copy;
+                        });
+                    }
+
                     triggerPopup(r);
                 }
             });
         }, 1000);
 
         return () => clearInterval(interval);
-    }, [activeReminders, isPopupOpen, isResponseModalOpen]);
+    }, [activeReminders, isPopupOpen, isResponseModalOpen, snoozedReminders]);
+
+    const handleDismiss = async () => {
+        if (!currentTriggeredReminder) return;
+
+        const reminderId = currentTriggeredReminder.id;
+        const isOnce = currentTriggeredReminder.recurrence_type === 'once';
+
+        setIsPopupOpen(false);
+        setCurrentTriggeredReminder(null);
+        setIsSnoozing(false);
+
+        // Clear snooze memory for this reminder
+        setSnoozedReminders(prev => {
+            const copy = { ...prev };
+            delete copy[reminderId];
+            return copy;
+        });
+
+        if (isOnce) {
+            console.log(`🗑️ ReminderOverlay: Auto-deleting one-time reminder ${reminderId} on dismiss`);
+            const { error } = await supabase
+                .from('reminders')
+                .delete()
+                .eq('id', reminderId);
+            if (error) {
+                console.error('❌ ReminderOverlay: Failed to auto-delete one-time reminder:', error);
+            }
+        }
+    };
+
+    const handleDismissResponse = async () => {
+        if (!currentTriggeredReminder) {
+            setIsResponseModalOpen(false);
+            return;
+        }
+
+        const reminderId = currentTriggeredReminder.id;
+        const isOnce = currentTriggeredReminder.recurrence_type === 'once';
+
+        setIsResponseModalOpen(false);
+        setCurrentTriggeredReminder(null);
+        setIsSnoozing(false);
+
+        // Clear snooze memory for this reminder
+        setSnoozedReminders(prev => {
+            const copy = { ...prev };
+            delete copy[reminderId];
+            return copy;
+        });
+
+        if (isOnce) {
+            console.log(`🗑️ ReminderOverlay: Auto-deleting one-time reminder ${reminderId} on response discard`);
+            const { error } = await supabase
+                .from('reminders')
+                .delete()
+                .eq('id', reminderId);
+            if (error) {
+                console.error('❌ ReminderOverlay: Failed to auto-delete one-time reminder:', error);
+            }
+        }
+    };
+
+    const handleApplySnooze = () => {
+        if (!currentTriggeredReminder) return;
+        const mins = parseInt(snoozeMinutes, 10);
+        if (isNaN(mins) || mins <= 0) return;
+
+        const snoozeUntilTime = Date.now() + mins * 60 * 1000;
+        const reminderId = currentTriggeredReminder.id;
+
+        setSnoozedReminders(prev => ({
+            ...prev,
+            [reminderId]: snoozeUntilTime
+        }));
+
+        console.log(`⏰ ReminderOverlay: Snoozing reminder ${reminderId} for ${mins} minutes (until ${new Date(snoozeUntilTime).toLocaleTimeString()})`);
+        
+        setIsSnoozing(false);
+        setIsPopupOpen(false);
+        setCurrentTriggeredReminder(null);
+    };
 
     const handleRespond = () => {
         setIsPopupOpen(false);
@@ -273,10 +388,33 @@ export const ReminderOverlay: React.FC = () => {
             if (error) throw error;
 
             addToast({ type: 'success', title: 'Response Sent', message: 'Your response has been submitted successfully.' });
+
+            const reminderId = currentTriggeredReminder.id;
+            const isOnce = currentTriggeredReminder.recurrence_type === 'once';
+
             setIsResponseModalOpen(false);
             setResponseText('');
             setSelectedFiles([]);
             setCurrentTriggeredReminder(null);
+            setIsSnoozing(false);
+
+            // Clear snooze memory for this reminder
+            setSnoozedReminders(prev => {
+                const copy = { ...prev };
+                delete copy[reminderId];
+                return copy;
+            });
+
+            if (isOnce) {
+                console.log(`🗑️ ReminderOverlay: Auto-deleting one-time reminder ${reminderId} after successful response`);
+                const { error: delError } = await supabase
+                    .from('reminders')
+                    .delete()
+                    .eq('id', reminderId);
+                if (delError) {
+                    console.error('❌ ReminderOverlay: Failed to auto-delete one-time reminder:', delError);
+                }
+            }
         } catch (error: any) {
             console.error('Submission failed:', error);
             addToast({ type: 'error', title: 'Error', message: error.message || 'Failed to submit response.' });
@@ -296,20 +434,22 @@ export const ReminderOverlay: React.FC = () => {
 
                         <div className="p-5 flex flex-col gap-4">
                             <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-brand-primary/20 flex items-center justify-center text-brand-primary animate-bounce">
+                                <div className="flex items-center gap-3 min-w-0 flex-1 mr-2">
+                                    <div className="w-10 h-10 rounded-xl bg-brand-primary/20 flex items-center justify-center text-brand-primary animate-bounce shrink-0">
                                         <IconBell className="w-5 h-5" />
                                     </div>
-                                    <div>
-                                        <h4 className="text-sm font-bold text-white uppercase tracking-wider">Reminder</h4>
-                                        <p className="text-[10px] text-brand-primary font-bold uppercase tracking-widest leading-none">
+                                    <div className="min-w-0">
+                                        <h4 className="text-sm font-bold text-white uppercase tracking-wider truncate max-w-[200px]" title={currentTriggeredReminder.recurrence_data?.title}>
+                                            {currentTriggeredReminder.recurrence_data?.title || 'Reminder'}
+                                        </h4>
+                                        <p className="text-[10px] text-brand-primary font-bold uppercase tracking-widest leading-none mt-0.5">
                                             {currentTriggeredReminder.type === 'refresher' ? 'Daily Refresher' : 'Task Alert'}
                                         </p>
                                     </div>
                                 </div>
                                 <button
-                                    onClick={() => setIsPopupOpen(false)}
-                                    className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors"
+                                    onClick={handleDismiss}
+                                    className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors shrink-0"
                                 >
                                     <IconX className="w-4 h-4" />
                                 </button>
@@ -321,14 +461,68 @@ export const ReminderOverlay: React.FC = () => {
                                 </p>
                             </div>
 
-                            <Button
-                                variant="primary"
-                                size="md"
-                                onClick={handleRespond}
-                                className="w-full shadow-lg shadow-brand-primary/20"
-                            >
-                                Respond Now
-                            </Button>
+                            {!isSnoozing ? (
+                                <div className="flex flex-col gap-2">
+                                    <Button
+                                        variant="primary"
+                                        size="md"
+                                        onClick={handleRespond}
+                                        className="w-full shadow-lg shadow-brand-primary/20"
+                                    >
+                                        Respond Now
+                                    </Button>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => setIsSnoozing(true)}
+                                            className="w-full border border-white/10 hover:bg-white/5"
+                                        >
+                                            Snooze
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={handleDismiss}
+                                            className="w-full bg-brand-error/10 hover:bg-brand-error/20 text-brand-error border border-brand-error/20"
+                                        >
+                                            Done / Stop
+                                        </Button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="p-3 rounded-xl bg-black/20 border border-white/5 space-y-3">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Snooze (minutes)</span>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            max="1440"
+                                            value={snoozeMinutes}
+                                            onChange={(e) => setSnoozeMinutes(e.target.value)}
+                                            className="w-16 h-8 text-center text-xs font-bold text-white bg-black/40 border border-white/10 rounded-lg outline-none focus:border-brand-primary transition-colors"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <Button
+                                            variant="ghost"
+                                            size="xs"
+                                            onClick={() => setIsSnoozing(false)}
+                                            className="w-full border border-white/10 text-gray-400 hover:text-white"
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            variant="primary"
+                                            size="xs"
+                                            onClick={handleApplySnooze}
+                                            className="w-full shadow-md shadow-brand-primary/10"
+                                        >
+                                            Snooze
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -337,13 +531,13 @@ export const ReminderOverlay: React.FC = () => {
             {/* Response Modal */}
             <Modal
                 isOpen={isResponseModalOpen}
-                onClose={() => setIsResponseModalOpen(false)}
+                onClose={handleDismissResponse}
                 title="Reminder Response"
                 size="md"
                 isElevatedFooter
                 footer={
                     <div className="flex justify-end gap-3 w-full">
-                        <Button variant="ghost" onClick={() => setIsResponseModalOpen(false)}>Discard</Button>
+                        <Button variant="ghost" onClick={handleDismissResponse}>Discard</Button>
                         <Button
                             variant="primary"
                             onClick={handleSubmitResponse}
@@ -363,7 +557,9 @@ export const ReminderOverlay: React.FC = () => {
                                 <IconInfo className="w-5 h-5" />
                             </div>
                             <div>
-                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Reminder Context</p>
+                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
+                                    {currentTriggeredReminder.recurrence_data?.title || 'Reminder Context'}
+                                </p>
                                 <p className="text-sm text-gray-200 italic">"{currentTriggeredReminder.message}"</p>
                             </div>
                         </div>

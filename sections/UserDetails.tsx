@@ -34,6 +34,25 @@ import { addToast } from '../components/Toast';
 import { formatDisplayName } from '../utils/formatter';
 import { useUser } from '../contexts/UserContext';
 
+const PERMISSION_HIERARCHY: Record<string, { parent: string; children: string[] }> = {
+    'Finances': {
+        parent: 'view_finances',
+        children: ['view_company_earnings', 'view_freelancer_earnings', 'manage_finance_config']
+    },
+    'Projects': {
+        parent: 'view_projects',
+        children: ['create_projects', 'edit_projects', 'delete_projects', 'delete_timeline_items']
+    },
+    'Users': {
+        parent: 'view_users',
+        children: ['manage_users', 'view_applicants', 'create_users', 'edit_users', 'delete_users', 'manage_teams']
+    },
+    'Analytics': {
+        parent: 'view_analytics',
+        children: ['view_gig_stats', 'view_sales_analytics']
+    }
+};
+
 interface UserDetailsProps {
     userId: string;
     onBack: () => void;
@@ -63,13 +82,68 @@ const UserDetails: React.FC<UserDetailsProps> = ({ userId, onBack, onStatusChang
     const [uploadingSide, setUploadingSide] = useState<'front' | 'back' | null>(null);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isSavingPayout, setIsSavingPayout] = useState(false);
+    const [payoutData, setPayoutData] = useState<{ strategy: string; rate: number }>({
+        strategy: 'slab',
+        rate: 0
+    });
     const [updatingPreferred, setUpdatingPreferred] = useState(false);
-    const [payoutData, setPayoutData] = useState({ strategy: 'slab', rate: 0 });
     const [preferredMethod, setPreferredMethod] = useState<string>('');
+    const [availablePermissions, setAvailablePermissions] = useState<any[]>([]);
+    const [selectedOverrides, setSelectedOverrides] = useState<string[]>([]);
+    const [isSavingOverrides, setIsSavingOverrides] = useState(false);
+
+    // OTD Scorecard states
+    const [otdScore, setOtdScore] = useState<number | null>(null);
+    const [totalDeliveries, setTotalDeliveries] = useState(0);
+    const [lateCount, setLateCount] = useState(0);
+    const [timelyCount, setTimelyCount] = useState(0);
+    const [isOtdLoading, setIsOtdLoading] = useState(false);
 
     useEffect(() => {
         fetchUserDetails();
     }, [userId]);
+
+    const fetchOtdStats = async (targetUserId: string) => {
+        setIsOtdLoading(true);
+        try {
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            
+            const { data, error } = await supabase
+                .from('project_comments')
+                .select('content')
+                .eq('author_id', targetUserId)
+                .like('content', 'STATUS_CHANGED:%')
+                .gte('created_at', thirtyDaysAgo.toISOString());
+
+            if (error) throw error;
+
+            let total = 0;
+            let late = 0;
+            let timely = 0;
+
+            if (data) {
+                data.forEach(item => {
+                    total++;
+                    const parts = item.content.split(':');
+                    if (parts[3] === 'LATE') {
+                        late++;
+                    } else {
+                        timely++;
+                    }
+                });
+            }
+
+            setTotalDeliveries(total);
+            setLateCount(late);
+            setTimelyCount(timely);
+            setOtdScore(total > 0 ? Math.round((timely / total) * 100) : 100);
+        } catch (err) {
+            console.error('Error fetching OTD statistics:', err);
+        } finally {
+            setIsOtdLoading(false);
+        }
+    };
 
     const fetchUserDetails = async () => {
         if (!user) setLoading(true); // Only show spinner if we don't have cached data
@@ -89,6 +163,30 @@ const UserDetails: React.FC<UserDetailsProps> = ({ userId, onBack, onStatusChang
                 rate: data.fixed_payout_rate || 0
             });
             setPreferredMethod(data.preferred_payment_method || '');
+            
+            // Set overrides
+            setSelectedOverrides(data.additional_permissions || []);
+
+            // Fetch available permissions
+            const { data: allPerms, error: permsError } = await supabase
+                .from('permissions')
+                .select('*')
+                .order('category', { ascending: true });
+                
+            if (!permsError && allPerms) {
+                setAvailablePermissions(allPerms);
+            }
+
+            // Fetch OTD stats if role matches delivery roles
+            const isDeliveryRole = ['freelancer', 'team lead', 'team designer'].includes(data.role?.toLowerCase() || '');
+            if (isDeliveryRole) {
+                await fetchOtdStats(userId);
+            } else {
+                setOtdScore(null);
+                setTotalDeliveries(0);
+                setLateCount(0);
+                setTimelyCount(0);
+            }
 
             // Sync this specific user back into the general users cache
             const cachedUsers = localStorage.getItem('nova_users_cache');
@@ -332,6 +430,38 @@ const UserDetails: React.FC<UserDetailsProps> = ({ userId, onBack, onStatusChang
         }
     };
 
+    const handleUpdateOverrides = async () => {
+        setIsSavingOverrides(true);
+        try {
+            const { error } = await supabase
+                .from('profiles')
+                .update({ additional_permissions: selectedOverrides })
+                .eq('id', userId);
+
+            if (error) throw error;
+            
+            setUser({ ...user, additional_permissions: selectedOverrides });
+            
+            // Sync cache
+            const cachedUsers = localStorage.getItem('nova_users_cache');
+            if (cachedUsers) {
+                const users = JSON.parse(cachedUsers);
+                const index = users.findIndex((u: any) => u.id === userId);
+                if (index !== -1) {
+                    users[index] = { ...users[index], additional_permissions: selectedOverrides };
+                    localStorage.setItem('nova_users_cache', JSON.stringify(users));
+                }
+            }
+            
+            addToast({ type: 'success', title: 'Permissions Saved', message: 'User custom permission overrides updated successfully.' });
+        } catch (error: any) {
+            console.error('Error updating permission overrides:', error);
+            addToast({ type: 'error', title: 'Update Failed', message: error.message });
+        } finally {
+            setIsSavingOverrides(false);
+        }
+    };
+
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-[400px]">
@@ -479,6 +609,152 @@ const UserDetails: React.FC<UserDetailsProps> = ({ userId, onBack, onStatusChang
                         </div>
                     </div>
                 </div>
+
+                {/* On-Time Delivery Scorecard (Only for delivery roles) */}
+                {otdScore !== null && (
+                    <ElevatedMetallicCard
+                        title="On-Time Delivery Scorecard"
+                        bodyClassName="p-8 relative"
+                        className="w-full"
+                    >
+                        {isOtdLoading && (
+                            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-30 flex items-center justify-center rounded-b-2xl">
+                                <div className="flex items-center gap-3 bg-black/60 border border-white/10 px-5 py-3 rounded-2xl shadow-xl">
+                                    <IconLoader className="w-5 h-5 text-brand-primary animate-spin" />
+                                    <span className="text-xs font-bold text-white uppercase tracking-wider">Recalculating Score...</span>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                            {/* Left Column: Score & Rating Gauge Card */}
+                            <div className="lg:col-span-1 flex flex-col items-center justify-center p-6 rounded-2xl bg-black/40 border border-white/5 shadow-[inset_0_2px_8px_rgba(0,0,0,0.5)] relative overflow-hidden group">
+                                {/* Diagonal sheen inside */}
+                                <div className="absolute inset-0 bg-[linear-gradient(125deg,rgba(255,255,255,0.01)_0%,transparent_50%,rgba(255,255,255,0.01)_100%)] pointer-events-none" />
+
+                                {/* SVG Circular Progress */}
+                                <div className="relative w-32 h-32 flex items-center justify-center mb-4">
+                                    {/* Neon drop-shadow/glow wrapper */}
+                                    <div className={`absolute inset-0 rounded-full blur-[12px] opacity-20 transition-all duration-500 ${
+                                        otdScore >= 90 ? "bg-brand-success" :
+                                        otdScore >= 75 ? "bg-brand-warning" : "bg-brand-error"
+                                    }`} />
+
+                                    <svg className="w-full h-full transform -rotate-90 relative z-10">
+                                        <circle
+                                            cx="64"
+                                            cy="64"
+                                            r="52"
+                                            className="stroke-white/[0.03]"
+                                            strokeWidth="8"
+                                            fill="transparent"
+                                        />
+                                        <circle
+                                            cx="64"
+                                            cy="64"
+                                            r="52"
+                                            className={
+                                                otdScore >= 90 ? "stroke-brand-success" :
+                                                otdScore >= 75 ? "stroke-brand-warning" : "stroke-brand-error"
+                                            }
+                                            strokeWidth="8"
+                                            fill="transparent"
+                                            strokeDasharray={`${2 * Math.PI * 52}`}
+                                            strokeDashoffset={`${2 * Math.PI * 52 * (1 - otdScore / 100)}`}
+                                            strokeLinecap="round"
+                                            style={{ transition: 'stroke-dashoffset 0.8s ease-in-out' }}
+                                        />
+                                    </svg>
+                                    <div className="absolute flex flex-col items-center justify-center z-20">
+                                        <span className="text-2xl font-black text-white tracking-tight">{otdScore}%</span>
+                                        <span className="text-[7.5px] font-bold text-gray-500 uppercase tracking-widest mt-0.5">OTD SCORE</span>
+                                    </div>
+                                </div>
+
+                                {/* Badging and description */}
+                                <div className="text-center space-y-2 w-full">
+                                    <div className="flex justify-center">
+                                        {totalDeliveries === 0 ? (
+                                            <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-white/5 text-gray-400 border border-white/10 shadow-inner">
+                                                New Deliverer
+                                            </span>
+                                        ) : otdScore === 100 && totalDeliveries >= 5 ? (
+                                            <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-brand-success/15 text-brand-success border border-brand-success/30 shadow-[0_0_15px_rgba(34,197,94,0.25)]">
+                                                Flawless Delivery
+                                            </span>
+                                        ) : otdScore >= 90 ? (
+                                            <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-brand-success/10 text-brand-success border border-brand-success/20">
+                                                Highly Reliable
+                                            </span>
+                                        ) : otdScore >= 75 ? (
+                                            <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-brand-warning/10 text-brand-warning border border-brand-warning/20">
+                                                Satisfactory
+                                            </span>
+                                        ) : (
+                                            <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-brand-error/15 text-brand-error border border-brand-error/30 animate-pulse flex items-center gap-1 justify-center">
+                                                <IconAlertTriangle size={10} className="stroke-[3px]" />
+                                                Frequent Late Deliverer
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider leading-relaxed">
+                                        Last 30 Rolling Days
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Right Column: Rating Details & Stats Grid */}
+                            <div className="lg:col-span-2 flex flex-col justify-between space-y-6">
+                                {/* Header / Summary section */}
+                                <div className="space-y-2">
+                                    <h3 className="text-xl font-black text-white tracking-tight">Performance Rating</h3>
+                                    <p className="text-sm text-gray-400 leading-relaxed max-w-xl">
+                                        This rating measures on-time delivery. Staying above 90% ensures top eligibility status, while consistent late deliveries impact team allocations.
+                                    </p>
+                                </div>
+
+                                {/* Stats Grid */}
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                    {/* Stat 1: Total Deliveries */}
+                                    <div className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl flex flex-col justify-between hover:border-white/10 hover:bg-white/[0.03] transition-all group shadow-md relative overflow-hidden">
+                                        <div className="absolute top-0 right-0 w-16 h-16 bg-white/[0.01] rounded-bl-full pointer-events-none group-hover:bg-white/[0.02] transition-colors" />
+                                        <span className="text-[9px] font-bold text-gray-500 uppercase tracking-[0.2em] mb-4">Total Deliveries</span>
+                                        <div className="flex items-baseline gap-1">
+                                            <span className="text-4xl font-black text-white tracking-tight group-hover:scale-105 transition-transform origin-left duration-300">{totalDeliveries}</span>
+                                            <span className="text-xs text-gray-500 font-bold uppercase tracking-wider">Total</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Stat 2: On-Time / Early */}
+                                    <div className="bg-brand-success/[0.02] border border-brand-success/5 p-5 rounded-2xl flex flex-col justify-between hover:border-brand-success/15 hover:bg-brand-success/[0.04] transition-all group shadow-md relative overflow-hidden">
+                                        <div className="absolute top-0 right-0 w-16 h-16 bg-brand-success/[0.02] rounded-bl-full pointer-events-none group-hover:bg-brand-success/[0.04] transition-colors" />
+                                        <span className="text-[9px] font-bold text-brand-success/70 uppercase tracking-[0.2em] mb-4">On-Time / Early</span>
+                                        <div className="flex items-baseline gap-1">
+                                            <span className="text-4xl font-black text-brand-success tracking-tight group-hover:scale-105 transition-transform origin-left duration-300">{timelyCount}</span>
+                                            <span className="text-xs text-brand-success/60 font-bold uppercase tracking-wider">Timely</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Stat 3: Late Deliveries */}
+                                    <div className={`border p-5 rounded-2xl flex flex-col justify-between transition-all group shadow-md relative overflow-hidden ${
+                                        lateCount > 0 
+                                            ? 'bg-brand-error/[0.02] border-brand-error/15 hover:border-brand-error/30 hover:bg-brand-error/[0.04]' 
+                                            : 'bg-white/[0.02] border-white/5 hover:border-white/10 hover:bg-white/[0.03]'
+                                    }`}>
+                                        <div className={`absolute top-0 right-0 w-16 h-16 rounded-bl-full pointer-events-none transition-colors ${
+                                            lateCount > 0 ? 'bg-brand-error/[0.02] group-hover:bg-brand-error/[0.04]' : 'bg-white/[0.01]'
+                                        }`} />
+                                        <span className={`text-[9px] font-bold uppercase tracking-[0.2em] mb-4 ${lateCount > 0 ? 'text-brand-error/80' : 'text-gray-500'}`}>Late Deliveries</span>
+                                        <div className="flex items-baseline gap-1">
+                                            <span className={`text-4xl font-black tracking-tight group-hover:scale-105 transition-transform origin-left duration-300 ${lateCount > 0 ? 'text-brand-error' : 'text-gray-500'}`}>{lateCount}</span>
+                                            <span className={`text-xs font-bold uppercase tracking-wider ${lateCount > 0 ? 'text-brand-error/60' : 'text-gray-500'}`}>Late</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </ElevatedMetallicCard>
+                )}
 
                 {/* User Details Metadata Card */}
                 <Card isElevated className="p-0 overflow-hidden">
@@ -803,6 +1079,202 @@ const UserDetails: React.FC<UserDetailsProps> = ({ userId, onBack, onStatusChang
                                     isLoading={isSavingPayout}
                                 >
                                     Save Configuration
+                                </Button>
+                            </div>
+                        </div>
+                    </ElevatedMetallicCard>
+                </div>
+            )}
+
+            {/* Permission Overrides */}
+            {canEdit && availablePermissions.length > 0 && (
+                <div className="w-full">
+                    <ElevatedMetallicCard
+                        title="Granular Permission Overrides"
+                        bodyClassName="p-8 space-y-8"
+                        className="w-full"
+                    >
+                        <div className="space-y-6">
+                            <div className="flex items-center gap-5">
+                                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-primary/20 to-brand-primary/5 border border-brand-primary/20 flex items-center justify-center text-brand-primary shadow-lg shadow-brand-primary/5">
+                                    <IconLock size={28} />
+                                </div>
+                                <div className="space-y-1">
+                                    <h3 className="text-lg font-black text-white tracking-tight leading-none">Custom Access Control</h3>
+                                    <p className="text-xs text-gray-500 font-medium tracking-tight">Assign user-specific override capabilities outside of their default role scope</p>
+                                </div>
+                            </div>
+
+                            {/* Group permissions by Category */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {(Object.entries(
+                                    availablePermissions.reduce((acc, perm) => {
+                                        if (!acc[perm.category]) acc[perm.category] = [];
+                                        acc[perm.category].push(perm);
+                                        return acc;
+                                    }, {} as Record<string, any[]>)
+                                ) as [string, any[]][]).map(([category, perms]) => (
+                                    <div key={category} className="space-y-3 bg-white/[0.01] border border-white/5 p-5 rounded-2xl">
+                                        <h4 className="text-xs font-black text-brand-primary uppercase tracking-widest border-b border-white/5 pb-2 mb-3">
+                                            {category}
+                                        </h4>
+                                        <div className="space-y-3.5">
+                                            {(() => {
+                                                const hierarchy = PERMISSION_HIERARCHY[category];
+                                                if (hierarchy) {
+                                                    const parentPerm = perms.find(p => p.code === hierarchy.parent);
+                                                    const childPerms = perms.filter(p => hierarchy.children.includes(p.code));
+                                                    const otherPerms = perms.filter(p => p.code !== hierarchy.parent && !hierarchy.children.includes(p.code));
+
+                                                    const isParentChecked = parentPerm ? selectedOverrides.includes(parentPerm.code) : false;
+
+                                                    return (
+                                                        <div className="space-y-4">
+                                                            {/* Parent Permission */}
+                                                            {parentPerm && (
+                                                                <label className="flex items-start gap-3 cursor-pointer group select-none">
+                                                                    <input 
+                                                                        type="checkbox"
+                                                                        checked={isParentChecked}
+                                                                        onChange={(e) => {
+                                                                            if (e.target.checked) {
+                                                                                setSelectedOverrides(prev => [...prev, parentPerm.code]);
+                                                                            } else {
+                                                                                // Disable parent and also uncheck all children to prevent confusion
+                                                                                setSelectedOverrides(prev => prev.filter(c => c !== parentPerm.code && !hierarchy.children.includes(c)));
+                                                                            }
+                                                                        }}
+                                                                        className="mt-1 w-4 h-4 rounded border-white/10 bg-black/20 text-brand-primary focus:ring-brand-primary cursor-pointer"
+                                                                    />
+                                                                    <div className="flex flex-col">
+                                                                        <span className="text-sm font-bold text-white group-hover:text-brand-primary transition-colors flex items-center gap-1.5">
+                                                                            {parentPerm.name}
+                                                                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-brand-primary/10 text-brand-primary font-black uppercase tracking-wider">Master Access</span>
+                                                                        </span>
+                                                                        {parentPerm.description && (
+                                                                            <span className="text-[10px] text-gray-500 font-medium">
+                                                                                {parentPerm.description}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </label>
+                                                            )}
+
+                                                            {/* Child Permissions (Indented & Disabled if Parent is Unchecked) */}
+                                                            {childPerms.length > 0 && (
+                                                                <div className={`pl-6 ml-2 border-l border-white/5 space-y-3.5 transition-all duration-300 ${isParentChecked ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
+                                                                    {childPerms.map((perm) => {
+                                                                        const isChecked = selectedOverrides.includes(perm.code);
+                                                                        return (
+                                                                            <label key={perm.code} className={`flex items-start gap-3 select-none ${isParentChecked ? 'cursor-pointer group' : 'cursor-not-allowed'}`}>
+                                                                                <input 
+                                                                                    type="checkbox"
+                                                                                    checked={isChecked && isParentChecked}
+                                                                                    disabled={!isParentChecked}
+                                                                                    onChange={(e) => {
+                                                                                        if (e.target.checked) {
+                                                                                            setSelectedOverrides(prev => [...prev, perm.code]);
+                                                                                        } else {
+                                                                                            setSelectedOverrides(prev => prev.filter(c => c !== perm.code));
+                                                                                        }
+                                                                                    }}
+                                                                                    className="mt-1 w-4 h-4 rounded border-white/10 bg-black/20 text-brand-primary focus:ring-brand-primary cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                                />
+                                                                                <div className="flex flex-col">
+                                                                                    <span className={`text-sm font-bold text-white transition-colors ${isParentChecked ? 'group-hover:text-brand-primary' : 'text-gray-500'}`}>
+                                                                                        {perm.name}
+                                                                                    </span>
+                                                                                    {perm.description && (
+                                                                                        <span className="text-[10px] text-gray-500 font-medium">
+                                                                                            {perm.description}
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                            </label>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            )}
+
+                                                            {/* Other permissions in the category */}
+                                                            {otherPerms.map((perm) => {
+                                                                const isChecked = selectedOverrides.includes(perm.code);
+                                                                return (
+                                                                    <label key={perm.code} className="flex items-start gap-3 cursor-pointer group select-none pt-2">
+                                                                        <input 
+                                                                            type="checkbox"
+                                                                            checked={isChecked}
+                                                                            onChange={(e) => {
+                                                                                if (e.target.checked) {
+                                                                                    setSelectedOverrides(prev => [...prev, perm.code]);
+                                                                                } else {
+                                                                                    setSelectedOverrides(prev => prev.filter(c => c !== perm.code));
+                                                                                }
+                                                                            }}
+                                                                            className="mt-1 w-4 h-4 rounded border-white/10 bg-black/20 text-brand-primary focus:ring-brand-primary cursor-pointer"
+                                                                        />
+                                                                        <div className="flex flex-col">
+                                                                            <span className="text-sm font-bold text-white group-hover:text-brand-primary transition-colors">
+                                                                                {perm.name}
+                                                                            </span>
+                                                                            {perm.description && (
+                                                                                <span className="text-[10px] text-gray-500 font-medium">
+                                                                                    {perm.description}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    </label>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    );
+                                                }
+
+                                                // Fallback flat layout for other categories
+                                                return perms.map((perm) => {
+                                                    const isChecked = selectedOverrides.includes(perm.code);
+                                                    return (
+                                                        <label key={perm.code} className="flex items-start gap-3 cursor-pointer group select-none">
+                                                            <input 
+                                                                type="checkbox"
+                                                                checked={isChecked}
+                                                                onChange={(e) => {
+                                                                    if (e.target.checked) {
+                                                                        setSelectedOverrides(prev => [...prev, perm.code]);
+                                                                    } else {
+                                                                        setSelectedOverrides(prev => prev.filter(c => c !== perm.code));
+                                                                    }
+                                                                }}
+                                                                className="mt-1 w-4 h-4 rounded border-white/10 bg-black/20 text-brand-primary focus:ring-brand-primary cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            />
+                                                            <div className="flex flex-col">
+                                                                <span className="text-sm font-bold text-white group-hover:text-brand-primary transition-colors">
+                                                                    {perm.name}
+                                                                </span>
+                                                                {perm.description && (
+                                                                    <span className="text-[10px] text-gray-500 font-medium">
+                                                                        {perm.description}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </label>
+                                                    );
+                                                });
+                                            })()}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="pt-4 flex justify-end">
+                                <Button 
+                                    variant="metallic"
+                                    size="sm"
+                                    className="px-12 shadow-lg shadow-brand-primary/10"
+                                    onClick={handleUpdateOverrides}
+                                    isLoading={isSavingOverrides}
+                                >
+                                    Save Permissions
                                 </Button>
                             </div>
                         </div>

@@ -11,8 +11,10 @@ export function Table<T>({
   skeletonCount = 6,
   isMetallicHeader = false,
   disableRowHover = false,
+  dense = false,
   isDense = false
 }: TableProps<T>) {
+  const isTableDense = dense || isDense;
 
   const headerStyle = isMetallicHeader ? {
     backgroundImage: 'radial-gradient(circle at 50% 0%, rgba(255,255,255,0.05) 0%, transparent 70%), linear-gradient(115deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.05) 40%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.05) 60%, rgba(255,255,255,0.02) 100%)',
@@ -40,7 +42,7 @@ export function Table<T>({
                 return (
                   <th
                     key={idx}
-                    className={`${isDense ? 'px-4 py-2 text-[10px]' : 'px-6 py-4 text-[11px]'} font-bold uppercase tracking-widest whitespace-nowrap ${isMetallicHeader ? 'text-white' : 'text-gray-400'} ${headerAlignmentClasses}`}
+                    className={`${isTableDense ? 'px-4 py-2 text-[10px]' : 'px-6 py-4 text-[11px]'} font-bold uppercase tracking-widest whitespace-nowrap ${isMetallicHeader ? 'text-white' : 'text-gray-400'} ${headerAlignmentClasses}`}
                   >
                     {col.header}
                   </th>
@@ -57,7 +59,7 @@ export function Table<T>({
                   {columns.map((col, colIdx) => {
                     const isLast = colIdx === columns.length - 1;
                     return (
-                      <td key={colIdx} className={`${isDense ? 'px-4' : 'px-6'} ${col.className || ''}`} style={{ height: isDense ? '40px' : '58px' }}>
+                      <td key={colIdx} className={`${isTableDense ? 'px-4' : 'px-6'} ${col.className || ''}`} style={{ height: isTableDense ? '40px' : '58px' }}>
                         <div className="flex flex-col gap-2 justify-center h-full">
                           <div className={`h-[7px] rounded-full bg-white/[0.06] relative overflow-hidden ${isLast ? 'w-4 ml-auto' : 'w-3/4'}`}>
                             <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/[0.09] to-transparent animate-[shimmer_2s_infinite]" style={{ animationDelay: `${rowIdx * 100}ms` }} />
@@ -86,20 +88,40 @@ export function Table<T>({
                 </td>
               </tr>
             ) : (
-              data.map((item, rowIdx) => (
-                <tr
-                  key={(item as any).id || (item as any).project_id || (item as any).id?.toString() || rowIdx}
-                  onClick={() => onRowClick?.(item)}
-                  className={`transition-all duration-200 ease-out group ${disableRowHover ? '' : onRowClick ? 'cursor-pointer hover:bg-white/[0.06] active:bg-white/[0.08]' : 'hover:bg-white/[0.03]'}`}
-                  style={{ height: isDense ? '40px' : '58px' }}
-                >
-                  {columns.map((col, colIdx) => (
-                    <td key={colIdx} className={`${isDense ? 'px-4 py-1.5 text-xs' : 'px-6 py-3 text-sm'} text-gray-300 ${colIdx % 2 === 1 ? 'bg-white/[0.02]' : ''} ${col.className || ''}`}>
-                      {col.render ? col.render(item, rowIdx) : (item as any)[col.key]}
-                    </td>
-                  ))}
-                </tr>
-              ))
+              data.map((item, rowIdx) => {
+                let skipRemaining = 0;
+                return (
+                  <tr
+                    key={(item as any).id || (item as any).project_id || (item as any).id?.toString() || rowIdx}
+                    onClick={() => onRowClick?.(item)}
+                    className={`transition-all duration-200 ease-out group ${disableRowHover ? '' : onRowClick ? 'cursor-pointer hover:bg-white/[0.06] active:bg-white/[0.08]' : 'hover:bg-white/[0.03]'}`}
+                    style={{ height: isTableDense ? '40px' : '58px' }}
+                  >
+                    {columns.map((col, colIdx) => {
+                      if (skipRemaining > 0) {
+                        skipRemaining--;
+                        return null;
+                      }
+                      if ((col as any).shouldSkip && (col as any).shouldSkip(item)) {
+                        return null;
+                      }
+                      const span = (col as any).colSpan ? (col as any).colSpan(item) : 1;
+                      if (span > 1) {
+                        skipRemaining = span - 1;
+                      }
+                      return (
+                        <td 
+                          key={colIdx} 
+                          colSpan={span}
+                          className={`${isTableDense ? 'px-3 py-2 text-xs' : 'px-6 py-3 text-sm'} text-gray-300 ${colIdx % 2 === 1 && span === 1 ? 'bg-white/[0.02]' : ''} ${col.className || ''}`}
+                        >
+                          {col.render ? col.render(item, rowIdx) : (item as any)[col.key]}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
@@ -130,9 +152,25 @@ export function Table<T>({
             const statusCol = columns.find(c => c.header?.toString().toLowerCase().includes('status'));
             const actionsCol = columns.find(c => c.key === 'actions');
 
-            const otherCols = columns.filter(c =>
-              c !== idCol && c !== titleCol && c !== statusCol && c !== actionsCol
-            );
+            const mobileCols: any[] = [];
+            let skipCount = 0;
+            columns.forEach(col => {
+              if (col === idCol || col === titleCol || col === statusCol || col === actionsCol) {
+                return;
+              }
+              if (skipCount > 0) {
+                skipCount--;
+                return;
+              }
+              if ((col as any).shouldSkip && (col as any).shouldSkip(item)) {
+                return;
+              }
+              const span = (col as any).colSpan ? (col as any).colSpan(item) : 1;
+              if (span > 1) {
+                skipCount = span - 1;
+              }
+              mobileCols.push(col);
+            });
 
             return (
               <div
@@ -165,7 +203,7 @@ export function Table<T>({
                       </div>
                     </div>
                   )}
-                  {otherCols.map((col, colIdx) => (
+                  {mobileCols.map((col, colIdx) => (
                     <div key={colIdx} className="flex items-center justify-between px-4 py-3 bg-white/[0.01]">
                       <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
                         {col.header}

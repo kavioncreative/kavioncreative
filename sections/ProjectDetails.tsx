@@ -551,9 +551,10 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
   });
   const [isSolveModalOpen, setIsSolveModalOpen] = useState(false);
   const [solveForm, setSolveForm] = useState({
-    action: 'reassign' as 'reassign' | 'upload',
+    action: 'reassign' as 'reassign' | 'upload' | 'message',
     reassignTo: '',
     files: [] as any[],
+    message: '',
     step: 1
   });
 
@@ -1847,6 +1848,10 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
       addToast({ title: "Required", message: "Please select user to reassign", type: "error" });
       return;
     }
+    if (solveForm.action === 'message' && !solveForm.message.trim()) {
+      addToast({ title: "Required", message: "Please enter your instruction/message", type: "error" });
+      return;
+    }
 
     setIsAlertActionLoading(true);
     try {
@@ -1880,6 +1885,9 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
 
         await supabase.from('projects').update(updates).eq('project_id', canonicalId);
         logContent = `Project has been **reassigned** to **${targetName}** by ${resolverName}.`;
+      } else if (solveForm.action === 'message') {
+        await supabase.from('projects').update({ alert_status: 'resolved' }).eq('project_id', canonicalId);
+        logContent = `Case resolved by **${resolverName}** with instruction:\n\n${solveForm.message}`;
       } else {
         // Upload Design
         await supabase.from('projects').update({ alert_status: 'resolved' }).eq('project_id', canonicalId);
@@ -1896,7 +1904,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
 
       addToast({ title: "Resolved", message: "Case marked as resolved. Pending PM confirmation.", type: "success" });
       setIsSolveModalOpen(false);
-      setSolveForm(prev => ({ ...prev, step: 1, reassignTo: '', files: [] }));
+      setSolveForm(prev => ({ ...prev, step: 1, reassignTo: '', files: [], message: '' }));
       fetchProject();
       fetchComments();
     } catch (err: any) {
@@ -2104,7 +2112,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
     const isSubmittingWork = 
       activityTab === "timeline" && 
       payloadAttachments.length > 0 && 
-      isFreelancer;
+      (isFreelancer || isTeamLead);
 
     if (isSubmittingWork) {
       const current = (project?.status || "In Progress").trim().toLowerCase();
@@ -2154,6 +2162,17 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
       // 2. Auto Status Update
       if (isSubmittingWork && finalStatus !== project?.status) {
         const previousStatus = project?.status || "In Progress";
+
+        let isLateSubmission = false;
+        if (project?.due_date) {
+          const timeStr = project.due_time || "23:59:59";
+          const fullTimeStr = timeStr.length === 5 ? timeStr + ":00" : timeStr;
+          const deadline = new Date(`${project.due_date}T${fullTimeStr}`);
+          isLateSubmission = new Date() > deadline;
+        }
+
+        const logContent = `STATUS_CHANGED:${previousStatus}:${finalStatus}${isLateSubmission ? ":LATE" : ""}`;
+
         const { error: statusError } = await supabase
           .from("projects")
           .update({
@@ -2168,7 +2187,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
           // 2a. Log status change in timeline for visual feedback
           const logPayload = {
             project_id: canonicalId,
-            content: `STATUS_CHANGED:${previousStatus}:${finalStatus}`,
+            content: logContent,
             author_name: profile?.name || "User",
             author_role: currentRole,
             author_id: profile?.id, // For unread tracking
@@ -4344,13 +4363,14 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
 
 
                   {/* Initiator Confirmation */}
-                  {project?.alert_status === 'resolved' && (isAdmin || isProjectManager) && (
+                  {((project?.alert_status === 'resolved' && (isAdmin || isProjectManager)) ||
+                    ((project?.has_art_help || project?.has_dispute) && effectiveRole === "Super Admin")) && (
                     <Button
                       variant="metallic-success"
                       className="w-full h-11 text-[11px] font-black uppercase tracking-widest"
                       onClick={() => setIsConfirmModalOpen(true)}
                     >
-                      Confirm Resolution
+                      {project?.alert_status === 'resolved' ? "Confirm Resolution" : "Force Close Alert"}
                     </Button>
                   )}
                 </div>
@@ -5162,24 +5182,33 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
                                     const parts = comment.content.split(":");
                                     const oldStatus = parts[1];
                                     const newStatus = parts[2];
+                                    const isLate = parts[3] === "LATE";
                                     return (
                                       <div className="space-y-8 mb-8">
                                         <div className="bg-surface-card border border-surface-border rounded-3xl overflow-hidden group shadow-[0_24px_48px_-12px_rgba(0,0,0,0.5)] transition-all duration-300">
                                           <div className="px-6 py-4 border-b border-surface-border bg-white/[0.03] relative z-20 overflow-hidden">
                                             <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.04)_50%,transparent_100%)] pointer-events-none" />
                                             <div className="flex justify-between items-center relative z-10 w-full">
-                                              <span
-                                                className={`text-[10px] font-bold uppercase tracking-widest ${getStatusCapsuleClasses(
-                                                  newStatus,
-                                                )
-                                                    .split(" ")
-                                                    .find((c) =>
-                                                      c.includes("text-"),
-                                                    ) || "text-brand-primary"
-                                                  }`}
-                                              >
-                                                STATUS CHANGED
-                                              </span>
+                                              <div className="flex items-center gap-3">
+                                                <span
+                                                  className={`text-[10px] font-bold uppercase tracking-widest ${getStatusCapsuleClasses(
+                                                    newStatus,
+                                                  )
+                                                      .split(" ")
+                                                      .find((c) =>
+                                                        c.includes("text-"),
+                                                      ) || "text-brand-primary"
+                                                    }`}
+                                                >
+                                                  STATUS CHANGED
+                                                </span>
+                                                {isLate && (
+                                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-brand-error/10 text-brand-error border border-brand-error/20 animate-pulse">
+                                                    <IconAlertTriangle size={10} className="stroke-[3px]" />
+                                                    Late Submission
+                                                  </span>
+                                                )}
+                                              </div>
                                               {isEditing &&
                                                 (hasPermission(
                                                   "delete_timeline_items",
@@ -5484,15 +5513,26 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
                                             <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">
                                               Date
                                             </span>
-                                            <span className="text-[11px] font-bold text-white uppercase tracking-widest">
-                                              {new Date(
-                                                createdAt || comment.created_at,
-                                              ).toLocaleDateString("en-GB", {
-                                                day: "2-digit",
-                                                month: "long",
-                                                year: "numeric",
-                                              })}
-                                            </span>
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-[11px] font-bold text-white uppercase tracking-widest">
+                                                {new Date(
+                                                  createdAt || comment.created_at,
+                                                ).toLocaleDateString("en-GB", {
+                                                  day: "2-digit",
+                                                  month: "long",
+                                                  year: "numeric",
+                                                })}
+                                              </span>
+                                              <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">
+                                                {new Date(createdAt || comment.created_at)
+                                                  .toLocaleTimeString("en-GB", {
+                                                    hour: "numeric",
+                                                    minute: "2-digit",
+                                                    hour12: true,
+                                                  })
+                                                  .toUpperCase()}
+                                              </span>
+                                            </div>
                                           </div>
                                         </div>
                                       </div>
@@ -7056,11 +7096,16 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
                 placeholder="Select TL or Super Admin"
                 showSearch
               >
-                <div className="w-full h-14 bg-black/25 border border-surface-border/40 rounded-xl px-5 flex items-center justify-between cursor-pointer hover:border-white/10 transition-all shadow-inner">
-                   <span className="text-sm font-medium text-gray-300">
-                      {resolvers.find(r => r.id === alertForm.resolverId)?.name || "Select TL or Super Admin"}
-                   </span>
-                   <IconUser size={18} className="text-gray-600" />
+                <div className="w-full h-14 bg-black/40 border border-white/[0.05] rounded-xl px-5 flex items-center justify-between cursor-pointer hover:bg-black/55 transition-all shadow-[inset_0_2px_12px_rgba(0,0,0,0.6)] relative overflow-hidden group">
+                  {/* Depth Overlay */}
+                  <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-xl">
+                    <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-b from-black/60 to-transparent" />
+                    <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.02)_48%,rgba(255,255,255,0.05)_50%,rgba(255,255,255,0.02)_52%,transparent_100%)] opacity-30" />
+                  </div>
+                  <span className="text-sm font-medium text-gray-400 group-hover:text-white transition-colors relative z-10">
+                     {resolvers.find(r => r.id === alertForm.resolverId)?.name || "Select TL or Super Admin"}
+                  </span>
+                  <IconUser size={18} className="text-gray-500 group-hover:text-white transition-colors relative z-10" />
                 </div>
               </Dropdown>
             </div>
@@ -7152,6 +7197,20 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
                       </div>
                       <IconChevronRight size={20} className="text-gray-700 group-hover:text-brand-primary transition-all" />
                     </button>
+
+                    <button 
+                      onClick={() => setSolveForm(prev => ({ ...prev, action: 'message', step: 2 }))}
+                      className="flex items-center gap-5 p-6 rounded-3xl border border-white/5 bg-white/[0.03] hover:bg-brand-primary/5 hover:border-brand-primary/30 transition-all group text-left"
+                    >
+                      <div className="p-4 rounded-2xl bg-white/5 text-gray-500 group-hover:bg-brand-primary/20 group-hover:text-brand-primary transition-all">
+                        <IconMessageSquare size={24} />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-base font-bold text-white tracking-tight">Write Instruction</p>
+                        <p className="text-xs text-gray-500 mt-0.5">Solve directly by writing a message or instruction for the designer.</p>
+                      </div>
+                      <IconChevronRight size={20} className="text-gray-700 group-hover:text-brand-primary transition-all" />
+                    </button>
                   </div>
                </div>
              ) : (
@@ -7159,7 +7218,11 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
                   <div className="flex flex-col gap-1 px-1">
                     <p className="text-[10px] font-black text-brand-primary uppercase tracking-[0.2em]">Step 02 / 02</p>
                     <h3 className="text-lg font-bold text-white tracking-tight">
-                       {solveForm.action === 'reassign' ? "Select New Assignee" : "Upload Result Files"}
+                       {solveForm.action === 'reassign' 
+                          ? "Select New Assignee" 
+                          : solveForm.action === 'message' 
+                          ? "Write Instruction" 
+                          : "Upload Result Files"}
                     </h3>
                     <p className="text-xs text-gray-500">Provide the final details to mark this case as resolved.</p>
                   </div>
@@ -7186,6 +7249,18 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
                       </Dropdown>
                       <p className="text-[10px] text-gray-500 italic px-2">Project will be moved to the new assignee and marked as pending confirmation.</p>
                     </div>
+                  ) : solveForm.action === 'message' ? (
+                     <div className="space-y-4 animate-in fade-in duration-300">
+                       <label className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] block px-1">Instruction / Message</label>
+                       <TextArea
+                         variant="recessed"
+                         value={solveForm.message}
+                         onChange={(e) => setSolveForm(prev => ({ ...prev, message: e.target.value }))}
+                         placeholder="Write detailed instructions or comments for the designer..."
+                         inputClassName="min-h-[140px] p-5 text-sm font-medium"
+                       />
+                       <p className="text-[10px] text-gray-500 italic px-2">This message will be posted directly to the project timeline as feedback.</p>
+                     </div>
                   ) : (
                      <div className="space-y-4">
                         <div className="relative group">

@@ -6,7 +6,7 @@ import Button from '../components/Button';
 import { Table } from '../components/Table';
 import { IconPlus, IconSearch, IconEye, IconTrash, IconAlertTriangle, IconInfo, IconX, IconFile, IconFileFilled, IconFileText, IconFileImage, IconFileVideo, IconFileArchive, IconCalendar, IconMaximize, IconChevronRight, IconRefreshCw, IconTag, IconArrowRight, IconMessageSquare, IconUser, IconDollar, IconCheck, IconAlertCircle, IconMoreVertical, IconClock, IconCloudUpload, IconPaperclip, IconDownload } from '../components/Icons';
 import { LabelManagerModal } from '../components/LabelManagerModal';
-import { Modal } from '../components/Surfaces';
+import { Modal, Tooltip } from '../components/Surfaces';
 import { Input, TextArea } from '../components/Input';
 import { DatePicker } from '../components/DatePicker';
 import { formatDeadlineDate, formatTime, getTimeLeft, formatDisplayName, truncateByWords } from '../utils/formatter';
@@ -184,8 +184,21 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
     });
     const [location, setLocation] = useState('');
     const [isLocationDetected, setIsLocationDetected] = useState(false);
-    const [alertFilter, setAlertFilter] = useState<'dispute' | 'arthelp' | null>(null);
+    const [alertFilter, setAlertFilter] = useState<'dispute' | 'arthelp' | 'late' | null>(null);
+    const [lateSubFilter, setLateSubFilter] = useState<'active' | 'done' | null>(null);
     const [repeatClients, setRepeatClients] = useState<{ label: string, value: string }[]>([]);
+
+    const getPktDateTime = () => {
+        const now = new Date();
+        const pktDate = new Date(now.getTime() + (5 * 3600000));
+        const iso = pktDate.toISOString();
+        return {
+            dateStr: iso.split('T')[0],
+            timeStr: iso.split('T')[1].slice(0, 8)
+        };
+    };
+
+
 
     // Team Lead specific state
     const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
@@ -331,7 +344,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
 
     // 0. Permission Pre-Query Logic (Cache in memory to avoid blocking latency)
     useEffect(() => {
-        if (!profile?.id || !userRole || effectiveRole === 'Super Admin') return;
+        if (!profile?.id || !userRole || effectiveRole === 'Super Admin' || effectiveRole === 'Finance Manager') return;
 
         async function prefetchPermissions() {
             setIsPermissionsLoading(true);
@@ -396,16 +409,19 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
 
 
     const isPermissionsReady = useMemo(() => {
-        if (effectiveRole === 'Super Admin') return true;
-        const isPM = userRole === 'project manager';
-        // For PM, we need BOTH collabProjectIds AND pmAccountIds to be ready
-        // because pmAccountIds requires a 2-step async fetch (teams → team_accounts)
-        // Without this, fetchProjects runs with pmAccountIds=null before it's loaded
-        if (isPM) {
-            return collabProjectIds !== null && pmAccountIds !== null;
+        if (effectiveRole === 'Super Admin' || effectiveRole === 'Finance Manager') return true;
+        const isAdminLike = ['admin', 'project operations manager'].includes(userRole);
+        const isLeadRole = userRole.includes('team lead');
+        const isPM = userRole === 'project manager' || isLeadRole;
+
+        if (isAdminLike) {
+            return permittedAccounts !== null && collabProjectIds !== null;
         }
-        // For other roles, ready as soon as any permission set is loaded
-        return permittedAccounts !== null || collabProjectIds !== null || pmAccountIds !== null;
+        if (isPM) {
+            return pmAccountIds !== null && collabProjectIds !== null;
+        }
+        // Standard freelancers / designers only need collab data
+        return collabProjectIds !== null;
     }, [permittedAccounts, collabProjectIds, pmAccountIds, effectiveRole, userRole]);
 
 
@@ -435,8 +451,8 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
             const hasCachedData = !!localStorage.getItem('nova_projects_cache');
             if (isForce && !hasCachedData) setLoading(true); // Replaced isInitial with isForce
 
-            // 0. Ensure permissions are loaded before proceeding (unless Super Admin)
-            const isSuperAdmin = effectiveRole === 'Super Admin';
+            // 0. Ensure permissions are loaded before proceeding (unless Super Admin or Finance Manager)
+            const isSuperAdmin = effectiveRole === 'Super Admin' || effectiveRole === 'Finance Manager';
             if (!isSuperAdmin && !permittedAccounts && !collabProjectIds && !pmAccountIds) {
                 // If permissions haven't even started loading, or we're waiting for them
                 // fetchProjects will be re-triggered by the permissions useEffect anyway
@@ -453,7 +469,8 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                     id, project_id, project_title, client_name, client_type, previous_logo_no, assignee, 
                     assignee_id, team_designer_id, client_due_date, client_due_time, 
                     due_date, due_time, status, qa_status, price, designer_fee, team_designer_fee, 
-                    has_dispute, has_art_help, created_at,
+                    has_dispute, has_art_help, created_at, updated_at, submitted_at,
+                    latest_comment_at, latest_comment_author_id,
                     team_designer:profiles!team_designer_id(name, phone)
                 `, { count: (debouncedSearchQuery.trim() || alertFilter) ? 'exact' : undefined });
 
@@ -463,120 +480,298 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
             const isPM = userRole === 'project manager'; // Changed to ONLY project manager to allow Leads to fall into the Freelancer branch (which I've upgraded with account access)
             const isFreelancer = ['freelancer', 'designer', 'presentation', 'graphic designer', 'presentation designer'].some(r => userRole?.includes(r)) || isLeadRole;
 
-            if (isAdminLike && !isSuperAdmin) {
+            if (isSuperAdmin) {
+                // Super Admin has global access, bypass early-exit checks
+            } else if (isAdminLike && !isSuperAdmin) {
                 const accIds = permittedAccounts || [];
                 const projIds = collabProjectIds || [];
 
-                if (accIds.length > 0 || projIds.length > 0) {
-                    const orConditions: string[] = [];
-                    if (accIds.length > 0) orConditions.push(`account_id.in.(${accIds.map(id => `"${id}"`).join(',')})`);
-                    if (projIds.length > 0) orConditions.push(`project_id.in.(${projIds.map(id => `"${id}"`).join(',')})`);
-                    query = query.or(orConditions.join(','));
-                } else {
+                if (accIds.length === 0 && projIds.length === 0) {
                     setTableData([]);
                     setLoading(false);
                     return;
                 }
-                query = query.neq('status', 'Removed');
-
-            } else if (isSuperAdmin) {
-                // Super Admin — no filters needed except removing hidden
-                query = query.neq('status', 'Removed');
-
             } else if (isPM) {
                 const projIds = collabProjectIds || [];
                 const accIds = pmAccountIds || [];
 
-                if (accIds.length > 0 || projIds.length > 0) {
-                    const orParts: string[] = [];
-                    if (accIds.length > 0) orParts.push(`account_id.in.(${accIds.map(id => `"${id}"`).join(',')})`);
-                    if (projIds.length > 0) orParts.push(`project_id.in.(${projIds.map(id => `"${id}"`).join(',')})`);
-                    query = query.or(orParts.join(',')).neq('status', 'Removed');
-                } else {
+                if (accIds.length === 0 && projIds.length === 0) {
                     setTableData([]);
                     setTotalCount(0);
                     setLoading(false);
                     return;
                 }
-
             } else if (isFreelancer) {
+                // Freelancer branch doesn't early-exit since they default to own assignments
+            } else {
                 const projIds = collabProjectIds || [];
-                const accIds = isLeadRole ? (pmAccountIds || []) : [];
-                const freelancerName = profile.name || profile.email;
+                if (projIds.length === 0) {
+                    setTableData([]);
+                    setTotalCount(0);
+                    setLoading(false);
+                    return;
+                }
+            }
 
-                // For Lead roles, we combine account access + direct assignment
-                // For regular freelancers, we only check direct assignment/collab
-                let filterStr = `assignee_id.eq.${profile.id},team_designer_id.eq.${profile.id},assignee.ilike."${freelancerName}",assignee.ilike."${profile.email}"`;
+            const applyRoleFilters = (q: any) => {
+                if (isAdminLike && !isSuperAdmin) {
+                    const accIds = permittedAccounts || [];
+                    const projIds = collabProjectIds || [];
+                    if (accIds.length > 0 || projIds.length > 0) {
+                        const orConditions: string[] = [];
+                        if (accIds.length > 0) orConditions.push(`account_id.in.(${accIds.map(id => `"${id}"`).join(',')})`);
+                        if (projIds.length > 0) orConditions.push(`project_id.in.(${projIds.map(id => `"${id}"`).join(',')})`);
+                        q = q.or(orConditions.join(','));
+                    }
+                    q = q.neq('status', 'Removed');
+                } else if (isSuperAdmin) {
+                    q = q.neq('status', 'Removed');
+                } else if (isPM) {
+                    const projIds = collabProjectIds || [];
+                    const accIds = pmAccountIds || [];
+                    if (accIds.length > 0 || projIds.length > 0) {
+                        const orParts: string[] = [];
+                        if (accIds.length > 0) orParts.push(`account_id.in.(${accIds.map(id => `"${id}"`).join(',')})`);
+                        if (projIds.length > 0) orParts.push(`project_id.in.(${projIds.map(id => `"${id}"`).join(',')})`);
+                        q = q.or(orParts.join(',')).neq('status', 'Removed');
+                    }
+                } else if (isFreelancer) {
+                    const projIds = collabProjectIds || [];
+                    const accIds = isLeadRole ? (pmAccountIds || []) : [];
+                    const freelancerName = profile.name || profile.email;
+                    let filterStr = `assignee_id.eq.${profile.id},team_designer_id.eq.${profile.id},assignee.ilike."${freelancerName}",assignee.ilike."${profile.email}"`;
+                    if (projIds.length > 0) filterStr += `,project_id.in.(${projIds.map(id => `"${id}"`).join(',')})`;
+                    if (accIds.length > 0) filterStr += `,account_id.in.(${accIds.map(id => `"${id}"`).join(',')})`;
+                    q = q.or(filterStr).neq('status', 'Removed');
+                } else {
+                    const projIds = collabProjectIds || [];
+                    if (projIds.length > 0) {
+                        q = q.in('project_id', projIds).neq('status', 'Removed');
+                    }
+                }
+                return q;
+            };
 
-                if (projIds.length > 0) {
-                    filterStr += `,project_id.in.(${projIds.map(id => `"${id}"`).join(',')})`;
+            const inactiveStatuses = [
+                'Approved',
+                'Cancelled',
+                'Done',
+                'Revision Done',
+                'Revision Urgent Done',
+                'Urgent Done',
+                'Final Files Done',
+                'approved',
+                'cancelled',
+                'done',
+                'revision done',
+                'revision urgent done',
+                'urgent done',
+                'final files done',
+                'final-files-done'
+            ];
+
+            let finalData: any[] = [];
+            let finalCount = 0;
+            let error: any = null;
+
+            const isAllTab = activeTab === 'all' && !debouncedSearchQuery.trim() && !alertFilter;
+
+            if (isAllTab) {
+                // 1. Fetch active projects
+                let activeQuery = supabase.from('projects').select(`
+                    id, project_id, project_title, client_name, client_type, previous_logo_no, assignee, 
+                    assignee_id, team_designer_id, client_due_date, client_due_time, 
+                    due_date, due_time, status, qa_status, price, designer_fee, team_designer_fee, 
+                    has_dispute, has_art_help, created_at, updated_at, submitted_at,
+                    latest_comment_at, latest_comment_author_id,
+                    team_designer:profiles!team_designer_id(name, phone)
+                `);
+                activeQuery = applyRoleFilters(activeQuery);
+                activeQuery = activeQuery.not('status', 'in', `(${inactiveStatuses.map(s => `"${s}"`).join(',')})`);
+
+                const { data: activeList, error: activeErr } = await activeQuery
+                    .order('created_at', { ascending: false })
+                    .limit(200);
+
+                if (activeErr) {
+                    error = activeErr;
+                    throw activeErr;
                 }
 
-                if (accIds.length > 0) {
-                    filterStr += `,account_id.in.(${accIds.map(id => `"${id}"`).join(',')})`;
+                const activeCount = activeList ? activeList.length : 0;
+
+                // 2. Sort active projects by custom Status Priority + Deadline
+                const statusPriority: Record<string, number> = {
+                    'revision urgent': 1,
+                    'urgent': 2,
+                    'revision': 3,
+                    'qa review': 4,
+                    'in progress': 5,
+                    'sent for qa': 6,
+                    'pending qa': 7,
+                    'qa_revision': 8,
+                    'sent for approval': 9,
+                    'final files': 10
+                };
+
+                const getStatusPriority = (statusStr: string | null | undefined): number => {
+                    if (!statusStr) return 99;
+                    const s = statusStr.trim().toLowerCase();
+                    return statusPriority[s] ?? 99;
+                };
+
+                const sortedActive = (activeList || []).sort((a, b) => {
+                    const prioA = getStatusPriority(a.status);
+                    const prioB = getStatusPriority(b.status);
+                    if (prioA !== prioB) return prioA - prioB;
+
+                    if (a.due_date && b.due_date) {
+                        const dateA = new Date(`${a.due_date}T${a.due_time || '23:59:59'}`);
+                        const dateB = new Date(`${b.due_date}T${b.due_time || '23:59:59'}`);
+                        return dateA.getTime() - dateB.getTime();
+                    }
+                    if (a.due_date) return -1;
+                    if (b.due_date) return 1;
+                    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+                });
+
+                // 3. Fetch inactive projects with exact count
+                let inactiveQuery = supabase.from('projects').select(`
+                    id, project_id, project_title, client_name, client_type, previous_logo_no, assignee, 
+                    assignee_id, team_designer_id, client_due_date, client_due_time, 
+                    due_date, due_time, status, qa_status, price, designer_fee, team_designer_fee, 
+                    has_dispute, has_art_help, created_at, updated_at, submitted_at,
+                    latest_comment_at, latest_comment_author_id,
+                    team_designer:profiles!team_designer_id(name, phone)
+                `, { count: 'exact' });
+                inactiveQuery = applyRoleFilters(inactiveQuery);
+                inactiveQuery = inactiveQuery.in('status', inactiveStatuses);
+
+                let inactiveList: any[] = [];
+                let inactiveCount = 0;
+
+                if (from < activeCount) {
+                    const activePageItems = sortedActive.slice(from, to + 1);
+                    finalData = [...activePageItems];
+
+                    if (finalData.length < ITEMS_PER_PAGE) {
+                        const needed = ITEMS_PER_PAGE - finalData.length;
+                        const { data: inactList, count: inactCount, error: inactErr } = await inactiveQuery
+                            .order('updated_at', { ascending: false })
+                            .range(0, needed - 1);
+
+                        if (inactErr) {
+                            error = inactErr;
+                        } else if (inactList) {
+                            inactiveList = inactList;
+                            inactiveCount = inactCount || 0;
+                            finalData = [...finalData, ...inactiveList];
+                        }
+                    } else {
+                        const { count: inactCount } = await inactiveQuery.limit(1);
+                        inactiveCount = inactCount || 0;
+                    }
+                } else {
+                    const inactiveFrom = from - activeCount;
+                    const inactiveTo = to - activeCount;
+                    const { data: inactList, count: inactCount, error: inactErr } = await inactiveQuery
+                        .order('updated_at', { ascending: false })
+                        .range(inactiveFrom, inactiveTo);
+
+                    if (inactErr) {
+                        error = inactErr;
+                    } else if (inactList) {
+                        inactiveList = inactList;
+                        inactiveCount = inactCount || 0;
+                        finalData = inactiveList;
+                    }
                 }
 
-                query = query.or(filterStr).neq('status', 'Removed');
+                finalCount = activeCount + inactiveCount;
 
             } else {
-                // Fallback for any other specific roles — restrict to collaborations only
-                const projIds = collabProjectIds || [];
-                if (projIds.length > 0) {
-                    query = query.in('project_id', projIds).neq('status', 'Removed');
-                } else {
-                    setTableData([]);
-                    setTotalCount(0);
-                    setLoading(false);
-                    return;
+                let query = supabase.from('projects').select(`
+                    id, project_id, project_title, client_name, client_type, previous_logo_no, assignee, 
+                    assignee_id, team_designer_id, client_due_date, client_due_time, 
+                    due_date, due_time, status, qa_status, price, designer_fee, team_designer_fee, 
+                    has_dispute, has_art_help, created_at, updated_at, submitted_at,
+                    latest_comment_at, latest_comment_author_id,
+                    team_designer:profiles!team_designer_id(name, phone)
+                `, { count: (debouncedSearchQuery.trim() || alertFilter) ? 'exact' : undefined });
+
+                query = applyRoleFilters(query);
+
+                // Tab Filter
+                if (activeTab === 'qa' || activeTab === 'sent-for-qa') {
+                    query = query.in('qa_status', ['pending_qa', 'qa_revision'])
+                        .not('status', 'eq', 'Sent For Approval')
+                        .not('status', 'eq', 'Approved')
+                        .not('status', 'eq', 'Cancelled');
+                } else if (activeTab !== 'all' && !debouncedSearchQuery.trim() && !alertFilter) {
+                    const targetStatus = statusMap[activeTab];
+                    if (targetStatus) {
+                        query = query.ilike('status', targetStatus);
+                    }
                 }
-            }
 
-            // QA workflow isolation removed per user request - projects now show in both QA and their base status tabs
+                // Alert Filter
+                if (!debouncedSearchQuery.trim() && activeTab !== 'qa') {
+                    if (alertFilter === 'dispute') {
+                        query = query.eq('has_dispute', true);
+                    } else if (alertFilter === 'arthelp') {
+                        query = query.eq('has_art_help', true);
+                    } else if (alertFilter === 'late') {
+                        const { dateStr: pktDateStr, timeStr: pktTimeStr } = getPktDateTime();
+                        let targetStatuses = [
+                            'In Progress', 'Revision', 'Revision Urgent', 'Urgent', 'Final Files',
+                            'Done', 'Revision Done', 'Revision Urgent Done', 'Urgent Done', 'Final Files Done'
+                        ];
+                        if (lateSubFilter === 'active') {
+                            targetStatuses = ['In Progress', 'Revision', 'Revision Urgent', 'Urgent', 'Final Files'];
+                        } else if (lateSubFilter === 'done') {
+                            targetStatuses = ['Done', 'Revision Done', 'Revision Urgent Done', 'Urgent Done', 'Final Files Done'];
+                        }
+                        query = query
+                            .in('status', targetStatuses)
+                            .or(`client_due_date.lt.${pktDateStr},and(client_due_date.eq.${pktDateStr},client_due_time.lt.${pktTimeStr})`);
+                    }
+                }
 
-            // 3. Tab Filter - Apply status filter if not on "All" tab AND no search query is active
-            if (activeTab === 'qa') {
-                // Show projects explicitly waiting for manager/lead review
-                query = query.in('qa_status', ['pending_qa', 'qa_revision'])
-                    .not('status', 'eq', 'Sent For Approval')
-                    .not('status', 'eq', 'Approved')
-                    .not('status', 'eq', 'Cancelled');
-            } else if (activeTab === 'sent-for-qa') {
-                query = query.in('qa_status', ['pending_qa', 'qa_revision'])
-                    .not('status', 'eq', 'Sent For Approval')
-                    .not('status', 'eq', 'Approved')
-                    .not('status', 'eq', 'Cancelled');
-            } else if (activeTab !== 'all' && !debouncedSearchQuery.trim() && !alertFilter) {
+                // Search
+                if (debouncedSearchQuery.trim()) {
+                    const q = debouncedSearchQuery.trim();
+                    const searchFilter = `project_id.ilike.%${q}%,project_title.ilike.%${q}%,client_name.ilike.%${q}%,assignee.ilike.%${q}%`;
+                    query = query.or(searchFilter);
+                }
+
+                // Determine ordering logic depending on tab category (Active vs Inactive)
                 const targetStatus = statusMap[activeTab];
-                if (targetStatus) {
-                    query = query.ilike('status', targetStatus);
-                }
-            }
+                const targetStatusLower = (targetStatus || '').trim().toLowerCase();
+                const isInactiveTab = inactiveStatuses.includes(targetStatusLower);
 
-            // 3. Alert Filter - Only apply if not searching for a global experience
-            if (!debouncedSearchQuery.trim() && activeTab !== 'qa') {
-                if (alertFilter === 'dispute') query = query.eq('has_dispute', true);
-                else if (alertFilter === 'arthelp') query = query.eq('has_art_help', true);
-            }
-
-            // 4. Partial Match Search (Contains) - Matches letters no matter the spelling is complete or not
-            if (debouncedSearchQuery.trim()) {
-                const q = debouncedSearchQuery.trim();
-                const searchFilter = `project_id.ilike.%${q}%,project_title.ilike.%${q}%,client_name.ilike.%${q}%,assignee.ilike.%${q}%`;
-                if (activeTab === 'qa') {
-                    // When searching in QA tab, we still want to respect the QA status but allow global search within that status
-                    query = query.or(searchFilter);
+                if (isInactiveTab) {
+                    // Completed / Cancelled tabs sorted by completion (updated_at) descending (newest first)
+                    query = query
+                        .order('updated_at', { ascending: false })
+                        .order('created_at', { ascending: false });
                 } else {
-                    query = query.or(searchFilter);
+                    // Active tabs sorted by deadline ascending (closest first)
+                    query = query
+                        .order('due_date', { ascending: true, nullsFirst: false })
+                        .order('due_time', { ascending: true, nullsFirst: false })
+                        .order('created_at', { ascending: false });
                 }
+
+                const { data, count, error: queryErr } = await query.range(from, to);
+                error = queryErr;
+                if (error) throw error;
+                finalData = data || [];
+                finalCount = count || 0;
             }
 
-            // 5. Execute with ordering & pagination
-            // Urgency sorting: Earliest deadlines first (Late things at top), Nulls at bottom
-            const { data, count, error } = await query
-                .order('due_date', { ascending: true, nullsFirst: false })
-                .order('due_time', { ascending: true, nullsFirst: false })
-                .order('created_at', { ascending: false })
-                .range(from, to);
+            const data = finalData;
+            const count = finalCount;
+
 
             // Removed debug logging from the render cycle for better performance
 
@@ -961,6 +1156,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                             all: rpcData.all || 0,
                             dispute: rpcData.dispute || 0,
                             arthelp: rpcData.arthelp || 0,
+                            late: 0,
                             qa: rpcData.qa_pending || 0,
                             'sent-for-qa': rpcData.qa_pending || 0,
                             progress: 0,
@@ -977,7 +1173,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                             'final-files': 0,
                             'final-files-done': 0
                         };
-
+ 
                         // Map raw status names from DB to internal tab IDs
                         Object.entries(rpcData).forEach(([rawKey, count]) => {
                             const s = rawKey.trim().toLowerCase();
@@ -987,11 +1183,31 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                 }
                             });
                         });
+ 
+                        // Fetch late count separately in parallel
+                        const { dateStr: pktDateStr, timeStr: pktTimeStr } = getPktDateTime();
+                        const [designerRes, pmRes] = await Promise.all([
+                            supabase
+                                .from('projects')
+                                .select('id', { count: 'exact', head: true })
+                                .in('status', ['In Progress', 'Revision', 'Revision Urgent', 'Urgent', 'Final Files'])
+                                .or(`client_due_date.lt.${pktDateStr},and(client_due_date.eq.${pktDateStr},client_due_time.lt.${pktTimeStr})`),
+                            supabase
+                                .from('projects')
+                                .select('id', { count: 'exact', head: true })
+                                .in('status', ['Done', 'Revision Done', 'Revision Urgent Done', 'Urgent Done', 'Final Files Done'])
+                                .or(`client_due_date.lt.${pktDateStr},and(client_due_date.eq.${pktDateStr},client_due_time.lt.${pktTimeStr})`)
+                        ]);
+                        counts.late = (designerRes.count || 0) + (pmRes.count || 0);
+                        counts.lateDesigner = designerRes.count || 0;
+                        counts.latePm = pmRes.count || 0;
 
+ 
                         setProjectCounts(counts);
                         localStorage.setItem('nova_projects_counts_cache', JSON.stringify(counts));
                         return; // Successfully used RPC, stop here
                     }
+
                 } catch (rpcErr) {
                     console.warn('RPC optimized counts failed, falling back to query method');
                 }
@@ -1000,11 +1216,11 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
             // FALLBACK: Original method (fetches columns and counts on client)
             let query = supabase
                 .from('projects')
-                .select('status, has_dispute, has_art_help, qa_status')
+                .select('status, has_dispute, has_art_help, qa_status, client_due_date, client_due_time')
                 .neq('status', 'Removed');
-
+ 
             const roleLower = userRole?.toLowerCase()?.trim();
-
+ 
             if (roleLower === 'admin' || roleLower === 'super admin' || roleLower === 'project operations manager') {
                 if (effectiveRole !== 'Super Admin') {
                     const [{ data: permittedAccounts }, { data: collabDataCountsAdmin }] = await Promise.all([
@@ -1013,14 +1229,14 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                     ]);
                     const accountIds = permittedAccounts?.map(pa => pa.account_id) || [];
                     const collabProjectIds = collabDataCountsAdmin?.map(c => c.project_id) || [];
-
+ 
                     if (accountIds.length > 0 || collabProjectIds.length > 0) {
                         const orParts: string[] = [];
                         if (accountIds.length > 0) orParts.push(`account_id.in.(${accountIds.map(id => `"${id}"`).join(',')})`);
                         if (collabProjectIds.length > 0) orParts.push(`project_id.in.(${collabProjectIds.map(id => `"${id}"`).join(',')})`);
                         query = query.or(orParts.join(','));
                     } else {
-                        setProjectCounts({ all: 0, dispute: 0, arthelp: 0 });
+                        setProjectCounts({ all: 0, dispute: 0, arthelp: 0, late: 0 });
                         return;
                     }
                 }
@@ -1054,28 +1270,31 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                     if (collabProjectIdsPM.length > 0) orParts.push(`project_id.in.(${collabProjectIdsPM.map(id => `"${id}"`).join(',')})`);
                     query = query.or(orParts.join(','));
                 } else {
-                    setProjectCounts({ all: 0, dispute: 0, arthelp: 0 });
+                    setProjectCounts({ all: 0, dispute: 0, arthelp: 0, late: 0 });
                     return;
                 }
-            } else if (effectiveRole !== 'Super Admin') {
-                setProjectCounts({ all: 0, dispute: 0, arthelp: 0 });
+            } else if (effectiveRole !== 'Super Admin' && effectiveRole !== 'Finance Manager') {
+                setProjectCounts({ all: 0, dispute: 0, arthelp: 0, late: 0 });
                 return;
             }
-
+ 
             const { data, error } = await query;
             if (!error && data) {
                 const counts: Record<string, number> = {
-                    all: 0, dispute: 0, arthelp: 0, qa: 0, 'sent-for-qa': 0, progress: 0, revision: 0,
+                    all: 0, dispute: 0, arthelp: 0, late: 0, lateDesigner: 0, latePm: 0, qa: 0, 'sent-for-qa': 0, progress: 0, revision: 0,
                     'revision-urgent': 0, urgent: 0, approval: 0, cancelled: 0, done: 0, 'revision-done': 0,
                     'revision-urgent-done': 0, 'urgent-done': 0, 'approved': 0, 'final-files': 0, 'final-files-done': 0
                 };
+ 
+                const { dateStr: pktDateStr, timeStr: pktTimeStr } = getPktDateTime();
 
+ 
                 data.forEach(p => {
                     const s = p.status?.trim().toLowerCase();
                     const isPendingQa = p.qa_status === 'pending_qa';
                     const isExplicitInQa = ['pending_qa', 'qa_revision'].includes(p.qa_status || '');
                     const isPostQaStatus = ['sent for approval', 'approved', 'cancelled'].includes(s || '');
-
+ 
                     Object.entries(statusMap).forEach(([key, mappedStatus]) => {
                         if (s === mappedStatus.toLowerCase()) {
                             counts[key] = (counts[key] || 0) + 1;
@@ -1085,7 +1304,22 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                     if (isPendingQa && !isPostQaStatus) counts['sent-for-qa']++;
                     if (p.has_dispute) counts.dispute++;
                     if (p.has_art_help) counts.arthelp++;
+ 
+                    // Calculate late count
+                    const isLate = p.client_due_date &&
+                        ['In Progress', 'Revision', 'Revision Urgent', 'Urgent', 'Final Files', 'Done', 'Revision Done', 'Revision Urgent Done', 'Urgent Done', 'Final Files Done'].includes(p.status) &&
+                        (p.client_due_date < pktDateStr || 
+                        (p.client_due_date === pktDateStr && p.client_due_time < pktTimeStr));
+                    if (isLate) {
+                        counts.late++;
+                        if (['in progress', 'revision', 'revision urgent', 'urgent', 'final files'].includes(s)) {
+                            counts.lateDesigner++;
+                        } else {
+                            counts.latePm++;
+                        }
+                    }
                 });
+
 
                 counts.all = data.length;
                 setProjectCounts(counts);
@@ -1098,6 +1332,12 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
         }
     }
 
+    useEffect(() => {
+        if (alertFilter !== 'late') {
+            setLateSubFilter(null);
+        }
+    }, [alertFilter]);
+
     // 1. Debounce the search query
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -1109,7 +1349,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
     // 2. Reset to page 1 when filters or search change
     useEffect(() => {
         setCurrentPage(1);
-    }, [activeTab, leadsActiveTab, alertFilter, debouncedSearchQuery]);
+    }, [activeTab, leadsActiveTab, alertFilter, debouncedSearchQuery, lateSubFilter]);
 
     // 3. Main projects fetch effect with sequencing to prevent multiple redundant fetches
     useEffect(() => {
@@ -1128,6 +1368,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
         activeTab,
         leadsActiveTab,
         alertFilter,
+        lateSubFilter,
         debouncedSearchQuery,
         isPermissionsReady,
         refreshSignal,
@@ -1494,7 +1735,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
         {
             header: 'Project ID',
             key: 'id',
-            className: 'whitespace-nowrap min-w-max',
+            className: 'whitespace-nowrap min-w-max text-center',
             render: (item: any) => {
                 const lastRead = readStates[item.project_id];
 
@@ -1505,7 +1746,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                     item.latest_comment_author_id !== profile?.id;
 
                 return (
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-center gap-3">
                         {/* Solid Dot like Mock */}
                         <div className={`w-2.5 h-2.5 rounded-full shrink-0 transition-opacity duration-300 ${hasUnread ? "bg-sky-500" : "bg-transparent opacity-0"}`} title={hasUnread ? "New Message" : ""} />
                         <span className="text-white font-medium">
@@ -1580,45 +1821,194 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
         {
             header: 'Assignee',
             key: 'assignee',
-            className: 'whitespace-nowrap min-w-max',
+            className: 'whitespace-nowrap min-w-max text-center',
             render: (item: any) => {
+                let content;
                 if (userRole?.toLowerCase().trim() === 'team lead') {
                     if (item.assignee_id === profile?.id && !item.team_designer_id) {
-                        return <span className="text-orange-500 font-black uppercase tracking-tighter">Unassigned</span>;
+                        content = <span className="text-orange-500 font-black uppercase tracking-tighter">Unassigned</span>;
                     }
                 }
-                return formatDisplayName(item.assignee);
+                if (!content) {
+                    content = formatDisplayName(item.assignee);
+                }
+                return <div className="text-center">{content}</div>;
             }
         },
         ...(!isFreelancer ? [{
             header: 'Client Time Left',
             key: 'clientTimeLeft',
-            className: 'whitespace-nowrap min-w-max',
-            render: (item: any) =>
-                <Countdown date={item.clientDateRaw} status={item.status} isClientTime={true} className="text-sm font-bold uppercase tracking-wider" />
+            className: 'whitespace-nowrap min-w-max relative text-center',
+            colSpan: (item: any) => {
+                const s = (item.status || '').trim().toLowerCase();
+                if (['cancelled', 'approved'].includes(s)) return 1;
+
+                const clientInfo = getTimeLeft(item.clientDateRaw, item.status, true, item.submitted_at, item.updated_at);
+                if (clientInfo.isClientDeadlineOverdue) return 3;
+                if (!item.clientDateRaw && isProjectManager) return 3;
+                return 1;
+            },
+            render: (item: any) => {
+                const s = (item.status || '').trim().toLowerCase();
+                if (['cancelled', 'approved'].includes(s)) {
+                    return <div className="text-gray-500 font-semibold text-center">—</div>;
+                }
+                if (!item.clientDateRaw) {
+                    if (isProjectManager) {
+                        const warnText = "UPDATE CLIENT DEADLINE FOR CORRECT TIME CALCULATION   •   ";
+                        const repeatedText = Array(20).fill(warnText).join('');
+                        return (
+                            <Tooltip 
+                                content={<span className="text-xs font-bold uppercase tracking-wider text-brand-purple">UPDATE CLIENT DEADLINE FOR CORRECT TIME CALCULATION</span>}
+                                wrapperClassName="marquee-container merged text-brand-purple text-sm font-bold uppercase tracking-wider"
+                            >
+                                <span className="animate-marquee-slow">
+                                    {repeatedText}
+                                </span>
+                            </Tooltip>
+                        );
+                    }
+                    return null;
+                }
+                const clientInfo = getTimeLeft(item.clientDateRaw, item.status, true, item.submitted_at, item.updated_at);
+                return (
+                    <Countdown 
+                        date={item.clientDateRaw} 
+                        status={item.status} 
+                        isClientTime={true} 
+                        isMerged={clientInfo.isClientDeadlineOverdue} 
+                        submittedAt={item.submitted_at}
+                        updatedAt={item.updated_at}
+                        className="text-sm font-bold uppercase tracking-wider" 
+                    />
+                );
+            }
         }] : []),
         {
             header: 'Assignee Deadline',
             key: 'dueDate',
-            className: 'whitespace-nowrap min-w-max',
-            render: (item: any) => (
-                <div className="flex flex-col">
-                    <span className="text-white font-medium">{item.dueDate}</span>
-                    <span className="text-[10px] text-brand-primary font-bold uppercase tracking-widest">{formatTime(item.dueTime)}</span>
-                </div>
-            )
+            className: 'whitespace-nowrap min-w-max relative text-center',
+            colSpan: (item: any) => {
+                const s = (item.status || '').trim().toLowerCase();
+                if (['cancelled', 'approved'].includes(s)) return 1;
+
+                const pmStatuses = ['done', 'revision done', 'revision urgent done', 'urgent done', 'final-files-done', 'final files done'];
+                const isDoneType = pmStatuses.includes(s);
+
+                if (isDoneType && !isFreelancer) {
+                    const clientInfo = getTimeLeft(item.clientDateRaw, item.status, true, item.submitted_at, item.updated_at);
+                    if (!clientInfo.isClientDeadlineOverdue) {
+                        return 2; // Merge columns for Scenario 1
+                    }
+                }
+
+                if (isFreelancer) {
+                    const assigneeInfo = getTimeLeft(item.dateRaw, item.status, false, item.submitted_at, item.updated_at);
+                    return assigneeInfo.isLate ? 2 : 1;
+                }
+                return 1;
+            },
+            shouldSkip: (item: any) => {
+                const s = (item.status || '').trim().toLowerCase();
+                if (['cancelled', 'approved'].includes(s)) return false;
+
+                if (!isFreelancer) {
+                    const clientInfo = getTimeLeft(item.clientDateRaw, item.status, true, item.submitted_at, item.updated_at);
+                    if (clientInfo.isClientDeadlineOverdue) return true;
+                    if (!item.clientDateRaw && isProjectManager) return true;
+                }
+                return false;
+            },
+            render: (item: any) => {
+                const s = (item.status || '').trim().toLowerCase();
+                if (['cancelled', 'approved'].includes(s)) {
+                    return (
+                        <div className="flex flex-col items-center justify-center text-gray-500 font-semibold">
+                            <span>{item.dueDate || '—'}</span>
+                            {item.dueDate && item.dueTime && (
+                                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{formatTime(item.dueTime)}</span>
+                            )}
+                        </div>
+                    );
+                }
+
+                const pmStatuses = ['done', 'revision done', 'revision urgent done', 'urgent done', 'final-files-done', 'final files done'];
+                const isDoneType = pmStatuses.includes(s);
+
+                if (!isFreelancer && isDoneType) {
+                    return (
+                        <Countdown 
+                            date={null} 
+                            status={item.status} 
+                            isMerged={true} 
+                            submittedAt={item.submitted_at}
+                            updatedAt={item.updated_at}
+                            className="text-sm font-bold uppercase tracking-wider" 
+                        />
+                    );
+                }
+
+                if (isFreelancer && getTimeLeft(item.dateRaw, item.status, false, item.submitted_at, item.updated_at).isLate) {
+                    return (
+                        <Countdown 
+                            date={item.dateRaw} 
+                            status={item.status} 
+                            isMerged={true} 
+                            submittedAt={item.submitted_at}
+                            updatedAt={item.updated_at}
+                            className="text-sm font-bold uppercase tracking-wider" 
+                        />
+                    );
+                }
+                return (
+                    <div className="flex flex-col items-center justify-center">
+                        <span className="text-white font-medium">{item.dueDate}</span>
+                        <span className="text-[10px] text-brand-primary font-bold uppercase tracking-widest">{formatTime(item.dueTime)}</span>
+                    </div>
+                );
+            }
         },
         {
             header: 'Assignee Time Left',
             key: 'timeLeft',
-            className: 'whitespace-nowrap min-w-max',
-            render: (item: any) =>
-                <Countdown date={item.dateRaw} status={item.status} className="text-sm font-bold uppercase tracking-wider" />
+            className: 'whitespace-nowrap min-w-max text-center',
+            shouldSkip: (item: any) => {
+                const s = (item.status || '').trim().toLowerCase();
+                if (['cancelled', 'approved'].includes(s)) return false;
+
+                if (!isFreelancer) {
+                    const pmStatuses = ['done', 'revision done', 'revision urgent done', 'urgent done', 'final-files-done', 'final files done'];
+                    if (pmStatuses.includes(s)) return true;
+
+                    const clientInfo = getTimeLeft(item.clientDateRaw, item.status, true, item.submitted_at, item.updated_at);
+                    if (clientInfo.isClientDeadlineOverdue) return true;
+                    if (!item.clientDateRaw && isProjectManager) return true;
+                } else {
+                    const assigneeInfo = getTimeLeft(item.dateRaw, item.status, false, item.submitted_at, item.updated_at);
+                    return assigneeInfo.isLate;
+                }
+                return false;
+            },
+            render: (item: any) => {
+                const s = (item.status || '').trim().toLowerCase();
+                if (['cancelled', 'approved'].includes(s)) {
+                    return <div className="text-gray-500 font-semibold text-center">—</div>;
+                }
+                return (
+                    <Countdown 
+                        date={item.dateRaw} 
+                        status={item.status} 
+                        submittedAt={item.submitted_at}
+                        updatedAt={item.updated_at}
+                        className="text-sm font-bold uppercase tracking-wider" 
+                    />
+                );
+            }
         },
         {
             header: 'Status',
             key: 'status',
-            className: 'whitespace-nowrap min-w-max',
+            className: 'whitespace-nowrap min-w-max text-center',
             render: (item: any) => {
                 let status = item.status?.trim() || 'In Progress';
 
@@ -1626,7 +2016,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                 status = item.status?.trim() || 'In Progress';
 
                 return (
-                    <div className="flex flex-col gap-1 items-start">
+                    <div className="flex flex-col gap-1 items-center justify-center w-full">
                         <div className={`px-3 py-1 rounded-lg border text-[10px] font-bold uppercase tracking-widest inline-block ${getStatusCapsuleClasses(status)}`}>
                             {status}
                         </div>
@@ -1641,7 +2031,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
         {
             header: '',
             key: 'actions',
-            className: 'w-20 text-right',
+            className: 'w-20 text-center',
             render: (item: any) => (
                 <div onClick={(e) => e.stopPropagation()}>
                     <Dropdown
@@ -1657,7 +2047,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                 setIsLabelModalOpen(true);
                             }
                         }}
-                        className="w-fit ml-auto"
+                        className="w-fit mx-auto"
                         menuClassName=""
                     >
                         <button
@@ -1720,9 +2110,12 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
         {
             header: 'Status',
             key: 'status',
+            className: 'whitespace-nowrap min-w-max text-center',
             render: (item: any) => (
-                <div className={`px-3 py-1 rounded-lg border text-[10px] font-bold uppercase tracking-widest inline-block ${getStatusCapsuleClasses(item.status)}`}>
-                    {item.status}
+                <div className="flex justify-center w-full">
+                    <div className={`px-3 py-1 rounded-lg border text-[10px] font-bold uppercase tracking-widest inline-block ${getStatusCapsuleClasses(item.status)}`}>
+                        {item.status}
+                    </div>
                 </div>
             )
         },
@@ -1738,14 +2131,14 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
         {
             header: '',
             key: 'actions',
-            className: 'w-20 text-right',
+            className: 'w-20 text-center',
             render: (item: any) => (
                 <div onClick={(e) => e.stopPropagation()}>
                     <Dropdown
                         variant="flat"
                         options={[
                             { label: 'Open', value: 'open', icon: <IconEye className="w-4 h-4" /> },
-                            { label: 'Delete', value: 'delete', icon: <IconTrash className="w-4 h-4" />, variant: 'danger' }
+                            { label: 'Delete', value: 'delete', icon: <IconTrash className="w-4 h-4 text-red-500 group-hover:text-red-400" />, labelClassName: 'text-red-500 group-hover:text-red-400' }
                         ]}
                         onChange={(val) => {
                             if (val === 'open') {
@@ -1755,7 +2148,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                 setIsDeleteConfirmOpen(true);
                             }
                         }}
-                        className="w-fit ml-auto"
+                        className="w-fit mx-auto"
                     >
                         <button className="p-2 text-gray-400 hover:text-brand-primary hover:bg-brand-primary/10 rounded-xl transition-all duration-200">
                             <IconMoreVertical className="w-5 h-5" />
@@ -1765,6 +2158,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
             )
         }
     ];
+
 
     const handleDeadlineShortcut = (hours: number) => {
         const now = new Date();
@@ -2006,13 +2400,13 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
 
                 {/* Alerts & Filter Section */}
                 <div className="flex flex-col gap-2">
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                         <Button
                             variant="outline"
                             size="sm"
                             onClick={() => setAlertFilter(prev => prev === 'dispute' ? null : 'dispute')}
                             className={`
-                                flex-1 !rounded-xl transition-all duration-300 text-[9px] font-black h-12 uppercase tracking-widest px-4
+                                flex-1 !rounded-xl transition-all duration-300 text-[9px] font-black h-12 uppercase tracking-widest px-2
                                 ${alertFilter === 'dispute'
                                     ? '!bg-brand-error !text-white !border-brand-error shadow-[0_4px_12px_rgba(239,68,68,0.2)]'
                                     : '!bg-brand-error/10 !text-brand-error !border-brand-error/20'
@@ -2026,7 +2420,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                             size="sm"
                             onClick={() => setAlertFilter(prev => prev === 'arthelp' ? null : 'arthelp')}
                             className={`
-                                flex-1 !rounded-xl transition-all duration-300 text-[9px] font-black h-12 uppercase tracking-widest px-4
+                                flex-1 !rounded-xl transition-all duration-300 text-[9px] font-black h-12 uppercase tracking-widest px-2
                                 ${alertFilter === 'arthelp'
                                     ? '!bg-brand-info !text-white !border-brand-info shadow-[0_4px_12px_rgba(14,165,233,0.2)]'
                                     : '!bg-brand-info/10 !text-brand-info !border-brand-info/20'
@@ -2035,10 +2429,55 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                         >
                             Art Help{projectCounts['arthelp'] > 0 ? ` ${projectCounts['arthelp']}` : ''}
                         </Button>
-                    </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setAlertFilter(prev => prev === 'late' ? null : 'late')}
+                            className={`
+                                flex-1 !rounded-xl transition-all duration-300 text-[9px] font-black h-12 uppercase tracking-widest px-2
+                                ${alertFilter === 'late'
+                                    ? '!bg-brand-error !text-white !border-brand-error shadow-[0_4px_12px_rgba(239,68,68,0.2)]'
+                                    : '!bg-brand-error/10 !text-brand-error !border-brand-error/20'
+                                }
+                            `}
+                        >
+                            Late{projectCounts['late'] > 0 ? ` ${projectCounts['late']}` : ''}
+                        </Button>
+                        {alertFilter === 'late' && (
+                            <>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setLateSubFilter(prev => prev === 'active' ? null : 'active')}
+                                    className={`
+                                        flex-1 !rounded-xl transition-all duration-300 text-[9px] font-black h-12 uppercase tracking-widest px-2 min-w-[80px]
+                                        ${lateSubFilter === 'active'
+                                            ? '!bg-white !text-black !border-white shadow-[0_4px_12px_rgba(255,255,255,0.15)]'
+                                            : '!bg-white/10 !text-white !border-white/20'
+                                        }
+                                    `}
+                                >
+                                    Active{projectCounts['lateDesigner'] > 0 ? ` ${projectCounts['lateDesigner']}` : ''}
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setLateSubFilter(prev => prev === 'done' ? null : 'done')}
+                                    className={`
+                                        flex-1 !rounded-xl transition-all duration-300 text-[9px] font-black h-12 uppercase tracking-widest px-2 min-w-[80px]
+                                        ${lateSubFilter === 'done'
+                                            ? '!bg-white !text-black !border-white shadow-[0_4px_12px_rgba(255,255,255,0.15)]'
+                                            : '!bg-white/10 !text-white !border-white/20'
+                                        }
+                                    `}
+                                >
+                                    Done{projectCounts['latePm'] > 0 ? ` ${projectCounts['latePm']}` : ''}
+                                </Button>
+                            </>
+                        )}
+                    </div>    </div>
 
 
-                </div>
 
                 {/* Search Bar - Full Width */}
                 <div className="flex gap-2">
@@ -2168,7 +2607,60 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                     >
                         Art Helps{projectCounts['arthelp'] > 0 ? ` ${projectCounts['arthelp']}` : ''}
                     </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                            setAlertFilter(prev => prev === 'late' ? null : 'late');
+                            setViewMode('projects');
+                        }}
+                        className={`
+                            rounded-xl border-transparent transition-all duration-300
+                            ${alertFilter === 'late'
+                                ? '!bg-brand-error !text-white shadow-[0_0_15px_rgba(239,68,68,0.3)]'
+                                : '!bg-brand-error/10 !text-brand-error hover:!bg-brand-error/20'
+                            }
+                            focus:!ring-brand-error/30 focus:!ring-offset-0 focus:!border-brand-error/40
+                        `}
+                    >
+                        Late{projectCounts['late'] > 0 ? ` ${projectCounts['late']}` : ''}
+                    </Button>
+                    {alertFilter === 'late' && (
+                        <>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setLateSubFilter(prev => prev === 'active' ? null : 'active')}
+                                className={`
+                                    rounded-xl transition-all duration-300 text-xs px-3
+                                    ${lateSubFilter === 'active'
+                                        ? '!bg-white !text-black !border-white shadow-[0_4px_12px_rgba(255,255,255,0.15)]'
+                                        : '!bg-white/10 !text-white !border-white/20 hover:!bg-white/20'
+                                    }
+                                    focus:!ring-white/30 focus:!ring-offset-0
+                                `}
+                            >
+                                Active{projectCounts['lateDesigner'] > 0 ? ` ${projectCounts['lateDesigner']}` : ''}
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setLateSubFilter(prev => prev === 'done' ? null : 'done')}
+                                className={`
+                                    rounded-xl transition-all duration-300 text-xs px-3
+                                    ${lateSubFilter === 'done'
+                                        ? '!bg-white !text-black !border-white shadow-[0_4px_12px_rgba(255,255,255,0.15)]'
+                                        : '!bg-white/10 !text-white !border-white/20 hover:!bg-white/20'
+                                    }
+                                    focus:!ring-white/30 focus:!ring-offset-0
+                                `}
+                            >
+                                Done{projectCounts['latePm'] > 0 ? ` ${projectCounts['latePm']}` : ''}
+                            </Button>
+                        </>
+                    )}
                 </div>
+
 
                 {/* Search - Top Right of Table */}
                 <div className="flex items-center gap-3 w-[350px]">
@@ -2198,7 +2690,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                 </div>
             </div>
 
-            <div className="flex-1 relative">
+            <div className="flex-1 relative w-full overflow-hidden">
                 <div className={`h-full transition-all duration-300 ${loading ? 'min-h-[522px]' : ''}`}>
                     <Table
                         columns={viewMode === 'leads' ? leadsColumns : columns}
@@ -2208,6 +2700,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                         skeletonCount={ITEMS_PER_PAGE}
                         isMetallicHeader={true}
                         className={viewMode === 'leads' ? "leads-table" : "projects-table"}
+                        dense={true}
                     />
                 </div>
             </div>
@@ -2318,7 +2811,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                                         ? (!approveDate || !approveTips || (approveTips === 'Yes' && !approveAmount) || !approveProjectId.match(/^[A-Z]{2,4}\s\d{6}$/))
                                                         : (orderType === 'Inquiry'
                                                             ? (!clientName.trim() || !leadIntakeDate || !location.trim())
-                                                            : (!selectedAssignee || !dueDate || !projectTitle.trim() || !selectedAccount)
+                                                            : (!selectedAssignee || !dueDate || !dueTime || !clientDueDate || !clientDueTime || !projectTitle.trim() || !selectedAccount)
                                                         )
                                         )
                                     }
@@ -2801,7 +3294,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                                                                                 currentStep === 10 ? !projectTitle.trim() :
                                                                                                     currentStep === 11 ? isUploading :
                                                                                                         currentStep === 12 ? false :
-                                                                                                            currentStep === 13 ? (!dueDate) :
+                                                                                                            currentStep === 13 ? (!clientDueDate || !clientDueTime || !dueDate || !dueTime) :
                                                                                                                 currentStep === 14 ? !selectedAssignee :
                                                                                                                     false
                                                                     )
@@ -3272,7 +3765,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                 <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
                                     <div className="space-y-6">
                                         <div className="space-y-4">
-                                            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Project Price</p>
+                                            <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-1 px-1">PROJECT PRICE</p>
                                             <Input
                                                 variant="metallic"
                                                 placeholder="eg 20"
@@ -3286,7 +3779,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                         <div className="h-px bg-white/[0.05] w-full" />
 
                                         <div className="space-y-4">
-                                            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Assignee Payout (Optional)</p>
+                                            <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-1 px-1">ASSIGNEE PAYOUT (OPTIONAL)</p>
                                             <Input
                                                 variant="metallic"
                                                 placeholder="Leave empty for Tiered (Auto)"
@@ -3297,19 +3790,9 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                             />
                                         </div>
 
-                                        <div className="mt-6 p-4 bg-brand-warning/10 border border-brand-warning/20 rounded-2xl">
-                                            <div className="flex gap-3">
-                                                <div className="w-8 h-8 rounded-full bg-brand-warning/20 flex items-center justify-center text-brand-warning shrink-0">
-                                                    <IconAlertCircle size={18} />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <p className="text-[10px] font-black text-brand-warning uppercase tracking-[0.2em]">NOTE:</p>
-                                                    <p className="text-[11px] font-bold text-brand-warning leading-relaxed uppercase">
-                                                        LEAVE ASSIGNEE PAYOUT (OPTIONAL) FIELD, EMPTY FOR NORMAL LOGOS. FOR SPECIAL PROJECTS (ANIMATION/WEB), DISCUSS PRICE WITH MANAGEMENT BEFORE ADDING.
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </div>
+                                        <p className="text-[10px] font-black text-brand-warning uppercase tracking-[0.2em] px-1 mt-4 leading-relaxed">
+                                             • NOTE: LEAVE ASSIGNEE PAYOUT (OPTIONAL) FIELD EMPTY FOR NORMAL LOGOS. FOR SPECIAL PROJECTS (ANIMATION/WEB), DISCUSS PRICE WITH MANAGEMENT BEFORE ADDING.
+                                         </p>
                                     </div>
                                 </div>
                             )}
@@ -3332,10 +3815,10 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                                     size="lg"
                                                 />
                                                 {!selectedAccount && (
-                                                    <p className="text-[10px] font-medium text-brand-error animate-in fade-in slide-in-from-top-1 px-1">
-                                                        Account is required
-                                                    </p>
-                                                )}
+                                                     <p className="text-[10px] font-black text-brand-error uppercase tracking-[0.2em] px-1 mt-2">
+                                                         • Account is required
+                                                     </p>
+                                                 )}
                                             </div>
                                         </div>
                                     </div>
@@ -3762,6 +4245,11 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                                     disabled={isReviewLoading}
                                                 />
                                             </div>
+                                            {(!clientDueDate || !clientDueTime) && (
+                                                 <p className="text-[10px] font-black text-brand-error uppercase tracking-[0.2em] px-1 mt-2">
+                                                     • Both Client Date and Time are required
+                                                 </p>
+                                             )}
                                         </div>
 
                                         {/* Assignee Deadline Section */}
@@ -3814,6 +4302,11 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                                                         disabled={isReviewLoading}
                                                     />
                                                 </div>
+                                                {(!dueDate || !dueTime) && (
+                                                     <p className="text-[10px] font-black text-brand-error uppercase tracking-[0.2em] px-1 mt-2">
+                                                         • Both Assignee Date and Time are required
+                                                     </p>
+                                                 )}
                                             </div>
                                         </div>
                                     </div>

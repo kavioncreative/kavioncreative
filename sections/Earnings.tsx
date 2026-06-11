@@ -32,6 +32,38 @@ import { getInitialTab, updateRoute } from '../utils/routing';
 let _earningsCache: any[] | null = null;
 let _releaseLogsCache: any[] | null = null;
 
+const calculateClearanceDaysLeft = (clearanceStartDateStr: string | Date | null): number => {
+    if (!clearanceStartDateStr) return 0;
+    const startDate = new Date(clearanceStartDateStr);
+    if (isNaN(startDate.getTime())) return 0;
+    
+    // Convert to PKT (UTC+5) calendar components using UTC getter methods
+    const pktStart = new Date(startDate.getTime() + (5 * 3600000));
+    const startYear = pktStart.getUTCFullYear();
+    const startMonth = pktStart.getUTCMonth(); // 0-11
+    
+    // Target is the 15th of the next month
+    let releaseYear = startYear;
+    let releaseMonth = startMonth + 1;
+    if (releaseMonth > 11) {
+        releaseMonth = 0;
+        releaseYear += 1;
+    }
+    
+    // Today's date in PKT (UTC+5)
+    const now = new Date();
+    const pktNow = new Date(now.getTime() + (5 * 3600000));
+    
+    // Compare the date portions using Date.UTC
+    const pktNowDateOnly = Date.UTC(pktNow.getUTCFullYear(), pktNow.getUTCMonth(), pktNow.getUTCDate());
+    const releaseDateOnly = Date.UTC(releaseYear, releaseMonth, 15);
+    
+    const diffMs = releaseDateOnly - pktNowDateOnly;
+    const diffDays = Math.ceil(diffMs / (1000 * 3600 * 24));
+    
+    return Math.max(0, diffDays);
+};
+
 const Earnings: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [earningsData, setEarningsData] = useState<any[]>(_earningsCache ?? []);
@@ -98,11 +130,8 @@ const Earnings: React.FC = () => {
             if (!error && data) {
                 const formatted = data.map(p => {
                     let daysLeft = 0;
-                    if (p.clearance_start_date && p.clearance_days && p.funds_status === 'Pending') {
-                        const startDate = new Date(p.clearance_start_date);
-                        const now = new Date();
-                        const daysPassed = Math.floor((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-                        daysLeft = Math.max(0, p.clearance_days - daysPassed);
+                    if (p.clearance_start_date && p.funds_status === 'Pending') {
+                        daysLeft = calculateClearanceDaysLeft(p.clearance_start_date);
                     }
 
                     let actualStatus = p.funds_status;
