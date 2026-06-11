@@ -52,6 +52,7 @@ export interface TableProps<T> extends ComponentProps {
   skeletonCount?: number;
   isMetallicHeader?: boolean;
   disableRowHover?: boolean;
+  isDense?: boolean;
 }
 
 export interface DropdownOption {

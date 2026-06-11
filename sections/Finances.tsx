@@ -9,7 +9,7 @@ import { Input, TextArea } from '../components/Input';
 import { DatePicker, formatDate as systemFormatDate } from '../components/DatePicker';
 import { Dropdown } from '../components/Dropdown';
 import { UploadPreview } from '../components/UploadPreview';
-import { IconCreditCard, IconChartBar, IconUser, IconSettings, IconPlus, IconTrash, IconEdit, IconCalendar, IconFilter, IconCloudUpload, IconClock, IconCheckCircle, IconLayout, IconDownload, IconBuilding, IconDollar, IconTrendingUp, IconX, IconChevronRight, IconLock, IconRefreshCw } from '../components/Icons';
+import { IconCreditCard, IconChartBar, IconUser, IconSettings, IconPlus, IconTrash, IconEdit, IconCalendar, IconFilter, IconCloudUpload, IconClock, IconCheckCircle, IconLayout, IconDownload, IconBuilding, IconDollar, IconTrendingUp, IconX, IconChevronRight, IconLock, IconRefreshCw, IconXCircle, IconSearch } from '../components/Icons';
 import { supabase } from '../lib/supabase';
 import { addToast } from '../components/Toast';
 import { KebabMenu } from '../components/KebabMenu';
@@ -795,7 +795,7 @@ const SellerEarnings: React.FC = () => {
 
             const [projRes, sellRes, platRes, slabRes] = await Promise.all([
                 supabase.from('projects')
-                    .select('*, primary_manager:primary_manager_id(name)')
+                    .select('id, project_id, project_title, status, created_at, clearance_start_date, price, designer_fee, account_id, client_name, client_type, primary_manager_id, assignee, primary_manager:primary_manager_id(name)')
                     .in('status', ['Approved', 'Done', 'Completed', 'Sent For Approval']),
                 supabase.from('seller_commissions')
                     .select('id, seller_id, commission_percentage, clearance_days, seller_commission_accounts(account_id), profiles(name)'),
@@ -1503,7 +1503,8 @@ const CompanyEarnings: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [loading, setLoading] = useState(true);
     const [projectsData, setProjectsData] = useState<any[]>([]);
-    const [activeSummaryFilter, setActiveSummaryFilter] = useState<'all' | 'pipeline' | 'secured'>('pipeline');
+    const [activeSummaryFilter, setActiveSummaryFilter] = useState<'all' | 'pipeline' | 'secured' | 'cancelled'>('pipeline');
+    const [cancellationReasonModal, setCancellationReasonModal] = useState({ isOpen: false, text: '' });
 
     useEffect(() => {
         // Only run if user data is ready
@@ -1545,9 +1546,8 @@ const CompanyEarnings: React.FC = () => {
 
             let query = supabase
                 .from('projects')
-                .select('*, accounts(prefix)')
-                .neq('status', 'Removed')
-                .neq('status', 'Cancelled');
+                .select('id, project_id, project_title, status, created_at, clearance_start_date, price, tip_amount, designer_fee, account_id, account, converted_by, order_type, cancellation_reason, client_name, updated_at, accounts(prefix)')
+                .neq('status', 'Removed');
 
             // Apply account scoping for non-Super Admins
             const isAdminLike = ['admin', 'project manager', 'project operations manager'].includes(userRole || '');
@@ -1621,6 +1621,9 @@ const CompanyEarnings: React.FC = () => {
                         account_prefix: prefix,
                         formatted_project_id: formattedId,
                         client: p.client_name || 'General Client',
+                        created_at_formatted: p.created_at ? systemFormatDate(new Date(p.created_at)) : 'N/A',
+                        approved_on_formatted: p.clearance_start_date ? systemFormatDate(new Date(p.clearance_start_date)) : 'N/A',
+                        cancelled_at_formatted: p.updated_at ? systemFormatDate(new Date(p.updated_at)) : 'N/A',
                         date: p.clearance_start_date ? systemFormatDate(new Date(p.clearance_start_date)) : 'N/A',
                         rawDate: p.clearance_start_date
                     };
@@ -1640,8 +1643,9 @@ const CompanyEarnings: React.FC = () => {
     const derived = useMemo(() => {
         let filtered = [...projectsData];
 
-        // 1. Date Filter
-        if (fromDate || toDate) {
+        // 1. Date Filter (bypassed if search query is active)
+        const isSearching = searchQuery.trim() !== '';
+        if (!isSearching && (fromDate || toDate)) {
             filtered = filtered.filter(p => {
                 const date = new Date(p.created_at);
                 if (fromDate && date < fromDate) return false;
@@ -1655,6 +1659,17 @@ const CompanyEarnings: React.FC = () => {
             filtered = filtered.filter(p => selectedAccount.includes(p.account_id));
         }
 
+        // 3. Search Filter (by project ID or project title)
+        if (isSearching) {
+            const queryLower = searchQuery.toLowerCase().trim();
+            filtered = filtered.filter(p => {
+                const pId = String(p.project_id || '').toLowerCase();
+                const formattedId = String(p.formatted_project_id || '').toLowerCase();
+                const pTitle = String(p.project_title || '').toLowerCase();
+                return pId.includes(queryLower) || formattedId.includes(queryLower) || pTitle.includes(queryLower);
+            });
+        }
+
         // Stats (before summary filter)
         const pipelineItems = filtered.filter(p =>
             p.status !== 'Completed' &&
@@ -1663,22 +1678,35 @@ const CompanyEarnings: React.FC = () => {
             p.status !== 'Cancelled'
         );
         const securedItems = filtered.filter(p => p.status === 'Completed' || p.status === 'Approved');
+        const cancelledItems = filtered.filter(p => p.status === 'Cancelled');
+
         const pipelineRevenue = pipelineItems.reduce((sum, p) => sum + p.company_earning, 0);
         const securedRevenue = securedItems.reduce((sum, p) => sum + p.company_earning, 0);
+        const cancelledRevenue = cancelledItems.reduce((sum, p) => sum + p.company_earning, 0);
+
+        const salesItems = [...pipelineItems, ...securedItems];
+        const salesRevenue = salesItems.reduce((sum, p) => sum + Number(p.price || 0), 0);
+
         const pipelineCount = pipelineItems.length;
         const securedCount = securedItems.length;
+        const cancelledCount = cancelledItems.length;
+        const salesCount = salesItems.length;
 
-        // 3. Summary Filter (table view)
+        // 4. Summary Filter (table view)
         if (activeSummaryFilter === 'pipeline') {
             filtered = [...pipelineItems];
         } else if (activeSummaryFilter === 'secured') {
             filtered = [...securedItems];
+        } else if (activeSummaryFilter === 'cancelled') {
+            filtered = [...cancelledItems];
+        } else if (activeSummaryFilter === 'all') {
+            filtered = [...salesItems];
         }
 
-        return { filteredProjects: filtered, pipelineRevenue, securedRevenue, pipelineCount, securedCount };
-    }, [projectsData, fromDate, toDate, selectedAccount, activeSummaryFilter]);
+        return { filteredProjects: filtered, pipelineRevenue, securedRevenue, cancelledRevenue, salesRevenue, pipelineCount, securedCount, cancelledCount, salesCount };
+    }, [projectsData, fromDate, toDate, selectedAccount, activeSummaryFilter, searchQuery]);
 
-    const { filteredProjects, pipelineRevenue, securedRevenue, pipelineCount, securedCount } = derived;
+    const { filteredProjects, pipelineRevenue, securedRevenue, cancelledRevenue, salesRevenue, pipelineCount, securedCount, cancelledCount, salesCount } = derived;
 
     const fetchAccounts = async () => {
         // Redundant - now using useAccounts() from AccountContext which handles scoping
@@ -1968,7 +1996,44 @@ const CompanyEarnings: React.FC = () => {
             </Card>
 
             {/* Summary Statistics Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {/* Gross Sales */}
+                <Card
+                    isElevated={true}
+                    disableHover={activeSummaryFilter === 'all'}
+                    className={`h-full p-0 border-2 transition-all group cursor-pointer overflow-hidden ${activeSummaryFilter === 'all'
+                        ? 'bg-gradient-to-b from-[#FF6B4B] to-[#D9361A] border-[#FF4D2D] shadow-[inset_0_1px_0_rgba(255,255,255,0.4),inset_0_-1px_0_rgba(0,0,0,0.2)]'
+                        : 'border-white/10 bg-[#1A1A1A] hover:border-brand-primary/30'
+                        }`}
+                    bodyClassName="h-full"
+                    onClick={() => setActiveSummaryFilter('all')}
+                >
+                    {/* Full Surface Metallic Shine */}
+                    <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.02)_0%,rgba(255,255,255,0.05)_40%,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.05)_60%,rgba(255,255,255,0.02)_100%)] pointer-events-none opacity-70" />
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.05)_0%,transparent_70%)] pointer-events-none" />
+
+                    <div className="p-5 relative z-10 w-full">
+                        <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                                <p className={`text-xs font-bold uppercase tracking-widest mb-2 ${activeSummaryFilter === 'all' ? 'text-white/80' : 'text-gray-400'}`}>Gross Sales</p>
+                                <p className={`text-2xl font-black mb-1 ${activeSummaryFilter === 'all' ? 'text-white' : 'text-white/90'}`}>${salesRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <span className={activeSummaryFilter === 'all' ? 'inline-flex items-center px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider bg-white/20 text-white' : 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-white/5 text-gray-300 border border-white/10'}>
+                                        {salesCount} Projects
+                                    </span>
+                                    <span className={`text-[10px] font-bold uppercase tracking-widest ${activeSummaryFilter === 'all' ? 'text-white/70' : 'text-gray-500 opacity-60'}`}>Gross Volume</span>
+                                </div>
+                            </div>
+                            <div className={`p-2 rounded-xl border transition-all ${activeSummaryFilter === 'all'
+                                ? 'bg-white/20 border-white/30 text-white'
+                                : 'bg-white/5 border-white/10 text-gray-400 group-hover:bg-brand-primary/10 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
+                                }`}>
+                                <IconDollar className="w-5 h-5" />
+                            </div>
+                        </div>
+                    </div>
+                </Card>
+
                 {/* Pipeline Revenue */}
                 <Card
                     isElevated={true}
@@ -2042,8 +2107,56 @@ const CompanyEarnings: React.FC = () => {
                         </div>
                     </div>
                 </Card>
+
+                {/* Cancelled Projects */}
+                <Card
+                    isElevated={true}
+                    disableHover={activeSummaryFilter === 'cancelled'}
+                    className={`h-full p-0 border-2 transition-all group cursor-pointer overflow-hidden ${activeSummaryFilter === 'cancelled'
+                        ? 'bg-gradient-to-b from-[#FF6B4B] to-[#D9361A] border-[#FF4D2D] shadow-[inset_0_1px_0_rgba(255,255,255,0.4),inset_0_-1px_0_rgba(0,0,0,0.2)]'
+                        : 'border-white/10 bg-[#1A1A1A] hover:border-brand-primary/30'
+                        }`}
+                    bodyClassName="h-full"
+                    onClick={() => setActiveSummaryFilter('cancelled')}
+                >
+                    {/* Full Surface Metallic Shine */}
+                    <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.02)_0%,rgba(255,255,255,0.05)_40%,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.05)_60%,rgba(255,255,255,0.02)_100%)] pointer-events-none opacity-70" />
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.05)_0%,transparent_70%)] pointer-events-none" />
+
+                    <div className="p-5 relative z-10 w-full">
+                        <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                                <p className={`text-xs font-bold uppercase tracking-widest mb-2 ${activeSummaryFilter === 'cancelled' ? 'text-white/80' : 'text-gray-400'}`}>Cancelled Revenue</p>
+                                <p className={`text-2xl font-black mb-1 ${activeSummaryFilter === 'cancelled' ? 'text-white' : 'text-brand-error'}`}>${cancelledRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <span className={activeSummaryFilter === 'cancelled' ? 'inline-flex items-center px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider bg-white/20 text-white' : getStatusCapsuleClasses('error')}>
+                                        {cancelledCount} Projects
+                                    </span>
+                                    <span className={`text-[10px] font-bold uppercase tracking-widest ${activeSummaryFilter === 'cancelled' ? 'text-white/70' : 'text-gray-500 opacity-60'}`}>Revenue Cancelled</span>
+                                </div>
+                            </div>
+                            <div className={`p-2 rounded-xl border transition-all ${activeSummaryFilter === 'cancelled'
+                                ? 'bg-white/20 border-white/30 text-white'
+                                : 'bg-white/5 border-white/10 text-gray-400 group-hover:bg-brand-primary/10 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
+                                }`}>
+                                <IconXCircle className="w-5 h-5" />
+                            </div>
+                        </div>
+                    </div>
+                </Card>
             </div>
 
+            {/* Search Bar */}
+            <div className="w-full max-w-md mt-6 mb-2">
+                <Input
+                    variant="metallic"
+                    placeholder="Search by Project ID or Project Title..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    leftIcon={<IconSearch className="w-4 h-4 text-gray-400" />}
+                    className="w-full"
+                />
+            </div>
 
             <div className="space-y-4">
                 <Table
@@ -2067,6 +2180,7 @@ const CompanyEarnings: React.FC = () => {
                         {
                             header: 'Status',
                             key: 'status',
+                            className: 'text-center',
                             render: (p: any) => {
                                 const status = p.status || 'In Progress';
                                 return (
@@ -2079,8 +2193,9 @@ const CompanyEarnings: React.FC = () => {
                         {
                             header: 'Order Type',
                             key: 'order_type',
+                            className: 'text-center',
                             render: (item: any) => (
-                                <div className="flex flex-col">
+                                <div className="flex flex-col items-center">
                                     <span className={`text-[10px] font-black uppercase tracking-wider ${item.order_type === 'Query' ? 'text-brand-primary' : 'text-gray-400'}`}>
                                         {item.order_type || 'Direct Order'}
                                     </span>
@@ -2093,12 +2208,12 @@ const CompanyEarnings: React.FC = () => {
                         {
                             header: 'Client',
                             key: 'client',
-                            className: 'text-gray-400'
+                            className: 'text-gray-400 text-center'
                         },
                         {
                             header: 'Price',
                             key: 'price',
-                            className: 'text-right',
+                            className: 'text-center',
                             render: (item: any) => (
                                 <span className="text-white font-bold">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(item.price || 0)}</span>
                             )
@@ -2106,7 +2221,7 @@ const CompanyEarnings: React.FC = () => {
                         {
                             header: 'Platform Commission',
                             key: 'platform_cut',
-                            className: 'text-gray-400 text-right',
+                            className: 'text-gray-400 text-center',
                             render: (item: any) => (
                                 <span>{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(item.platform_cut || 0)}</span>
                             )
@@ -2114,7 +2229,7 @@ const CompanyEarnings: React.FC = () => {
                         {
                             header: 'Freelancer Cut',
                             key: 'freelancer_cut',
-                            className: 'text-gray-400 text-right',
+                            className: 'text-gray-400 text-center',
                             render: (item: any) => (
                                 <span>{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(item.freelancer_cut || 0)}</span>
                             )
@@ -2122,7 +2237,7 @@ const CompanyEarnings: React.FC = () => {
                         {
                             header: 'Company Earning',
                             key: 'company_earning',
-                            className: 'text-right',
+                            className: 'text-center',
                             render: (item: any) => (
                                 <span className="text-brand-success font-bold">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(item.company_earning || 0)}</span>
                             )
@@ -2130,32 +2245,86 @@ const CompanyEarnings: React.FC = () => {
                         ...(activeSummaryFilter !== 'pipeline' ? [{
                             header: 'Tips',
                             key: 'tip_amount',
-                            className: 'text-gray-400 text-right',
+                            className: 'text-gray-400 text-center',
                             render: (item: any) => (
                                 <span className={item.tip_amount ? 'text-brand-success font-medium' : ''}>
                                     {item.tip_amount ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(item.tip_amount) : '-'}
                                 </span>
                             )
                         }] : []),
+                        ...(activeSummaryFilter === 'cancelled' ? [{
+                            header: 'Cancellation Reason',
+                            key: 'cancellation_reason',
+                            className: 'max-w-[200px] text-center',
+                            render: (p: any) => (
+                                <div className="flex items-center justify-center gap-2 group/reason">
+                                    <span className="text-gray-400 truncate block text-xs flex-1" title={p.cancellation_reason}>
+                                        {p.cancellation_reason || '-'}
+                                    </span>
+                                    {p.cancellation_reason && p.cancellation_reason !== '-' && (
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setCancellationReasonModal({ isOpen: true, text: p.cancellation_reason! });
+                                            }}
+                                            className="w-6 h-6 flex items-center justify-center rounded-lg bg-brand-error/10 border border-brand-error/20 text-brand-error hover:bg-brand-error/20 transition-all ml-2 shrink-0 group-hover/btn:scale-105"
+                                            title="View Full Reason"
+                                        >
+                                            <IconChevronRight className="w-3.5 h-3.5" strokeWidth={2.5} />
+                                        </button>
+                                    )}
+                                </div>
+                            )
+                        }] : []),
                         {
                             header: 'Account',
                             key: 'account_prefix',
-                            className: 'text-gray-400 font-bold uppercase tracking-wider'
+                            className: 'text-gray-400 font-bold uppercase tracking-wider text-center'
                         },
                         {
-                            header: 'Date',
-                            key: 'date',
-                            className: 'text-right',
+                            header: 'Created At',
+                            key: 'created_at_formatted',
+                            className: 'text-center',
                             render: (item: any) => (
-                                <span className="text-gray-400">{item.date}</span>
+                                <span className="text-gray-400">{item.created_at_formatted}</span>
                             )
-                        }
+                        },
+                        ...(activeSummaryFilter === 'secured' ? [{
+                            header: 'Approved On',
+                            key: 'approved_on_formatted',
+                            className: 'text-center',
+                            render: (item: any) => (
+                                <span className="text-gray-400">{item.approved_on_formatted}</span>
+                            )
+                        }] : []),
+                        ...(activeSummaryFilter === 'cancelled' ? [{
+                            header: 'Cancelled On',
+                            key: 'cancelled_at_formatted',
+                            className: 'text-center',
+                            render: (item: any) => (
+                                <span className="text-gray-400">{item.cancelled_at_formatted}</span>
+                            )
+                        }] : [])
                     ]}
                     data={filteredProjects}
                     isLoading={loading}
                     isMetallicHeader={true}
+                    isDense={true}
                 />
             </div>
+
+            {/* Cancellation Reason Modal */}
+            <Modal
+                isOpen={cancellationReasonModal.isOpen}
+                onClose={() => setCancellationReasonModal({ isOpen: false, text: '' })}
+                title="Cancellation Reason"
+            >
+                <div className="p-6">
+                    <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap break-words">
+                        {cancellationReasonModal.text || 'No reason provided.'}
+                    </p>
+                </div>
+            </Modal>
         </div>
     );
 };

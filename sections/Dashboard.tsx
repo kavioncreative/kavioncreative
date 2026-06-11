@@ -1,16 +1,17 @@
-import React, { useState, useEffect, useCallback, memo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, memo, useRef, useMemo } from 'react';
 import { useUser } from '../contexts/UserContext';
-import { Modal } from '../components/Surfaces';
+import { Modal, Card, ElevatedMetallicCard } from '../components/Surfaces';
 import Button from '../components/Button';
 import { Input } from '../components/Input';
 import { supabase } from '../lib/supabase';
 import { addToast } from '../components/Toast';
-import { IconClock, IconZap, IconTrendingUp, IconCalendar, IconTicket, IconPlay, IconList, IconChevronRight, IconAlertTriangle, IconCheckCircle, IconX, IconSend, IconMoreVertical, IconUser } from '../components/Icons';
-import { ElevatedMetallicCard } from '../components/Surfaces';
+import { IconClock, IconZap, IconTrendingUp, IconCalendar, IconTicket, IconPlay, IconList, IconChevronRight, IconAlertTriangle, IconCheckCircle, IconX, IconSend, IconMoreVertical, IconUser, IconDollar, IconXCircle, IconChartBar } from '../components/Icons';
 import { getStatusCapsuleClasses } from '../components/Badge';
 import { formatDeadlineDate, getTimeLeft, formatTime } from '../utils/formatter';
-import { DatePicker } from '../components/DatePicker';
+import { DatePicker, formatDate as systemFormatDate } from '../components/DatePicker';
 import { TimeSelect } from '../components/TimeSelect';
+import { Dropdown } from '../components/Dropdown';
+import { useAccounts } from '../contexts/AccountContext';
 
 interface Task {
     id: string;
@@ -450,6 +451,670 @@ const TaskWidget = memo(({ profile, role, onTaskClick, onMarkComplete }: { profi
     );
 });
 
+const EarningsBreakdownWidget = memo(({ profile, role }: { profile: any, role: string | null }) => {
+    const { accounts, loading: accountsLoading } = useAccounts();
+    const [selectedAccount, setSelectedAccount] = useState<string[]>(['all']);
+
+    const handleAccountChange = (ids: string | string[]) => {
+        let nextIds = Array.isArray(ids) ? ids : [ids];
+        if (nextIds.length > 1) {
+            const hasAll = nextIds.includes('all');
+            const wasAll = selectedAccount.includes('all');
+            if (hasAll && !wasAll) nextIds = ['all'];
+            else if (hasAll && wasAll) nextIds = nextIds.filter(id => id !== 'all');
+        }
+        if (nextIds.length === 0) nextIds = ['all'];
+        setSelectedAccount(nextIds);
+    };
+
+    // Filter toolbar states
+    const [fromDate, setFromDate] = useState<Date | null>(() => {
+        const d = new Date();
+        return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
+    });
+    const [toDate, setToDate] = useState<Date | null>(() => {
+        const d = new Date();
+        return new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
+    });
+    const [activeFilter, setActiveFilter] = useState<string | null>('month');
+    const [platformCommissions, setPlatformCommissions] = useState<any[]>([]);
+    const [pricingSlabs, setPricingSlabs] = useState<any[]>([]);
+    const [commissionsLoading, setCommissionsLoading] = useState(true);
+    const [loading, setLoading] = useState(true);
+    const [projectsData, setProjectsData] = useState<any[]>([]);
+    const [activeSummaryFilter, setActiveSummaryFilter] = useState<'all' | 'pipeline' | 'secured' | 'cancelled'>('all');
+
+    const fetchPlatformCommissions = async () => {
+        setCommissionsLoading(true);
+        const { data, error } = await supabase
+            .from('platform_commissions')
+            .select(`
+                *,
+                platform_commission_accounts (
+                    account_id
+                )
+            `);
+
+        if (!error && data) {
+            const mapped = data.map(item => ({
+                ...item,
+                assigned_account_ids: item.platform_commission_accounts?.map((r: any) => r.account_id) || []
+            }));
+            setPlatformCommissions(mapped);
+            setCommissionsLoading(false);
+            return mapped;
+        }
+        setCommissionsLoading(false);
+        return [];
+    };
+
+    const fetchPricingSlabs = async () => {
+        const { data, error } = await supabase
+            .from('pricing_slabs')
+            .select('*')
+            .order('min_price', { ascending: true });
+
+        if (!error && data) {
+            setPricingSlabs(data);
+            return data;
+        }
+        return [];
+    };
+
+    const fetchProjects = async (isInitial = false, passedCommissions?: any[], passedAccounts?: any[], passedSlabs?: any[]) => {
+        try {
+            if (isInitial) setLoading(true);
+            const isSuperAdmin = role === 'Super Admin';
+            const userRole = role?.toLowerCase().trim();
+
+            let query = supabase
+                .from('projects')
+                .select('id, project_id, project_title, status, created_at, clearance_start_date, price, tip_amount, designer_fee, account_id, account, converted_by, order_type, cancellation_reason, client_name, updated_at, accounts(prefix)')
+                .neq('status', 'Removed');
+
+            // Apply account scoping for non-Super Admins
+            const isAdminLike = ['admin', 'project manager', 'project operations manager'].includes(userRole || '');
+            if (isAdminLike && !isSuperAdmin) {
+                const { data: permittedAccounts } = await supabase
+                    .from('user_account_access')
+                    .select('account_id')
+                    .eq('user_id', profile?.id);
+
+                if (permittedAccounts && permittedAccounts.length > 0) {
+                    const accountIds = permittedAccounts.map(pa => pa.account_id);
+                    query = query.in('account_id', accountIds);
+                } else {
+                    setProjectsData([]);
+                    return;
+                }
+            }
+
+            const { data, error } = await query.order('created_at', { ascending: false });
+
+            if (error) throw error;
+            if (data) {
+                const enriched = data.map(p => {
+                    const price = Number(p.price || 0);
+
+                    // REVENUE MODEL: Integrated Platform Commissions + DB Trigger Logic
+                    let accountId = p.account_id;
+
+                    const activeAccounts = passedAccounts || accounts;
+                    const activeCommissions = passedCommissions || platformCommissions;
+
+                    // Fallback: If account_id is missing in data, find it by name/prefix from the accounts state
+                    if (!accountId && p.account) {
+                        const matchedAcc = activeAccounts.find(a => a.name === p.account || a.prefix === p.account);
+                        if (matchedAcc) accountId = matchedAcc.id;
+                    }
+
+                    const commission = activeCommissions.find(pc => pc.assigned_account_ids.includes(accountId));
+                    const commissionFactor = commission ? (Number(commission.commission_percentage) > 1 ? Number(commission.commission_percentage) / 100 : Number(commission.commission_percentage)) : 0;
+
+                    const platformCut = price * commissionFactor;
+
+                    // Use database-calculated designer_fee if available, otherwise calculate using slabs
+                    let freelancerCut = 0;
+                    if (p.designer_fee && Number(p.designer_fee) > 0) {
+                        freelancerCut = Number(p.designer_fee);
+                    } else {
+                        const activeSlabs = passedSlabs || pricingSlabs;
+                        const slab = activeSlabs.find(s => price >= Number(s.min_price) && price <= Number(s.max_price));
+                        const freelancerPct = slab ? Number(slab.freelancer_percentage) : 50;
+                        freelancerCut = (price - platformCut) * (freelancerPct / 100);
+                    }
+
+                    // Company earning is the remainder
+                    const companyEarning = price - platformCut - freelancerCut;
+
+                    const prefix = (p as any).accounts?.prefix || 'Unassigned Account';
+
+                    // FIX: Avoid prefix duplication and handle unassigned state
+                    let formattedId = p.project_id;
+                    if (prefix !== 'Unassigned Account' && !formattedId.startsWith(prefix)) {
+                        formattedId = `${prefix} ${formattedId}`;
+                    }
+
+                    return {
+                        ...p,
+                        company_earning: companyEarning,
+                        platform_cut: platformCut,
+                        freelancer_cut: freelancerCut,
+                        account_prefix: prefix,
+                        formatted_project_id: formattedId,
+                        client: p.client_name || 'General Client',
+                        created_at_formatted: p.created_at ? systemFormatDate(new Date(p.created_at)) : 'N/A',
+                        approved_on_formatted: p.clearance_start_date ? systemFormatDate(new Date(p.clearance_start_date)) : 'N/A',
+                        cancelled_at_formatted: p.updated_at ? systemFormatDate(new Date(p.updated_at)) : 'N/A',
+                        date: p.clearance_start_date ? systemFormatDate(new Date(p.clearance_start_date)) : 'N/A',
+                        rawDate: p.clearance_start_date
+                    };
+                });
+
+                setProjectsData(enriched);
+            }
+        } catch (err) {
+            console.error('Error fetching company projects for widget:', err);
+        } finally {
+            if (isInitial) setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (!role || !profile?.id || accountsLoading) return;
+
+        const loadInitialData = async () => {
+            const loadedCommissions = await fetchPlatformCommissions();
+            const loadedSlabs = await fetchPricingSlabs();
+            await fetchProjects(true, loadedCommissions, accounts, loadedSlabs);
+        };
+        loadInitialData();
+
+        const channel = supabase
+            .channel('dashboard_earnings_projects_changes')
+            .on(
+                'postgres_changes' as any,
+                { event: '*', schema: 'public', table: 'projects' },
+                () => {
+                    fetchProjects();
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [accounts, accountsLoading, role, profile?.id]);
+
+    const derived = useMemo(() => {
+        let filtered = [...projectsData];
+
+        // 1. Date Filter
+        if (fromDate || toDate) {
+            filtered = filtered.filter(p => {
+                const date = new Date(p.created_at);
+                if (fromDate && date < fromDate) return false;
+                if (toDate && date > toDate) return false;
+                return true;
+            });
+        }
+
+        // 2. Account Filter
+        if (selectedAccount.length > 0 && !selectedAccount.includes('all')) {
+            filtered = filtered.filter(p => selectedAccount.includes(p.account_id));
+        }
+
+        // Stats (before activeSummaryFilter filtering)
+        const pipelineItems = filtered.filter(p =>
+            p.status !== 'Completed' &&
+            p.status !== 'Approved' &&
+            p.status !== 'Removed' &&
+            p.status !== 'Cancelled'
+        );
+        const securedItems = filtered.filter(p => p.status === 'Completed' || p.status === 'Approved');
+        const cancelledItems = filtered.filter(p => p.status === 'Cancelled');
+
+        const pipelineRevenue = pipelineItems.reduce((sum, p) => sum + p.company_earning, 0);
+        const securedRevenue = securedItems.reduce((sum, p) => sum + p.company_earning, 0);
+        const cancelledRevenue = cancelledItems.reduce((sum, p) => sum + p.company_earning, 0);
+
+        const salesItems = [...pipelineItems, ...securedItems];
+        const salesRevenue = salesItems.reduce((sum, p) => sum + Number(p.price || 0), 0);
+
+        const pipelineCount = pipelineItems.length;
+        const securedCount = securedItems.length;
+        const cancelledCount = cancelledItems.length;
+        const salesCount = salesItems.length;
+
+        // Also prepare the specific active items for CSV export
+        let activeCSVItems = [...filtered];
+        if (activeSummaryFilter === 'pipeline') {
+            activeCSVItems = [...pipelineItems];
+        } else if (activeSummaryFilter === 'secured') {
+            activeCSVItems = [...securedItems];
+        } else if (activeSummaryFilter === 'cancelled') {
+            activeCSVItems = [...cancelledItems];
+        } else {
+            activeCSVItems = [...salesItems];
+        }
+
+        return {
+            activeCSVItems,
+            pipelineRevenue,
+            securedRevenue,
+            cancelledRevenue,
+            salesRevenue,
+            pipelineCount,
+            securedCount,
+            cancelledCount,
+            salesCount
+        };
+    }, [projectsData, fromDate, toDate, selectedAccount, activeSummaryFilter]);
+
+    const {
+        activeCSVItems,
+        pipelineRevenue,
+        securedRevenue,
+        cancelledRevenue,
+        salesRevenue,
+        pipelineCount,
+        securedCount,
+        cancelledCount,
+        salesCount
+    } = derived;
+
+    const handleQuickFilter = (type: string) => {
+        const now = new Date();
+
+        if (activeFilter === type) {
+            const start = new Date(now);
+            start.setDate(now.getDate() - 29);
+            start.setHours(0, 0, 0, 0);
+            const end = new Date(now);
+            end.setHours(23, 59, 59, 999);
+
+            setFromDate(start);
+            setToDate(end);
+            setActiveFilter(null);
+            return;
+        }
+
+        const end = new Date(now);
+        end.setHours(23, 59, 59, 999);
+        let start = new Date(now);
+        start.setHours(0, 0, 0, 0);
+
+        if (type === 'today') {
+            // Already set to start of today
+        } else if (type === 'week') {
+            const day = now.getDay();
+            const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+            start.setDate(diff);
+            end.setTime(start.getTime());
+            end.setDate(start.getDate() + 6);
+            end.setHours(23, 59, 59, 999);
+        } else if (type === 'month') {
+            start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+            end.setTime(new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).getTime());
+        }
+
+        setFromDate(start);
+        setToDate(end);
+        setActiveFilter(type);
+    };
+
+    const handleExportCSV = () => {
+        if (activeCSVItems.length === 0) return;
+
+        const headers = ['Project ID', 'Project Title', 'Status', 'Client', 'Price', 'Platform Commission', 'Freelancer Cut', 'Company Earning', 'Account', 'Order Type', 'Converted By', 'Date'];
+        const csvRows = [headers.join(',')];
+
+        activeCSVItems.forEach(p => {
+            const row = [
+                `"${p.formatted_project_id}"`,
+                `"${p.project_title || 'Untitled Project'}"`,
+                `"${p.status}"`,
+                `"${p.client}"`,
+                `"${(p.price || 0).toFixed(2)}"`,
+                `"${(p.platform_cut || 0).toFixed(2)}"`,
+                `"${(p.freelancer_cut || 0).toFixed(2)}"`,
+                `"${(p.company_earning || 0).toFixed(2)}"`,
+                `"${p.account_prefix}"`,
+                `"${p.order_type || 'Direct Order'}"`,
+                `"${p.converted_by || '-'}"`,
+                `"${p.date}"`
+            ];
+            csvRows.push(row.join(','));
+        });
+
+        const csvString = csvRows.join('\n');
+        const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `dashboard_earnings_${activeSummaryFilter}_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    return (
+        <div className="space-y-4">
+            <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider px-2">Earnings Breakdown</h3>
+            </div>
+            
+            {/* Toolbar Card */}
+            <Card
+                isElevated={true}
+                disableHover={true}
+                className="h-full flex flex-col p-0 border border-white/10 bg-[#1A1A1A] rounded-2xl relative overflow-hidden shadow-nova"
+                bodyClassName="flex-1 h-full py-0 px-0 overflow-visible"
+            >
+                {/* Metallic Sheen Overlay */}
+                <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.02)_0%,rgba(255,255,255,0.05)_40%,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.05)_60%,rgba(255,255,255,0.02)_100%)] pointer-events-none opacity-70" />
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.05)_0%,transparent_70%)] pointer-events-none" />
+
+                <div className="p-3 relative z-10 w-full h-full">
+                    <div className="w-full h-full flex flex-col xl:flex-row items-center justify-between gap-4 py-1 px-2">
+                        {/* Left Side: Date Pickers & Account */}
+                        <div className="flex flex-col md:flex-row items-center gap-3 w-full xl:w-auto">
+                            <DatePicker
+                                placeholder="From"
+                                value={fromDate}
+                                onChange={(date) => {
+                                    setFromDate(date);
+                                    setActiveFilter(null);
+                                }}
+                            >
+                                <div className="relative flex items-center gap-2 bg-black/40 border border-white/[0.05] rounded-xl pl-4 pr-3 py-2.5 text-sm font-bold text-white hover:bg-black/50 transition-all cursor-pointer group shadow-[inset_0_2px_8px_rgba(0,0,0,0.6)] overflow-hidden">
+                                    <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-b from-black/60 to-transparent pointer-events-none" />
+                                    <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.02)_48%,rgba(255,255,255,0.05)_50%,rgba(255,255,255,0.02)_52%,transparent_100%)] opacity-30 pointer-events-none" />
+
+                                    <IconCalendar className="w-4 h-4 text-[#FF6B4B] group-hover:scale-110 transition-transform relative z-10" />
+                                    <span className="min-w-[100px] whitespace-nowrap text-center relative z-10">{systemFormatDate(fromDate) || 'From Date'}</span>
+                                    <div className="flex items-center gap-1.5 relative z-10">
+                                        <svg className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                        {fromDate && (
+                                            <div
+                                                className="p-1 rounded-md hover:bg-white/10 text-gray-500 hover:text-[#FF6B4B] transition-all pointer-events-auto"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setFromDate(null);
+                                                }}
+                                            >
+                                                <IconX className="w-3 h-3" strokeWidth={3} />
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </DatePicker>
+                            
+                            <DatePicker
+                                placeholder="To"
+                                value={toDate}
+                                onChange={(date) => {
+                                    setToDate(date);
+                                    setActiveFilter(null);
+                                }}
+                            >
+                                <div className="relative flex items-center gap-2 bg-black/40 border border-white/[0.05] rounded-xl pl-4 pr-3 py-2.5 text-sm font-bold text-white hover:bg-black/50 transition-all cursor-pointer group shadow-[inset_0_2px_8px_rgba(0,0,0,0.6)] overflow-hidden">
+                                    <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-b from-black/60 to-transparent pointer-events-none" />
+                                    <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.02)_48%,rgba(255,255,255,0.05)_50%,rgba(255,255,255,0.02)_52%,transparent_100%)] opacity-30 pointer-events-none" />
+
+                                    <IconCalendar className="w-4 h-4 text-[#FF6B4B] group-hover:scale-110 transition-transform relative z-10" />
+                                    <span className="min-w-[100px] whitespace-nowrap text-center relative z-10">{systemFormatDate(toDate) || 'To Date'}</span>
+                                    <div className="flex items-center gap-1.5 relative z-10">
+                                        <svg className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                        {toDate && (
+                                            <div
+                                                className="p-1 rounded-md hover:bg-white/10 text-gray-500 hover:text-[#FF6B4B] transition-all pointer-events-auto"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setToDate(null);
+                                                }}
+                                            >
+                                                <IconX className="w-3 h-3" strokeWidth={3} />
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </DatePicker>
+
+                            <div className="h-8 w-px bg-white/10 mx-1 hidden sm:block" />
+
+                            <div className="w-44">
+                                <Dropdown
+                                    value={selectedAccount}
+                                    onChange={handleAccountChange}
+                                    options={[{ label: 'All Accounts', value: 'all' }, ...(accounts || []).map(a => ({
+                                        label: a.name,
+                                        description: a.prefix?.toUpperCase(),
+                                        value: a.id
+                                    }))]}
+                                    placeholder="All Accounts"
+                                    showSearch={true}
+                                    isMulti={true}
+                                    menuClassName="!w-[340px]"
+                                >
+                                    <div className="relative flex items-center justify-between gap-2 bg-black/40 border border-white/[0.05] rounded-xl px-4 h-10 text-sm font-bold text-white hover:bg-black/50 transition-all cursor-pointer group shadow-[inset_0_2px_8px_rgba(0,0,0,0.6)] overflow-hidden">
+                                        <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-b from-black/60 to-transparent pointer-events-none" />
+                                        <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.02)_48%,rgba(255,255,255,0.05)_50%,rgba(255,255,255,0.02)_52%,transparent_100%)] opacity-30 pointer-events-none" />
+
+                                        <span className="truncate relative z-10">
+                                            {selectedAccount.includes('all') ? 'All Accounts' :
+                                                selectedAccount.length === 1 ? (accounts.find(acc => acc.id === selectedAccount[0])?.prefix || 'Account') :
+                                                    `${selectedAccount.length} Accounts`}
+                                        </span>
+                                        <svg className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors shrink-0 relative z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                    </div>
+                                </Dropdown>
+                            </div>
+                        </div>
+
+                        {/* Right: Presets & Export */}
+                        <div className="flex items-center gap-2 w-full xl:w-auto justify-end overflow-visible">
+                            {[
+                                { id: 'today', label: 'Today' },
+                                { id: 'week', label: 'This Week' },
+                                { id: 'month', label: 'This Month' }
+                            ].map((filter) => (
+                                <div
+                                    key={filter.id}
+                                    onClick={() => handleQuickFilter(filter.id)}
+                                    className={`relative flex items-center justify-center bg-black/40 border border-white/[0.05] rounded-xl px-4 h-10 text-[10px] font-black uppercase tracking-[0.1em] transition-all cursor-pointer group shadow-[inset_0_2px_8px_rgba(0,0,0,0.6)] overflow-hidden min-w-[90px] ${activeFilter === filter.id
+                                        ? 'border-brand-primary/40 bg-brand-primary/5'
+                                        : 'hover:bg-black/50 hover:border-white/10'
+                                        }`}
+                                >
+                                    <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-b from-black/60 to-transparent pointer-events-none" />
+                                    <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.02)_48%,rgba(255,255,255,0.05)_50%,rgba(255,255,255,0.02)_52%,transparent_100%)] opacity-30 pointer-events-none" />
+
+                                    <span className={`relative z-10 transition-colors ${activeFilter === filter.id ? 'text-[#FF6B4B]' : 'text-gray-400 group-hover:text-white'}`}>
+                                        {filter.label}
+                                    </span>
+                                </div>
+                            ))}
+                            <Button
+                                variant="metallic"
+                                size="sm"
+                                leftIcon={<IconChartBar className="w-4 h-4 block" />}
+                                className="whitespace-nowrap h-10 min-h-[40px] px-4 inline-flex items-center justify-center box-border"
+                                onClick={handleExportCSV}
+                            >
+                                Export CSV
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </Card>
+
+            {/* Summary Cards Grid */}
+            {loading ? (
+                <div className="flex items-center justify-center p-8 bg-white/[0.01] border border-dashed border-white/5 rounded-3xl min-h-[150px]">
+                    <div className="flex flex-col items-center gap-3">
+                        <div className="w-6 h-6 border-2 border-brand-primary/20 border-t-brand-primary rounded-full animate-spin" />
+                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Calculating Metrics...</p>
+                    </div>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    {/* Gross Sales */}
+                    <Card
+                        isElevated={true}
+                        disableHover={activeSummaryFilter === 'all'}
+                        className={`h-full p-0 border-2 transition-all group cursor-pointer overflow-hidden ${activeSummaryFilter === 'all'
+                            ? 'bg-gradient-to-b from-[#FF6B4B] to-[#D9361A] border-[#FF4D2D] shadow-[inset_0_1px_0_rgba(255,255,255,0.4),inset_0_-1px_0_rgba(0,0,0,0.2)]'
+                            : 'border-white/10 bg-[#1A1A1A] hover:border-brand-primary/30'
+                            }`}
+                        bodyClassName="h-full"
+                        onClick={() => setActiveSummaryFilter('all')}
+                    >
+                        <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.02)_0%,rgba(255,255,255,0.05)_40%,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.05)_60%,rgba(255,255,255,0.02)_100%)] pointer-events-none opacity-70" />
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.05)_0%,transparent_70%)] pointer-events-none" />
+
+                        <div className="p-5 relative z-10 w-full">
+                            <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                    <p className={`text-xs font-bold uppercase tracking-widest mb-2 ${activeSummaryFilter === 'all' ? 'text-white/80' : 'text-gray-400'}`}>Gross Sales</p>
+                                    <p className={`text-2xl font-black mb-1 ${activeSummaryFilter === 'all' ? 'text-white' : 'text-white/90'}`}>${salesRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <span className={activeSummaryFilter === 'all' ? 'inline-flex items-center px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider bg-white/20 text-white' : 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-white/5 text-gray-300 border border-white/10'}>
+                                            {salesCount} Projects
+                                        </span>
+                                        <span className={`text-[10px] font-bold uppercase tracking-widest ${activeSummaryFilter === 'all' ? 'text-white/70' : 'text-gray-500 opacity-60'}`}>Gross Volume</span>
+                                    </div>
+                                </div>
+                                <div className={`p-2 rounded-xl border transition-all ${activeSummaryFilter === 'all'
+                                    ? 'bg-white/20 border-white/30 text-white'
+                                    : 'bg-white/5 border-white/10 text-gray-400 group-hover:bg-brand-primary/10 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
+                                    }`}>
+                                    <IconDollar className="w-5 h-5" />
+                                </div>
+                            </div>
+                        </div>
+                    </Card>
+
+                    {/* Pipeline Revenue */}
+                    <Card
+                        isElevated={true}
+                        disableHover={activeSummaryFilter === 'pipeline'}
+                        className={`h-full p-0 border-2 transition-all group cursor-pointer overflow-hidden ${activeSummaryFilter === 'pipeline'
+                            ? 'bg-gradient-to-b from-[#FF6B4B] to-[#D9361A] border-[#FF4D2D] shadow-[inset_0_1px_0_rgba(255,255,255,0.4),inset_0_-1px_0_rgba(0,0,0,0.2)]'
+                            : 'border-white/10 bg-[#1A1A1A] hover:border-brand-primary/30'
+                            }`}
+                        bodyClassName="h-full"
+                        onClick={() => setActiveSummaryFilter('pipeline')}
+                    >
+                        <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.02)_0%,rgba(255,255,255,0.05)_40%,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.05)_60%,rgba(255,255,255,0.02)_100%)] pointer-events-none opacity-70" />
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.05)_0%,transparent_70%)] pointer-events-none" />
+
+                        <div className="p-5 relative z-10 w-full">
+                            <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                    <p className={`text-xs font-bold uppercase tracking-widest mb-2 ${activeSummaryFilter === 'pipeline' ? 'text-white/80' : 'text-gray-400'}`}>Pipeline Revenue</p>
+                                    <p className={`text-2xl font-black mb-1 ${activeSummaryFilter === 'pipeline' ? 'text-white' : 'text-brand-warning'}`}>${pipelineRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <span className={activeSummaryFilter === 'pipeline' ? 'inline-flex items-center px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider bg-white/20 text-white' : getStatusCapsuleClasses('in progress')}>
+                                            {pipelineCount} Projects
+                                        </span>
+                                        <span className={`text-[10px] font-bold uppercase tracking-widest ${activeSummaryFilter === 'pipeline' ? 'text-white/70' : 'text-gray-500 opacity-60'}`}>In Pipeline</span>
+                                    </div>
+                                </div>
+                                <div className={`p-2 rounded-xl border transition-all ${activeSummaryFilter === 'pipeline'
+                                    ? 'bg-white/20 border-white/30 text-white'
+                                    : 'bg-white/5 border-white/10 text-gray-400 group-hover:bg-brand-primary/10 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
+                                    }`}>
+                                    <IconClock className="w-5 h-5" />
+                                </div>
+                            </div>
+                        </div>
+                    </Card>
+
+                    {/* Secured Revenue */}
+                    <Card
+                        isElevated={true}
+                        disableHover={activeSummaryFilter === 'secured'}
+                        className={`h-full p-0 border-2 transition-all group cursor-pointer overflow-hidden ${activeSummaryFilter === 'secured'
+                            ? 'bg-gradient-to-b from-[#FF6B4B] to-[#D9361A] border-[#FF4D2D] shadow-[inset_0_1px_0_rgba(255,255,255,0.4),inset_0_-1px_0_rgba(0,0,0,0.2)]'
+                            : 'border-white/10 bg-[#1A1A1A] hover:border-brand-primary/30'
+                            }`}
+                        bodyClassName="h-full"
+                        onClick={() => setActiveSummaryFilter('secured')}
+                    >
+                        <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.02)_0%,rgba(255,255,255,0.05)_40%,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.05)_60%,rgba(255,255,255,0.02)_100%)] pointer-events-none opacity-70" />
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.05)_0%,transparent_70%)] pointer-events-none" />
+
+                        <div className="p-5 relative z-10 w-full">
+                            <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                    <p className={`text-xs font-bold uppercase tracking-widest mb-2 ${activeSummaryFilter === 'secured' ? 'text-white/80' : 'text-gray-400'}`}>Secured Revenue</p>
+                                    <p className={`text-2xl font-black mb-1 ${activeSummaryFilter === 'secured' ? 'text-white' : 'text-brand-success'}`}>${securedRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <span className={activeSummaryFilter === 'secured' ? 'inline-flex items-center px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider bg-white/20 text-white' : getStatusCapsuleClasses('approved')}>
+                                            {securedCount} Projects
+                                        </span>
+                                        <span className={`text-[10px] font-bold uppercase tracking-widest ${activeSummaryFilter === 'secured' ? 'text-white/70' : 'text-gray-500 opacity-60'}`}>Revenue Approved</span>
+                                    </div>
+                                </div>
+                                <div className={`p-2 rounded-xl border transition-all ${activeSummaryFilter === 'secured'
+                                    ? 'bg-white/20 border-white/30 text-white'
+                                    : 'bg-white/5 border-white/10 text-gray-400 group-hover:bg-brand-primary/10 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
+                                    }`}>
+                                    <IconCheckCircle className="w-5 h-5" />
+                                </div>
+                            </div>
+                        </div>
+                    </Card>
+
+                    {/* Cancelled Revenue */}
+                    <Card
+                        isElevated={true}
+                        disableHover={activeSummaryFilter === 'cancelled'}
+                        className={`h-full p-0 border-2 transition-all group cursor-pointer overflow-hidden ${activeSummaryFilter === 'cancelled'
+                            ? 'bg-gradient-to-b from-[#FF6B4B] to-[#D9361A] border-[#FF4D2D] shadow-[inset_0_1px_0_rgba(255,255,255,0.4),inset_0_-1px_0_rgba(0,0,0,0.2)]'
+                            : 'border-white/10 bg-[#1A1A1A] hover:border-brand-primary/30'
+                            }`}
+                        bodyClassName="h-full"
+                        onClick={() => setActiveSummaryFilter('cancelled')}
+                    >
+                        <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.02)_0%,rgba(255,255,255,0.05)_40%,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.05)_60%,rgba(255,255,255,0.02)_100%)] pointer-events-none opacity-70" />
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.05)_0%,transparent_70%)] pointer-events-none" />
+
+                        <div className="p-5 relative z-10 w-full">
+                            <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                    <p className={`text-xs font-bold uppercase tracking-widest mb-2 ${activeSummaryFilter === 'cancelled' ? 'text-white/80' : 'text-gray-400'}`}>Cancelled Revenue</p>
+                                    <p className={`text-2xl font-black mb-1 ${activeSummaryFilter === 'cancelled' ? 'text-white' : 'text-brand-error'}`}>${cancelledRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <span className={activeSummaryFilter === 'cancelled' ? 'inline-flex items-center px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider bg-white/20 text-white' : getStatusCapsuleClasses('error')}>
+                                            {cancelledCount} Projects
+                                        </span>
+                                        <span className={`text-[10px] font-bold uppercase tracking-widest ${activeSummaryFilter === 'cancelled' ? 'text-white/70' : 'text-gray-500 opacity-60'}`}>Revenue Cancelled</span>
+                                    </div>
+                                </div>
+                                <div className={`p-2 rounded-xl border transition-all ${activeSummaryFilter === 'cancelled'
+                                    ? 'bg-white/20 border-white/30 text-white'
+                                    : 'bg-white/5 border-white/10 text-gray-400 group-hover:bg-brand-primary/10 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
+                                    }`}>
+                                    <IconXCircle className="w-5 h-5" />
+                                </div>
+                            </div>
+                        </div>
+                    </Card>
+                </div>
+            )}
+        </div>
+    );
+});
+
 const Dashboard: React.FC = () => {
     const { profile, effectiveRole, refreshProfile } = useUser();
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -728,6 +1393,9 @@ const Dashboard: React.FC = () => {
             {/* Main Dashboard Widgets for Management Roles */}
             {['super admin', 'admin', 'project manager'].includes(effectiveRole?.toLowerCase().trim() || '') && (
                 <div className="space-y-8">
+                    {/* Earnings Breakdown Widget */}
+                    <EarningsBreakdownWidget profile={profile} role={effectiveRole} />
+
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         <div className="lg:col-span-2">
                         <TaskWidget 
@@ -740,12 +1408,6 @@ const Dashboard: React.FC = () => {
                         <div className="lg:col-span-1">
                             <ProjectStatsWidget profile={profile} role={effectiveRole} />
                         </div>
-                    </div>
-
-                    {/* Placeholder for future modules */}
-                    <div className="flex flex-col items-center justify-center min-h-[150px] text-center border border-dashed border-white/5 rounded-3xl bg-white/[0.01]">
-                        <p className="text-[10px] font-black text-gray-600 uppercase tracking-[0.2em] mb-2">More Modules Coming Soon</p>
-                        <p className="text-[11px] text-gray-500 max-w-sm uppercase font-medium tracking-widest">We are integrating Projects, Earnings, and Analytics widgets into your workspace.</p>
                     </div>
                 </div>
             )}

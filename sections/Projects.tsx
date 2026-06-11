@@ -448,13 +448,12 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
 
             // 0. Build base query with selected columns for faster transfer and less CPU 
             let query = supabase
-                .from('projects')
+                .from('projects_with_collaborators')
                 .select(`
                     id, project_id, project_title, client_name, client_type, previous_logo_no, assignee, 
                     assignee_id, team_designer_id, client_due_date, client_due_time, 
                     due_date, due_time, status, qa_status, price, designer_fee, team_designer_fee, 
                     has_dispute, has_art_help, created_at,
-                    latest_comment_at, latest_comment_author_id,
                     team_designer:profiles!team_designer_id(name, phone)
                 `, { count: (debouncedSearchQuery.trim() || alertFilter) ? 'exact' : undefined });
 
@@ -582,6 +581,59 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
             // Removed debug logging from the render cycle for better performance
 
             if (!error && data) {
+                // Fetch unread comment status separately from raw projects table (Option B)
+                const projectIds = data.map(p => p.project_id).filter(Boolean);
+                if (projectIds.length > 0) {
+                    // Fetch assigned labels separately (Option B fallback)
+                    try {
+                        const { data: assignmentsData, error: assignmentsError } = await supabase
+                            .from('project_label_assignments')
+                            .select('project_id, label:labels(id, name, color)')
+                            .in('project_id', projectIds);
+
+                        // Initialize labels as empty array for each project first
+                        data.forEach(p => {
+                            p.labels = [];
+                        });
+
+                        if (!assignmentsError && assignmentsData) {
+                            assignmentsData.forEach((item: any) => {
+                                if (item.project_id && item.label) {
+                                    const projectItem = data.find(p => p.project_id === item.project_id);
+                                    if (projectItem) {
+                                        projectItem.labels.push(item.label);
+                                    }
+                                }
+                            });
+                        }
+                    } catch (err) {
+                        console.error('Error fetching project labels:', err);
+                    }
+
+                    try {
+                        const { data: commentsData, error: commentsError } = await supabase
+                            .from('projects')
+                            .select('project_id, latest_comment_at, latest_comment_author_id')
+                            .in('project_id', projectIds);
+
+                        if (!commentsError && commentsData) {
+                            const commentsMap = (commentsData || []).reduce((acc: any, c: any) => {
+                                acc[c.project_id] = c;
+                                return acc;
+                            }, {});
+
+                            data.forEach(p => {
+                                const commentInfo = commentsMap[p.project_id];
+                                if (commentInfo) {
+                                    p.latest_comment_at = commentInfo.latest_comment_at;
+                                    p.latest_comment_author_id = commentInfo.latest_comment_author_id;
+                                }
+                            });
+                        }
+                    } catch (err) {
+                        console.error('Error fetching unread comment status:', err);
+                    }
+                }
                 // Resolution for repeat client names that are missing in the database
                 const repeatLookups = data.filter(p => (!p.client_name || p.client_name === 'repeat') && p.previous_logo_no);
                 let resolvedNames: Record<string, string> = {};
@@ -1478,17 +1530,36 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
             key: 'title',
             className: 'min-w-[120px]',
             render: (item: any) => (
-                <div className="flex items-center gap-2">
-                    <span className="text-white font-medium">{item.title}</span>
-                    {item.hasDispute && (
-                        <span className="hidden md:inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black !bg-brand-error/20 !text-brand-error uppercase tracking-wider whitespace-nowrap">
-                            Dispute
-                        </span>
-                    )}
-                    {item.hasArtHelp && (
-                        <span className="hidden md:inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black !bg-brand-info/20 !text-brand-info uppercase tracking-wider whitespace-nowrap">
-                            Art Help
-                        </span>
+                <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                        <span className="text-white font-medium">{item.title}</span>
+                        {item.hasDispute && (
+                            <span className="hidden md:inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black !bg-brand-error/20 !text-brand-error uppercase tracking-wider whitespace-nowrap">
+                                Dispute
+                            </span>
+                        )}
+                        {item.hasArtHelp && (
+                            <span className="hidden md:inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black !bg-brand-info/20 !text-brand-info uppercase tracking-wider whitespace-nowrap">
+                                Art Help
+                            </span>
+                        )}
+                    </div>
+                    {item.labels && item.labels.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                            {item.labels.map((label: any) => (
+                                <span
+                                    key={label.id}
+                                    className="px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider flex items-center gap-1 h-[16px] leading-none whitespace-nowrap animate-in fade-in duration-300"
+                                    style={{
+                                        backgroundColor: `${label.color}15`,
+                                        color: label.color,
+                                        border: `1px solid ${label.color}25`,
+                                    }}
+                                >
+                                    {label.name}
+                                </span>
+                            ))}
+                        </div>
                     )}
                 </div>
             )

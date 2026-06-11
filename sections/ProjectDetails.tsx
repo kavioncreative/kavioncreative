@@ -464,6 +464,14 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
     userRole === "team lead" ||
     userRole === "team designer";
 
+  const canManageLabels = [
+    "Super Admin",
+    "Admin",
+    "Project Manager",
+    "Project Operations Manager",
+    "Team Lead",
+  ].includes(effectiveRole || "");
+
   // Editing State
   const [isEditing, setIsEditing] = useState(false);
   const [editState, setEditState] = useState<any>(null);
@@ -1423,6 +1431,23 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
     if (!error && data) {
       let finalData = { ...data };
       
+      // Fetch labels separately since they are not in the database view
+      try {
+        const { data: assignmentsData, error: assignmentsError } = await supabase
+          .from("project_label_assignments")
+          .select("label:labels(id, name, color)")
+          .eq("project_id", data.project_id);
+
+        if (!assignmentsError && assignmentsData) {
+          finalData.labels = assignmentsData.map((item: any) => item.label).filter(Boolean);
+        } else {
+          finalData.labels = [];
+        }
+      } catch (err) {
+        console.error("Error fetching project labels:", err);
+        finalData.labels = [];
+      }
+
       // Resolution for repeat client names that are missing in the database
       if ((!data.client_name || data.client_name === 'repeat') && data.previous_logo_no) {
         const { data: original } = await supabase
@@ -4453,7 +4478,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
             </MetadataSection>
           )}
 
-          {effectiveRole === "Super Admin" && (
+          {canManageLabels && (
             <>
               {/* Labels */}
               <MetadataSection
@@ -4467,7 +4492,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
                       <IconTag size={12} />
                       Active Labels
                     </p>
-                    {!isFreelancer && (
+                    {canManageLabels && (
                       <button
                         onClick={() => setIsLabelModalOpen(true)}
                         className="text-[10px] font-black text-brand-primary uppercase tracking-widest hover:underline"
@@ -4494,7 +4519,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
                             style={{ backgroundColor: label.color }}
                           />
                           {label.name}
-                          {!isFreelancer && (
+                          {canManageLabels && (
                             <button
                               onClick={async (e) => {
                                 e.stopPropagation();

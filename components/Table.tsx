@@ -10,7 +10,8 @@ export function Table<T>({
   isLoading = false,
   skeletonCount = 6,
   isMetallicHeader = false,
-  disableRowHover = false
+  disableRowHover = false,
+  isDense = false
 }: TableProps<T>) {
 
   const headerStyle = isMetallicHeader ? {
@@ -39,7 +40,7 @@ export function Table<T>({
                 return (
                   <th
                     key={idx}
-                    className={`px-6 py-4 text-[11px] font-bold uppercase tracking-widest whitespace-nowrap ${isMetallicHeader ? 'text-white' : 'text-gray-400'} ${headerAlignmentClasses}`}
+                    className={`${isDense ? 'px-4 py-2 text-[10px]' : 'px-6 py-4 text-[11px]'} font-bold uppercase tracking-widest whitespace-nowrap ${isMetallicHeader ? 'text-white' : 'text-gray-400'} ${headerAlignmentClasses}`}
                   >
                     {col.header}
                   </th>
@@ -56,7 +57,7 @@ export function Table<T>({
                   {columns.map((col, colIdx) => {
                     const isLast = colIdx === columns.length - 1;
                     return (
-                      <td key={colIdx} className={`px-6 ${col.className || ''}`} style={{ height: '58px' }}>
+                      <td key={colIdx} className={`${isDense ? 'px-4' : 'px-6'} ${col.className || ''}`} style={{ height: isDense ? '40px' : '58px' }}>
                         <div className="flex flex-col gap-2 justify-center h-full">
                           <div className={`h-[7px] rounded-full bg-white/[0.06] relative overflow-hidden ${isLast ? 'w-4 ml-auto' : 'w-3/4'}`}>
                             <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/[0.09] to-transparent animate-[shimmer_2s_infinite]" style={{ animationDelay: `${rowIdx * 100}ms` }} />
@@ -90,10 +91,10 @@ export function Table<T>({
                   key={(item as any).id || (item as any).project_id || (item as any).id?.toString() || rowIdx}
                   onClick={() => onRowClick?.(item)}
                   className={`transition-all duration-200 ease-out group ${disableRowHover ? '' : onRowClick ? 'cursor-pointer hover:bg-white/[0.06] active:bg-white/[0.08]' : 'hover:bg-white/[0.03]'}`}
-                  style={{ height: '58px' }}
+                  style={{ height: isDense ? '40px' : '58px' }}
                 >
                   {columns.map((col, colIdx) => (
-                    <td key={colIdx} className={`px-6 py-3 text-sm text-gray-300 ${colIdx % 2 === 1 ? 'bg-white/[0.02]' : ''} ${col.className || ''}`}>
+                    <td key={colIdx} className={`${isDense ? 'px-4 py-1.5 text-xs' : 'px-6 py-3 text-sm'} text-gray-300 ${colIdx % 2 === 1 ? 'bg-white/[0.02]' : ''} ${col.className || ''}`}>
                       {col.render ? col.render(item, rowIdx) : (item as any)[col.key]}
                     </td>
                   ))}
