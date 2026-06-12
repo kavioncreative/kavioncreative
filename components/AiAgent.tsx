@@ -80,6 +80,15 @@ export const AiAgent: React.FC = () => {
     }
   }, [isOpen, isLoading]);
 
+  useEffect(() => {
+    const handleToggle = () => {
+      setIsOpen((prev) => !prev);
+      setIsMinimized(false);
+    };
+    window.addEventListener("toggle-ai-agent", handleToggle);
+    return () => window.removeEventListener("toggle-ai-agent", handleToggle);
+  }, []);
+
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
 
@@ -392,6 +401,8 @@ export const AiAgent: React.FC = () => {
   // Only render for Super Admin and Project Manager
   if (effectiveRole !== "Super Admin" && effectiveRole !== "Project Manager") return null;
 
+  if (!isOpen) return null;
+
   return (
     <div 
       className="fixed bottom-6 right-6 z-50 select-none"
@@ -401,23 +412,7 @@ export const AiAgent: React.FC = () => {
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
     >
-      {/* Chat Widget Toggle Button */}
-      {!isOpen && (
-        <button
-          onClick={(e) => { 
-            if (hasDragged.current) { e.stopPropagation(); return; }
-            setIsOpen(true); 
-            setIsMinimized(false); 
-          }}
-          className="bg-brand-primary text-white p-4 rounded-full shadow-lg hover:shadow-brand-primary/20 hover:-translate-y-1 transition-all duration-200"
-        >
-          <Bot className="w-6 h-6" />
-        </button>
-      )}
-
-      {/* Chat Window */}
-      {isOpen && (
-        <div className={`bg-surface-bg border border-white/10 rounded-2xl shadow-2xl w-80 sm:w-96 flex flex-col overflow-hidden transition-all duration-300 transform origin-bottom-right ${isMinimized ? 'h-[62px]' : ''}`}>
+      <div className={`bg-surface-bg border border-white/10 rounded-2xl shadow-2xl w-80 sm:w-96 flex flex-col overflow-hidden transition-all duration-300 transform origin-bottom-right ${isMinimized ? 'h-[62px]' : ''}`}>
           {/* Header */}
           <div 
             className={`bg-white/5 p-4 border-b border-white/10 flex justify-between items-center cursor-move ${isMinimized ? 'hover:bg-white/10' : ''}`}
@@ -528,7 +523,6 @@ export const AiAgent: React.FC = () => {
           </>
           )}
         </div>
-      )}
     </div>
   );
 };

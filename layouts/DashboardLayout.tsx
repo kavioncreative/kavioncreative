@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Bot } from 'lucide-react';
 import {
   IconLayout,
   IconCreditCard,
@@ -1026,6 +1027,19 @@ export const DashboardLayout: React.FC<{
                 title="Guide"
               >
                 <IconAlertCircle />
+              </button>
+            )}
+
+            {/* AI Assistant fixed header action */}
+            {['Super Admin', 'Project Manager'].includes(effectiveRole || '') && (
+              <button
+                className="relative p-2 text-gray-400 hover:text-white transition-[color,transform,opacity] duration-200 outline-none focus:ring-0 active:scale-90"
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('toggle-ai-agent'));
+                }}
+                title="AI Assistant"
+              >
+                <Bot className="w-5 h-5" />
               </button>
             )}
 

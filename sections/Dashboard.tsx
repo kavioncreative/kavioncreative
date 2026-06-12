@@ -164,15 +164,15 @@ const ProjectStatsWidget = memo(({ profile, role }: { profile: any, role: string
             {/* Soft Metallic Glow */}
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.05)_0%,transparent_70%)] pointer-events-none" />
             <div className="absolute inset-0 bg-[linear-gradient(115deg,transparent_0%,rgba(255,255,255,0.02)_50%,transparent_100%)] opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
-            
+
             {/* Color Accent Line (Full Vibrancy) */}
             <div className={`absolute top-0 inset-x-0 h-0.5 bg-${color} opacity-100 shadow-[0_0_10px_rgba(0,0,0,0.5)]`} />
-            
+
             <div className="relative z-10 flex flex-col items-center gap-0.5">
                 <p className={`text-4xl font-black text-white tracking-tight drop-shadow-[0_0_15px_rgba(0,0,0,0.4)]`}>{count}</p>
                 <p className={`text-[9px] font-black text-${color} uppercase tracking-[0.25em] text-center mt-1`}>{label}</p>
             </div>
-            
+
             {/* Inner Highlight */}
             <div className="absolute inset-px rounded-[11px] border border-white/[0.02] pointer-events-none" />
         </div>
@@ -200,45 +200,45 @@ const ProjectStatsWidget = memo(({ profile, role }: { profile: any, role: string
                 </div>
             ) : (
                 <div className="grid grid-cols-4 gap-2 h-full">
-                    <StatCard 
-                        label="Done" 
-                        count={counts.done} 
-                        color="green-500" 
+                    <StatCard
+                        label="Done"
+                        count={counts.done}
+                        color="green-500"
                     />
-                    <StatCard 
-                        label="Revision Done" 
-                        count={counts.revisionDone} 
-                        color="amber-500" 
+                    <StatCard
+                        label="Revision Done"
+                        count={counts.revisionDone}
+                        color="amber-500"
                     />
-                    <StatCard 
-                        label="Urgent Done" 
-                        count={counts.urgentDone} 
-                        color="red-500" 
+                    <StatCard
+                        label="Urgent Done"
+                        count={counts.urgentDone}
+                        color="red-500"
                     />
-                    <StatCard 
-                        label="Rev. Urg Done" 
-                        count={counts.revisionUrgentDone} 
-                        color="orange-500" 
+                    <StatCard
+                        label="Rev. Urg Done"
+                        count={counts.revisionUrgentDone}
+                        color="orange-500"
                     />
-                    <StatCard 
-                        label="Final Files" 
-                        count={counts.finalFilesDone} 
-                        color="blue-500" 
+                    <StatCard
+                        label="Final Files"
+                        count={counts.finalFilesDone}
+                        color="blue-500"
                     />
-                    <StatCard 
-                        label="Approved" 
-                        count={counts.approved} 
-                        color="emerald-500" 
+                    <StatCard
+                        label="Approved"
+                        count={counts.approved}
+                        color="emerald-500"
                     />
-                    <StatCard 
-                        label="Sent for Approval" 
-                        count={counts.sentForApproval} 
-                        color="indigo-500" 
+                    <StatCard
+                        label="Sent for Approval"
+                        count={counts.sentForApproval}
+                        color="indigo-500"
                     />
-                    <StatCard 
-                        label="Cancelled" 
-                        count={counts.cancelled} 
-                        color="gray-500" 
+                    <StatCard
+                        label="Cancelled"
+                        count={counts.cancelled}
+                        color="gray-500"
                     />
                 </div>
             )}
@@ -335,7 +335,7 @@ const TaskWidget = memo(({ profile, role, onTaskClick, onMarkComplete }: { profi
             ) : (
                 <>
                     {/* Synchronized Header - Only Horizontal Sync */}
-                    <div 
+                    <div
                         ref={headerRef}
                         className="flex-none overflow-hidden border-b border-surface-border relative z-30"
                         style={{
@@ -363,7 +363,7 @@ const TaskWidget = memo(({ profile, role, onTaskClick, onMarkComplete }: { profi
                     </div>
 
                     {/* Scrollable Body - Vertical Scrollbar starts HERE */}
-                    <div 
+                    <div
                         ref={bodyRef}
                         onScroll={handleScroll}
                         className="flex-1 overflow-y-auto overflow-x-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent hover:scrollbar-thumb-white/30 transition-colors min-h-0 relative overscroll-behavior-contain"
@@ -374,10 +374,10 @@ const TaskWidget = memo(({ profile, role, onTaskClick, onMarkComplete }: { profi
                                     {tasks.map((task, index) => {
                                         const deadlineStr = task.deadline_date ? `${task.deadline_date}T${task.deadline_time || '00:00:00'}` : null;
                                         const timeLeft = getTimeLeft(deadlineStr, task.status);
-                                        
+
                                         return (
-                                            <tr 
-                                                key={task.id} 
+                                            <tr
+                                                key={task.id}
                                                 className="hover:bg-white/[0.06] transition-all group cursor-pointer border-b border-surface-border/40"
                                                 style={{ height: '48px' }}
                                                 onClick={() => onTaskClick(task)}
@@ -442,8 +442,8 @@ const TaskWidget = memo(({ profile, role, onTaskClick, onMarkComplete }: { profi
                                         );
                                     })}
                                     {tasks.length > 0 && tasks.length < 5 && Array.from({ length: 5 - tasks.length }).map((_, i) => (
-                                        <tr 
-                                            key={`empty-${i}`} 
+                                        <tr
+                                            key={`empty-${i}`}
                                             className="border-b border-surface-border/20 opacity-[0.12] pointer-events-none"
                                             style={{ height: '48px' }}
                                         >
@@ -820,7 +820,7 @@ const EarningsBreakdownWidget = memo(({ profile, role }: { profile: any, role: s
             <div className="flex items-center justify-between">
                 <h3 className="text-sm font-bold text-white uppercase tracking-wider px-2">Earnings Breakdown</h3>
             </div>
-            
+
             {/* Toolbar Card */}
             <Card
                 isElevated={true}
@@ -868,7 +868,7 @@ const EarningsBreakdownWidget = memo(({ profile, role }: { profile: any, role: s
                                     </div>
                                 </div>
                             </DatePicker>
-                            
+
                             <DatePicker
                                 placeholder="To"
                                 value={toDate}
@@ -1138,7 +1138,7 @@ const LeaderboardWidget = memo(() => {
     const fetchLeaderboard = async () => {
         try {
             setLoading(true);
-            
+
             // 1. Fetch profiles
             const { data: users, error: usersError } = await supabase
                 .from('profiles')
@@ -1282,9 +1282,9 @@ const LeaderboardWidget = memo(() => {
                             {entries.map((entry, index) => {
                                 const rank = index + 1;
                                 const rankStyle = getRankStyle(rank);
-                                
+
                                 return (
-                                    <tr 
+                                    <tr
                                         key={entry.id}
                                         onClick={() => navigateToUser(entry.id)}
                                         className="hover:bg-white/[0.03] transition-all group cursor-pointer"
@@ -1319,13 +1319,12 @@ const LeaderboardWidget = memo(() => {
                                         </td>
                                         <td className="px-6 py-4 text-center w-28">
                                             <div className="flex justify-center">
-                                                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
-                                                    entry.score >= 90 
-                                                        ? 'bg-brand-success/10 text-brand-success border-brand-success/20 shadow-[0_0_10px_rgba(34,197,94,0.1)]' 
-                                                        : entry.score >= 75 
-                                                            ? 'bg-brand-warning/10 text-brand-warning border-brand-warning/20' 
-                                                            : 'bg-brand-error/10 text-brand-error border-brand-error/20 shadow-[0_0_10px_rgba(239,68,68,0.1)]'
-                                                }`}>
+                                                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${entry.score >= 90
+                                                    ? 'bg-brand-success/10 text-brand-success border-brand-success/20 shadow-[0_0_10px_rgba(34,197,94,0.1)]'
+                                                    : entry.score >= 75
+                                                        ? 'bg-brand-warning/10 text-brand-warning border-brand-warning/20'
+                                                        : 'bg-brand-error/10 text-brand-error border-brand-error/20 shadow-[0_0_10px_rgba(239,68,68,0.1)]'
+                                                    }`}>
                                                     {entry.score}%
                                                 </span>
                                             </div>
@@ -1385,7 +1384,7 @@ const Dashboard: React.FC = () => {
         try {
             const thirtyDaysAgo = new Date();
             thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-            
+
             const { data, error } = await supabase
                 .from('project_comments')
                 .select('content')
@@ -1444,7 +1443,7 @@ const Dashboard: React.FC = () => {
     const fetchInitialTicket = async () => {
         const roleLower = effectiveRole?.toLowerCase().trim();
         if (!profile?.id || !(roleLower === 'freelancer' || roleLower === 'team lead')) return;
-        
+
         try {
             const { data, error } = await supabase
                 .from('freelancer_capacity_tickets')
@@ -1455,12 +1454,12 @@ const Dashboard: React.FC = () => {
                 .order('created_at', { ascending: false })
                 .limit(1)
                 .maybeSingle();
-            
+
             if (error) {
                 console.error('Error fetching initial ticket:', error);
                 return;
             }
-            
+
             if (data) {
                 setInitialTicket(data);
             }
@@ -1477,7 +1476,7 @@ const Dashboard: React.FC = () => {
         const roleLower = effectiveRole?.toLowerCase().trim();
         // Popup for TLs and independent Freelancers ONLY. Team Designers are managed by TLs.
         const shouldShowCapacityPopup = (roleLower === 'freelancer' || roleLower === 'team lead') && !roleLower.includes('team designer');
-        
+
         if (shouldShowCapacityPopup && profile && profile.daily_capacity === null) {
             setIsModalOpen(true);
         }
@@ -1518,7 +1517,7 @@ const Dashboard: React.FC = () => {
             // 2. Update profile
             const { error: profileError } = await supabase
                 .from('profiles')
-                .update({ 
+                .update({
                     daily_capacity: val,
                     updated_at: new Date().toISOString()
                 })
@@ -1608,7 +1607,7 @@ const Dashboard: React.FC = () => {
             setLoadingTasks(true);
             const { error } = await supabase
                 .from('tasks')
-                .update({ status: 'Completed', updated_at: new Date().toISOString() })
+                .update({ status: 'Completed' })
                 .eq('id', taskId);
 
             if (error) throw error;
@@ -1722,10 +1721,9 @@ const Dashboard: React.FC = () => {
                                     {/* Left Column: Circular OTD Indicator */}
                                     <div className="flex flex-col items-center justify-center p-6 bg-black/40 border border-white/5 rounded-2xl shadow-[inset_0_2px_8px_rgba(0,0,0,0.5)] relative overflow-hidden group h-full min-h-[170px]">
                                         {/* Active Backdrop Glow Overlay */}
-                                        <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-28 h-28 rounded-full blur-[30px] opacity-15 pointer-events-none transition-all duration-700 ${
-                                            otdScore === null ? 'bg-transparent' : otdScore >= 90 ? 'bg-emerald-500' : otdScore >= 75 ? 'bg-amber-500' : 'bg-red-500'
-                                        }`} />
-                                        
+                                        <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-28 h-28 rounded-full blur-[30px] opacity-15 pointer-events-none transition-all duration-700 ${otdScore === null ? 'bg-transparent' : otdScore >= 90 ? 'bg-emerald-500' : otdScore >= 75 ? 'bg-amber-500' : 'bg-red-500'
+                                            }`} />
+
                                         <div className="relative w-24 h-24 flex items-center justify-center z-10">
                                             <svg className="w-full h-full transform -rotate-90">
                                                 <circle
@@ -1740,9 +1738,8 @@ const Dashboard: React.FC = () => {
                                                     cx="48"
                                                     cy="48"
                                                     r="40"
-                                                    className={`transition-all duration-1000 ease-out ${
-                                                        otdScore === null ? 'stroke-transparent' : otdScore >= 90 ? 'stroke-brand-success' : otdScore >= 75 ? 'stroke-brand-warning' : 'stroke-brand-error'
-                                                    }`}
+                                                    className={`transition-all duration-1000 ease-out ${otdScore === null ? 'stroke-transparent' : otdScore >= 90 ? 'stroke-brand-success' : otdScore >= 75 ? 'stroke-brand-warning' : 'stroke-brand-error'
+                                                        }`}
                                                     strokeWidth="6"
                                                     fill="transparent"
                                                     strokeDasharray={2 * Math.PI * 40}
@@ -1755,7 +1752,7 @@ const Dashboard: React.FC = () => {
                                                 <span className="text-[6.5px] font-bold text-gray-500 uppercase tracking-widest mt-0.5">OTD SCORE</span>
                                             </div>
                                         </div>
-                                        
+
                                         <div className="text-center w-full z-10 mt-3">
                                             <div className="flex justify-center mb-1">
                                                 {totalDeliveries === 0 ? (
@@ -1822,14 +1819,12 @@ const Dashboard: React.FC = () => {
                                             </div>
 
                                             {/* Late Deliveries Card */}
-                                            <div className={`border p-4 rounded-xl flex flex-col justify-between transition-all group relative overflow-hidden min-h-[90px] ${
-                                                lateCount > 0 
-                                                    ? 'bg-brand-error/[0.02] border-brand-error/15 hover:border-brand-error/30 hover:bg-brand-error/[0.04]' 
-                                                    : 'bg-white/[0.02] border-white/5 hover:border-white/10 hover:bg-white/[0.03]'
-                                            }`}>
-                                                <div className={`absolute top-2 right-2 transition-colors ${
-                                                    lateCount > 0 ? 'text-brand-error/30 group-hover:text-brand-error/50' : 'text-gray-500/20 group-hover:text-gray-500/40'
+                                            <div className={`border p-4 rounded-xl flex flex-col justify-between transition-all group relative overflow-hidden min-h-[90px] ${lateCount > 0
+                                                ? 'bg-brand-error/[0.02] border-brand-error/15 hover:border-brand-error/30 hover:bg-brand-error/[0.04]'
+                                                : 'bg-white/[0.02] border-white/5 hover:border-white/10 hover:bg-white/[0.03]'
                                                 }`}>
+                                                <div className={`absolute top-2 right-2 transition-colors ${lateCount > 0 ? 'text-brand-error/30 group-hover:text-brand-error/50' : 'text-gray-500/20 group-hover:text-gray-500/40'
+                                                    }`}>
                                                     <IconAlertTriangle size={14} />
                                                 </div>
                                                 <span className={`text-[8px] font-bold uppercase tracking-wider ${lateCount > 0 ? 'text-brand-error/80' : 'text-gray-500'}`}>Late</span>
@@ -1849,18 +1844,18 @@ const Dashboard: React.FC = () => {
 
             {/* Main Dashboard Widgets for Management Roles */}
             {['super admin', 'admin', 'project manager'].includes(effectiveRole?.toLowerCase().trim() || '') && (
-                <div className="space-y-8">
+                <div className="space-y-6">
                     {/* Earnings Breakdown Widget */}
                     <EarningsBreakdownWidget profile={profile} role={effectiveRole} />
 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         <div className="lg:col-span-2">
-                        <TaskWidget 
-                            profile={profile} 
-                            role={effectiveRole} 
-                            onTaskClick={handleTaskClick}
-                            onMarkComplete={handleMarkComplete}
-                        />
+                            <TaskWidget
+                                profile={profile}
+                                role={effectiveRole}
+                                onTaskClick={handleTaskClick}
+                                onMarkComplete={handleMarkComplete}
+                            />
                         </div>
                         <div className="lg:col-span-1">
                             <ProjectStatsWidget profile={profile} role={effectiveRole} />
@@ -1872,7 +1867,7 @@ const Dashboard: React.FC = () => {
 
             <Modal
                 isOpen={isModalOpen}
-                onClose={() => {}} // User MUST set capacity
+                onClose={() => { }} // User MUST set capacity
                 title="Onboarding Project Capacity"
                 size="md"
                 isElevatedFooter
@@ -1895,7 +1890,7 @@ const Dashboard: React.FC = () => {
                     <div className="w-16 h-16 rounded-2xl bg-brand-primary/10 flex items-center justify-center text-brand-primary mb-6 animate-pulse">
                         <IconClock className="w-8 h-8" />
                     </div>
-                    
+
                     <div className="space-y-2 mb-8">
                         <h3 className="text-xl font-bold text-white">Setup Your Initial Capacity</h3>
                         <p className="text-sm text-gray-400 leading-relaxed max-w-[340px]">
@@ -1973,7 +1968,7 @@ const Dashboard: React.FC = () => {
                     <p className="text-sm text-gray-400 leading-relaxed max-w-[280px] mb-8">
                         Ready for more? Request an increase to your daily project limit. Your request will be reviewed by the operations team.
                     </p>
-                    
+
                     <div className="w-full max-w-[200px]">
                         <Input
                             label="New Daily Limit"
@@ -2028,7 +2023,7 @@ const Dashboard: React.FC = () => {
                     <p className="text-sm text-gray-400 leading-relaxed max-w-[280px] mb-8">
                         Need a break or having a busy season? Request to lower your daily project limit.
                     </p>
-                    
+
                     <div className="w-full max-w-[200px]">
                         <Input
                             label="New Daily Limit"
