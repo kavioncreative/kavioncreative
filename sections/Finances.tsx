@@ -1640,7 +1640,7 @@ const CompanyEarnings: React.FC = () => {
 
             let query = supabase
                 .from('projects')
-                .select('id, project_id, project_title, status, created_at, clearance_start_date, price, tip_amount, designer_fee, account_id, account, converted_by, order_type, cancellation_reason, client_name, updated_at, accounts(prefix)')
+                .select('id, project_id, project_title, status, created_at, clearance_start_date, price, tip_amount, designer_fee, account_id, account, converted_by, order_type, cancellation_reason, client_name, updated_at, accounts(prefix), assignee')
                 .neq('status', 'Removed');
 
             // Apply account scoping for non-Super Admins
@@ -1741,7 +1741,8 @@ const CompanyEarnings: React.FC = () => {
                         cancelled_at_formatted: p.updated_at ? systemFormatDate(new Date(p.updated_at)) : 'N/A',
                         date: p.clearance_start_date ? systemFormatDate(new Date(p.clearance_start_date)) : 'N/A',
                         rawDate: p.clearance_start_date,
-                        created_date: p.created_at ? systemFormatDate(new Date(p.created_at)) : 'N/A'
+                        created_date: p.created_at ? systemFormatDate(new Date(p.created_at)) : 'N/A',
+                        assignee: (p as any).assignee || 'Unassigned'
                     };
                 });
 
@@ -1930,43 +1931,49 @@ const CompanyEarnings: React.FC = () => {
         if (filteredProjects.length === 0) return;
 
         const isPipeline = activeSummaryFilter === 'pipeline';
+        const isSecured = activeSummaryFilter === 'secured';
+        const isCancelled = activeSummaryFilter === 'cancelled';
 
         const headers = [
             'Project ID',
+            'Account',
             'Project Title',
             'Status',
+            'Order Type',
+            'Converted By',
             'Client',
+            'Assignee',
             'Price',
             'Platform Commission',
             'Freelancer Cut',
             'Seller Commission',
-            'Company Earning',
+            'Company Earnings',
             ...(isPipeline ? [] : ['Tips']),
-            'Account',
-            'Order Type',
-            'Converted By',
             'Created At',
-            ...(isPipeline ? [] : ['Approved On'])
+            ...(isSecured ? ['Approved On'] : []),
+            ...(isCancelled ? ['Cancelled On', 'Cancellation Reason'] : [])
         ];
         const csvRows = [headers.join(',')];
 
         filteredProjects.forEach(p => {
             const row = [
                 `"${p.formatted_project_id}"`,
+                `"${p.account_prefix}"`,
                 `"${(p.project_title || 'Untitled Project').replace(/"/g, '""')}"`,
                 `"${p.status}"`,
+                `"${p.order_type || 'Direct Order'}"`,
+                `"${p.converted_by || '-'}"`,
                 `"${p.client}"`,
+                `"${(p.assignee || 'Unassigned').replace(/"/g, '""')}"`,
                 `"${(p.price || 0).toFixed(2)}"`,
                 `"${(p.platform_cut || 0).toFixed(2)}"`,
                 `"${(p.freelancer_cut || 0).toFixed(2)}"`,
                 `"${(p.seller_cut || 0).toFixed(2)}"`,
                 `"${(p.company_earning || 0).toFixed(2)}"`,
                 ...(isPipeline ? [] : [`"${(p.tip_amount || 0).toFixed(2)}"`]),
-                `"${p.account_prefix}"`,
-                `"${p.order_type || 'Direct Order'}"`,
-                `"${p.converted_by || '-'}"`,
-                `"${p.created_date || 'N/A'}"`,
-                ...(isPipeline ? [] : [`"${p.date || 'N/A'}"`])
+                `"${p.created_at_formatted || 'N/A'}"`,
+                ...(isSecured ? [`"${p.approved_on_formatted || 'N/A'}"`] : []),
+                ...(isCancelled ? [`"${p.cancelled_at_formatted || 'N/A'}"`, `"${(p.cancellation_reason || '-').replace(/"/g, '""')}"`] : [])
             ];
             csvRows.push(row.join(','));
         });
@@ -1976,7 +1983,7 @@ const CompanyEarnings: React.FC = () => {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.setAttribute('href', url);
-        link.setAttribute('download', `${isPipeline ? 'pipeline' : 'secured'}_earnings_${new Date().toISOString().split('T')[0]}.csv`);
+        link.setAttribute('download', `${activeSummaryFilter}_earnings_${new Date().toISOString().split('T')[0]}.csv`);
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();
@@ -2328,6 +2335,11 @@ const CompanyEarnings: React.FC = () => {
                             )
                         },
                         {
+                            header: 'Account',
+                            key: 'account_prefix',
+                            className: 'text-gray-400 font-bold uppercase tracking-wider text-center'
+                        },
+                        {
                             header: 'Project Title',
                             key: 'project_title',
                             render: (item: any) => (
@@ -2370,6 +2382,14 @@ const CompanyEarnings: React.FC = () => {
                             className: 'text-center text-gray-400'
                         },
                         {
+                            header: 'Assignee',
+                            key: 'assignee',
+                            className: 'text-center text-gray-400',
+                            render: (item: any) => (
+                                <span className="font-semibold text-white/90">{item.assignee || 'Unassigned'}</span>
+                            )
+                        },
+                        {
                             header: 'Price',
                             key: 'price',
                             className: 'text-center',
@@ -2378,7 +2398,13 @@ const CompanyEarnings: React.FC = () => {
                             )
                         },
                         {
-                            header: 'Platform Commission',
+                            header: (
+                                <Tooltip content="Platform Commission">
+                                    <span className="cursor-help border-b border-white/20 border-dotted hover:text-brand-primary transition-colors uppercase">
+                                        PC
+                                    </span>
+                                </Tooltip>
+                            ),
                             key: 'platform_cut',
                             className: 'text-gray-400 text-center',
                             render: (item: any) => (
@@ -2386,7 +2412,13 @@ const CompanyEarnings: React.FC = () => {
                             )
                         },
                         {
-                            header: 'Freelancer Cut',
+                            header: (
+                                <Tooltip content="Freelancer Cut">
+                                    <span className="cursor-help border-b border-white/20 border-dotted hover:text-brand-primary transition-colors uppercase">
+                                        FC
+                                    </span>
+                                </Tooltip>
+                            ),
                             key: 'freelancer_cut',
                             className: 'text-gray-400 text-center',
                             render: (item: any) => (
@@ -2394,7 +2426,13 @@ const CompanyEarnings: React.FC = () => {
                             )
                         },
                         {
-                            header: 'Seller Commission',
+                            header: (
+                                <Tooltip content="Seller Commission">
+                                    <span className="cursor-help border-b border-white/20 border-dotted hover:text-brand-primary transition-colors uppercase">
+                                        SC
+                                    </span>
+                                </Tooltip>
+                            ),
                             key: 'seller_cut',
                             className: 'text-gray-400 text-center',
                             render: (item: any) => (
@@ -2402,7 +2440,13 @@ const CompanyEarnings: React.FC = () => {
                             )
                         },
                         {
-                            header: 'Company Earning',
+                            header: (
+                                <Tooltip content="Company Earnings">
+                                    <span className="cursor-help border-b border-white/20 border-dotted hover:text-brand-primary transition-colors uppercase">
+                                        CE
+                                    </span>
+                                </Tooltip>
+                            ),
                             key: 'company_earning',
                             className: 'text-center',
                             render: (item: any) => (
@@ -2417,6 +2461,30 @@ const CompanyEarnings: React.FC = () => {
                                 <span className={item.tip_amount ? 'text-brand-success font-medium' : ''}>
                                     {item.tip_amount ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(item.tip_amount) : '-'}
                                 </span>
+                            )
+                        }] : []),
+                        {
+                            header: 'Created At',
+                            key: 'created_at_formatted',
+                            className: 'text-center',
+                            render: (item: any) => (
+                                <span className="text-gray-400">{item.created_at_formatted}</span>
+                            )
+                        },
+                        ...(activeSummaryFilter === 'secured' ? [{
+                            header: 'Approved On',
+                            key: 'approved_on_formatted',
+                            className: 'text-center',
+                            render: (item: any) => (
+                                <span className="text-gray-400">{item.approved_on_formatted}</span>
+                            )
+                        }] : []),
+                        ...(activeSummaryFilter === 'cancelled' ? [{
+                            header: 'Cancelled On',
+                            key: 'cancelled_at_formatted',
+                            className: 'text-center',
+                            render: (item: any) => (
+                                <span className="text-gray-400">{item.cancelled_at_formatted}</span>
                             )
                         }] : []),
                         ...(activeSummaryFilter === 'cancelled' ? [{
@@ -2441,35 +2509,6 @@ const CompanyEarnings: React.FC = () => {
                                         </button>
                                     )}
                                 </div>
-                            )
-                        }] : []),
-                        {
-                            header: 'Account',
-                            key: 'account_prefix',
-                            className: 'text-gray-400 font-bold uppercase tracking-wider text-center'
-                        },
-                        {
-                            header: 'Created At',
-                            key: 'created_at_formatted',
-                            className: 'text-center',
-                            render: (item: any) => (
-                                <span className="text-gray-400">{item.created_at_formatted}</span>
-                            )
-                        },
-                        ...(activeSummaryFilter === 'secured' ? [{
-                            header: 'Approved On',
-                            key: 'approved_on_formatted',
-                            className: 'text-center',
-                            render: (item: any) => (
-                                <span className="text-gray-400">{item.approved_on_formatted}</span>
-                            )
-                        }] : []),
-                        ...(activeSummaryFilter === 'cancelled' ? [{
-                            header: 'Cancelled On',
-                            key: 'cancelled_at_formatted',
-                            className: 'text-center',
-                            render: (item: any) => (
-                                <span className="text-gray-400">{item.cancelled_at_formatted}</span>
                             )
                         }] : [])
                     ]}
@@ -2748,25 +2787,39 @@ const FreelancerEarnings: React.FC = () => {
     const handleExportCSV = () => {
         if (filteredData.length === 0) return;
 
-        const headers = activeSummaryFilter === 'lifetime'
-            ? ['Date', 'Project ID', 'Funds Status', 'Payout']
-            : ['Project', 'Client', 'Amount'];
+        const statusHeader = activeSummaryFilter === 'pending' ? 'Days Left' : 'Funds Status';
+
+        const headers = [
+            'Approved On',
+            'Project ID',
+            'Account',
+            'Project Title',
+            'Client',
+            statusHeader,
+            'Payout'
+        ];
 
         const csvRows = [headers.join(',')];
 
         filteredData.forEach(item => {
-            const row = activeSummaryFilter === 'lifetime'
-                ? [
-                    `"${item.date}"`,
-                    `"${item.id}"`,
-                    `"${item.funds_status}"`,
-                    `"${item.amount.replace(/[$,]/g, '')}"`
-                ]
-                : [
-                    `"${item.project}"`,
-                    `"${item.client}"`,
-                    `"${item.amount.replace(/[$,]/g, '')}"`
-                ];
+            const acc = accounts?.find(a => a.id === item.accountId);
+            const accountPrefix = acc?.prefix?.toUpperCase() || 'N/A';
+
+            const statusValue = activeSummaryFilter === 'pending'
+                ? `${item.daysLeft || 0} Days`
+                : (activeSummaryFilter === 'available' ? 'Unpaid' : item.funds_status);
+
+            const cleanPayout = item.amount ? item.amount.replace(/[$,]/g, '') : '0.00';
+
+            const row = [
+                `"${item.date || 'N/A'}"`,
+                `"${item.id || 'N/A'}"`,
+                `"${accountPrefix}"`,
+                `"${(item.project || 'Untitled Project').replace(/"/g, '""')}"`,
+                `"${(item.client || 'Personal').replace(/"/g, '""')}"`,
+                `"${statusValue}"`,
+                `"${cleanPayout}"`
+            ];
             csvRows.push(row.join(','));
         });
 

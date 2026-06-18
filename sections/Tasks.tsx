@@ -244,13 +244,13 @@ const Tasks: React.FC = () => {
                 .eq('status', 'Active')
                 .order('name');
 
-            // If current user is Super Admin, only show specific roles in assignee list
-            if (effectiveRole === 'Super Admin') {
+            // If current user is Super Admin or Admin, show specific roles in assignee list
+            if (effectiveRole === 'Super Admin' || effectiveRole === 'Admin') {
                 query = query.in('role', ['Super Admin', 'Admin', 'Project Manager']);
             } 
-            // If current user is Project Manager, only show other Project Managers
+            // If current user is Project Manager, allow assigning to Project Managers and Super Admins
             else if (effectiveRole === 'Project Manager') {
-                query = query.eq('role', 'Project Manager');
+                query = query.in('role', ['Project Manager', 'Super Admin']);
             }
             // Fallback: If not an admin/manager, they shouldn't see anyone or only themselves?
             // Restricting to empty if not allowed role for safety
@@ -680,7 +680,7 @@ const Tasks: React.FC = () => {
                         {
                             header: 'Created By',
                             key: 'createdBy',
-                            className: 'text-gray-400',
+                            className: 'text-gray-400 text-center',
                             render: (task: Task) => {
                                 const name = task.creator_profile?.name;
                                 return formatDisplayName(name) || 'Unknown';
@@ -689,7 +689,7 @@ const Tasks: React.FC = () => {
                         {
                             header: 'Assignee',
                             key: 'assignee',
-                            className: 'text-gray-400',
+                            className: 'w-48 text-gray-400 text-center whitespace-nowrap',
                             render: (task: Task) => {
                                 const name = task.assignee_profile?.name;
                                 return formatDisplayName(name) || 'Unassigned';
@@ -698,6 +698,7 @@ const Tasks: React.FC = () => {
                         {
                             header: 'Status',
                             key: 'status',
+                            className: 'text-center',
                             render: (task: Task) => (
                                 <span className={getStatusCapsuleClasses(task.status)}>
                                     {task.status}
@@ -707,9 +708,9 @@ const Tasks: React.FC = () => {
                         {
                             header: 'Deadline',
                             key: 'deadline',
-                            className: 'w-44',
+                            className: 'w-44 text-center',
                             render: (task: Task) => (
-                                <div className="flex flex-col">
+                                <div className="flex flex-col items-center justify-center">
                                     <span className="text-white font-medium">{formatDeadlineDate(task.deadline_date)}</span>
                                     <span className="text-[10px] text-brand-primary font-bold uppercase tracking-widest">{formatTime(task.deadline_time)}</span>
                                 </div>
@@ -718,7 +719,7 @@ const Tasks: React.FC = () => {
                         {
                             header: 'Time Left',
                             key: 'timeLeft',
-                            className: 'w-44 text-right',
+                            className: 'w-44 text-center',
                             render: (task: Task) => {
                                 if (task.status === 'Completed') {
                                     return <span className="text-sm font-bold uppercase tracking-wider text-brand-success">Completed</span>;
