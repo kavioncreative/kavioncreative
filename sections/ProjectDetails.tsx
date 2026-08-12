@@ -4097,14 +4097,12 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
           </MetadataSection>
 
           {/* Financials */}
-          <MetadataSection
-            title="Financials"
-            isCollapsed={isSidebarCollapsed}
-            collapsedHeight="lg:h-40"
-          >
-            {/* Budget is only visible to internal staff (PM/Admin), not Lead roles or Freelancers */}
-            {/* Budget is only visible to internal staff (PM/Admin), not Lead roles or Freelancers */}
-            {!isFreelancer && !userRole?.includes("team") && (
+          {!isFreelancer && (
+            <MetadataSection
+              title="Financials"
+              isCollapsed={isSidebarCollapsed}
+              collapsedHeight="lg:h-40"
+            >
               <MetadataItem
                 label="Budget"
                 value={
@@ -4136,35 +4134,8 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
                 isAccent
                 isRecessed={isEditing}
               />
-            )}
-
-            {/* If Team Designer viewing: they see their slab fee as "Payout" */}
-            {userRole.includes("team designer") ? (
-              <MetadataItem
-                label="Payout"
-                value={`$${project?.team_designer_fee || "0"}`}
-                isAccent
-              />
-            ) : (
-              /* If Team Lead or PM/Freelancer viewing */
-              <>
-                <MetadataItem
-                  label={isFreelancer ? "Payout" : "Designer Fee"}
-                  value={`$${project?.designer_fee || "0"}`}
-                  isAccent={isFreelancer}
-                />
-                {/* Show the extra Team Designer share only to Team Leads or PMs */}
-                {(project?.team_designer_id ||
-                  project?.team_designer_fee > 0) &&
-                  !userRole.includes("freelancer") && (
-                    <MetadataItem
-                      label="Team Designer Fee"
-                      value={`$${project?.team_designer_fee || "0"}`}
-                    />
-                  )}
-              </>
-            )}
-          </MetadataSection>
+            </MetadataSection>
+          )}
 
           {/* Configuration */}
           <MetadataSection

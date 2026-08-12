@@ -2024,9 +2024,9 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                 );
             }
         },
-        ...(isFreelancer
-            ? [{ header: 'Payout', key: 'payout', className: 'w-24 text-center', render: (item: any) => <span className="text-brand-success font-bold block w-full">{item.payout}</span> }]
-            : [{ header: 'Price', key: 'price', className: 'w-24 text-center' }]
+        ...(!isFreelancer
+            ? [{ header: 'Price', key: 'price', className: 'w-24 text-center' }]
+            : []
         ),
         {
             header: '',

@@ -56,17 +56,9 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
     const { profile } = useUser();
     const commentEndRef = useRef<HTMLDivElement>(null);
 
-    // Interaction Proof State
-    const [clientMessageText, setClientMessageText] = useState(lead.client_message_text || '');
-    const [responseText, setResponseText] = useState(lead.response_text || '');
-    const [isClientTextModalOpen, setIsClientTextModalOpen] = useState(false);
-    const [isResponseTextModalOpen, setIsResponseTextModalOpen] = useState(false);
-    const [clientMessageScreenshot, setClientMessageScreenshot] = useState(lead.client_message_screenshot || '');
-    const [responseScreenshot, setResponseScreenshot] = useState(lead.response_screenshot || '');
-    const [isSavingProof, setIsSavingProof] = useState(false);
-    const [n8nResponse, setN8nResponse] = useState<string | null>(null);
-    const [isProofModalOpen, setIsProofModalOpen] = useState(false);
-    const [isManualMode, setIsManualMode] = useState(false);
+    // Manual Conversation State
+    const isManualMode = true;
+    const isInitiated = false;
     const [manualSender, setManualSender] = useState<'me' | 'client'>('me');
     const [manualTimestamp, setManualTimestamp] = useState('');
 
@@ -287,7 +279,7 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
         }, 100);
     };
 
-    const isInitiated = !!n8nResponse || !!lead.automation_result || comments.some(c => c.author_role === 'system_log');
+
     const isInitiateRef = useRef(false);
 
     // REPLACE THIS URL with your actual n8n AI Webhook URL once ready
@@ -497,7 +489,6 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
                 await supabase.from('lead_comments').insert([{
                     lead_id: lead.id,
                     content: `Lead successfully converted to Project: ${finalProjectId}`,
-                    author_id: profile?.id,
                     author_name: profile?.name || profile?.email || 'Unknown User',
                     author_role: 'system_log'
                 }]);
@@ -524,24 +515,7 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
         }
     };
 
-    const savedAutomationResult = lead.automation_result ||
-        comments.find(c => c.author_role === 'system_log')?.content
-            ?.split('#### 🤖 Automation Response:')[1]?.split('---')[0]?.trim();
 
-    const formatAutomationResult = (text: string | null) => {
-        if (!text) return '';
-        try {
-            // If it's JSON, extract the primary message/status
-            const parsed = JSON.parse(text);
-            if (typeof parsed === 'object' && parsed !== null) {
-                return parsed.response_status || parsed.response || parsed.message || JSON.stringify(parsed);
-            }
-            return text;
-        } catch (e) {
-            // Not JSON, return as is
-            return text;
-        }
-    };
 
     useEffect(() => {
         fetchComments();
@@ -669,87 +643,7 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
         }
     };
 
-    const handleSaveProof = async () => {
-        setIsSavingProof(true);
-        setN8nResponse(null);
-        try {
-            // 1. Update Database with Proofs
-            const { error: dbError } = await supabase
-                .from('leads')
-                .update({
-                    client_message_screenshot: clientMessageScreenshot || null,
-                    response_screenshot: responseScreenshot || null,
-                    client_message_text: clientMessageText || null,
-                    response_text: responseText || null
-                })
-                .eq('id', lead.id);
 
-            if (dbError) throw dbError;
-
-            // 2. Trigger n8n and WAIT for response
-            const N8N_WEBHOOK_URL = 'https://kashifn8n.app.n8n.cloud/webhook/bfb161af-27c7-448e-8e16-8f0526c26649';
-
-            const webhookPayload = {
-                event: 'lead_initiated',
-                lead_id: lead.id,
-                client_name: lead.client_name,
-                project_title: lead.project_title || 'Logo Design',
-                account: lead.account || 'Not Specified',
-                client_message: clientMessageText || lead.client_message_text || 'Included in chat history',
-                client_image: clientMessageScreenshot || lead.client_message_screenshot,
-                my_response: responseText || lead.response_text || 'Included in chat history',
-                my_image: responseScreenshot || lead.response_screenshot,
-                chat_history: comments.map(c => `${c.author_name} (${c.author_role}): ${c.content}`).join('\n\n'),
-                initiated_at: new Date().toISOString(),
-                initiated_by: profile?.name || 'System'
-            };
-
-            let finalResponseText = '';
-            try {
-                const response = await fetch(N8N_WEBHOOK_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(webhookPayload)
-                });
-
-                if (response.ok) {
-                    finalResponseText = await response.text();
-                    setN8nResponse(finalResponseText);
-
-                    // Update database with the result for persistence
-                    await supabase
-                        .from('leads')
-                        .update({ automation_result: finalResponseText })
-                        .eq('id', lead.id);
-
-                    // Refresh lead data if onUpdate is provided
-                    if (onUpdate) onUpdate();
-                } else {
-                    finalResponseText = `Error: n8n responded with status ${response.status}`;
-                }
-            } catch (fetchErr) {
-                console.error('Fetch error:', fetchErr);
-                finalResponseText = 'Failed to connect to automation server.';
-            }
-
-
-            // 4. Refresh comments
-            await fetchComments();
-            scrollToBottom();
-
-            addToast({
-                type: 'success',
-                title: 'Initiated',
-                message: 'Interaction proof saved and automation response received.'
-            });
-
-        } catch (error: any) {
-            console.error('Error in save proof flow:', error);
-            addToast({ type: 'error', title: 'Error', message: error.message || 'Failed to initiate chat.' });
-        } finally {
-            setIsSavingProof(false);
-        }
-    };
 
     return (
         <div className="flex flex-col lg:flex-row h-full bg-surface-bg animate-in fade-in duration-500 overflow-hidden relative">
@@ -911,185 +805,9 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
                 <main className="flex-1 overflow-y-auto no-scrollbar scrollbar-thin scrollbar-thumb-surface-border scrollbar-track-transparent">
                     <div className="w-full px-6 py-6 lg:px-10 lg:pt-10 lg:pb-10 flex flex-col relative z-10 bg-transparent min-h-full">
 
-                        {/* 1. New State: Interaction Proof Form */}
-                        {(!n8nResponse && !lead.automation_result && comments.length === 0 && !isManualMode) && (
-                            <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-top-6 duration-700 min-h-0">
-                                <ElevatedMetallicCard
-                                    title={
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-1.5 rounded-lg bg-brand-primary/10 text-brand-primary">
-                                                <IconCamera size={18} />
-                                            </div>
-                                            <div>
-                                                <h2 className="text-xs font-black text-white uppercase tracking-widest">Interaction Proof</h2>
-                                                <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wider mt-0.5">Capture evidence of your first response</p>
-                                            </div>
-                                        </div>
-                                    }
-                                    className="flex-1 flex flex-col h-full"
-                                    bodyClassName="p-8 flex-1 flex flex-col min-h-0"
-                                >
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-12 flex-1 min-h-0">
-                                        {/* Column 1: Client Message */}
-                                        <div className="flex flex-col space-y-10 min-h-0">
-                                            <div className="space-y-3 shrink-0">
-                                                <div className="flex items-center justify-between px-1">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-1.5 h-1.5 rounded-full bg-brand-primary" />
-                                                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Client Message Text</span>
-                                                    </div>
-                                                    <button onClick={() => setIsClientTextModalOpen(true)} className="p-1.5 rounded-lg bg-white/5 text-gray-500 hover:text-brand-primary hover:bg-brand-primary/10 transition-all">
-                                                        <IconMaximize2 size={14} />
-                                                    </button>
-                                                </div>
-                                                <TextArea value={clientMessageText} onChange={(e) => setClientMessageText(e.target.value)} placeholder="Paste the client's message here..." variant="recessed" className="h-32 text-[11px] font-bold" />
-                                            </div>
-                                            <div className="flex flex-col space-y-3 flex-1 min-h-0">
-                                                <div className="flex items-center gap-2 px-1 mb-1 shrink-0">
-                                                    <div className="w-1.5 h-1.5 rounded-full bg-brand-primary" />
-                                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Client Message Screenshot</span>
-                                                </div>
-                                                <ScreenshotUpload label="Upload Proof" url={clientMessageScreenshot} onUpload={(url) => setClientMessageScreenshot(url)} className="flex-1 min-h-0" />
-                                            </div>
-                                        </div>
-
-                                        {/* Column 2: Your Response */}
-                                        <div className="flex flex-col space-y-10 min-h-0">
-                                            <div className="space-y-3 shrink-0">
-                                                <div className="flex items-center justify-between px-1">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-1.5 h-1.5 rounded-full bg-brand-primary" />
-                                                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Your Response Text</span>
-                                                    </div>
-                                                    <button onClick={() => setIsResponseTextModalOpen(true)} className="p-1.5 rounded-lg bg-white/5 text-gray-500 hover:text-brand-primary hover:bg-brand-primary/10 transition-all">
-                                                        <IconMaximize2 size={14} />
-                                                    </button>
-                                                </div>
-                                                <TextArea value={responseText} onChange={(e) => setResponseText(e.target.value)} placeholder="Write your response here..." variant="recessed" className="h-32 text-[11px] font-bold" />
-                                            </div>
-                                            <div className="flex flex-col space-y-3 flex-1 min-h-0">
-                                                <div className="flex items-center gap-2 px-1 mb-1 shrink-0">
-                                                    <div className="w-1.5 h-1.5 rounded-full bg-brand-primary" />
-                                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Your Response Screenshot</span>
-                                                </div>
-                                                <ScreenshotUpload label="Upload Proof" url={responseScreenshot} onUpload={(url) => setResponseScreenshot(url)} className="flex-1 min-h-0" />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="mt-8 flex flex-col md:flex-row justify-center items-center gap-4 shrink-0">
-                                        <Button
-                                            variant="metallic"
-                                            className="!rounded-2xl !py-4 !px-12 font-black tracking-[0.2em] text-[12px] uppercase shadow-nova hover:scale-[1.05] active:scale-[0.95] transition-all min-w-[280px]"
-                                            onClick={handleSaveProof}
-                                            isLoading={isSavingProof}
-                                            disabled={isSavingProof || !clientMessageText || !responseText}
-                                            leftIcon={<IconMessage2 size={18} />}
-                                        >
-                                            {isSavingProof ? 'Initiating...' : 'Initiate chat'}
-                                        </Button>
-                                        <span className="text-[10px] font-black text-gray-700 uppercase tracking-widest">or</span>
-                                        <Button
-                                            variant="recessed"
-                                            className="!rounded-2xl !py-4 !px-8 font-black tracking-widest text-[11px] uppercase border-white/10 hover:bg-white/5 transition-all min-w-[220px]"
-                                            onClick={() => setIsManualMode(true)}
-                                            leftIcon={<IconUsers size={16} />}
-                                        >
-                                            Build Manual History
-                                        </Button>
-                                    </div>
-
-                                    {/* Loading Overlay */}
-                                    {isSavingProof && (
-                                        <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-md flex flex-col items-center justify-center gap-6 animate-in fade-in duration-300">
-                                            <div className="relative">
-                                                <div className="w-24 h-24 rounded-full border-4 border-brand-primary/10 border-t-brand-primary animate-spin" />
-                                                <div className="absolute inset-0 flex items-center justify-center">
-                                                    <IconLoader2 className="text-brand-primary animate-spin" size={32} />
-                                                </div>
-                                            </div>
-                                            <div className="flex flex-col items-center gap-2">
-                                                <h3 className="text-sm font-black text-white uppercase tracking-[0.3em] animate-pulse">Processing Automation</h3>
-                                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Waiting for n8n response...</p>
-                                            </div>
-                                        </div>
-                                    )}
-                                </ElevatedMetallicCard>
-                            </div>
-                        )}
-
-                        {/* 2. Initiated State: Project Brief Style Card */}
-                        {isInitiated && (
-                            <div className="shrink-0 animate-in fade-in slide-in-from-top-6 duration-700 pb-8">
-                                <ElevatedMetallicCard
-                                    title={
-                                        <div className="flex items-center gap-4">
-                                            <span>Interaction Brief</span>
-                                            {(n8nResponse || savedAutomationResult) && (
-                                                <div className="!border-none !rounded-md !px-3 !py-1.5 !tracking-wider !text-[10px] whitespace-nowrap !min-w-max text-center font-black uppercase bg-blue-500/20 text-blue-400 animate-in zoom-in duration-500">
-                                                    {formatAutomationResult(n8nResponse || savedAutomationResult)}
-                                                </div>
-                                            )}
-                                        </div>
-                                    }
-                                    rightElement={
-                                        (clientMessageScreenshot || responseScreenshot || lead.client_message_screenshot || lead.response_screenshot) && (
-                                            <Button
-                                                variant="recessed"
-                                                size="sm"
-                                                className="!h-8 !px-4 !rounded-lg text-[9px] font-black uppercase tracking-widest border-brand-primary/20 text-brand-primary hover:bg-brand-primary/10 transition-all"
-                                                leftIcon={<IconEye size={14} />}
-                                                onClick={() => setIsProofModalOpen(true)}
-                                            >
-                                                View Proof
-                                            </Button>
-                                        )
-                                    }
-                                >
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                                        <div className="space-y-4">
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-brand-primary/40" />
-                                                <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Client Message</span>
-                                            </div>
-                                            <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 text-[13px] font-medium leading-relaxed text-gray-300 min-h-[120px] shadow-inner whitespace-pre-wrap">
-                                                {clientMessageText || lead.client_message_text || 'No text provided.'}
-                                            </div>
-                                        </div>
-                                        <div className="space-y-4">
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-brand-primary/40" />
-                                                <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Your Response</span>
-                                            </div>
-                                            <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 text-[13px] font-medium leading-relaxed text-gray-300 min-h-[120px] shadow-inner whitespace-pre-wrap">
-                                                {responseText || lead.response_text || 'No text provided.'}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </ElevatedMetallicCard>
-                            </div>
-                        )}
-
                         {/* Message Thread Section */}
-                        {(comments.length > 0 || isManualMode || isInitiated) && (
-                            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-700 flex-1 flex flex-col min-h-0">
-                                {(isManualMode && !isInitiated) && (
-                                    <div className="p-4 rounded-2xl bg-brand-primary/5 border border-brand-primary/20 flex items-center justify-between animate-in slide-in-from-top-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-2 h-2 rounded-full bg-brand-primary animate-pulse" />
-                                            <span className="text-[10px] font-black text-brand-primary uppercase tracking-widest">Manual Conversation Mode Active</span>
-                                        </div>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="!h-7 text-[9px] font-black text-gray-500 hover:text-white"
-                                            onClick={() => setIsManualMode(false)}
-                                        >
-                                            Switch to One-shot
-                                        </Button>
-                                    </div>
-                                )}
-                                <div className="space-y-6 flex-1 overflow-y-auto no-scrollbar min-h-0">
+                        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-700 flex-1 flex flex-col min-h-0">
+                            <div className="space-y-6 flex-1 overflow-y-auto no-scrollbar min-h-0">
                                     {comments.map((comment, idx) => {
                                         const isClient = comment.author_role === 'client';
 
@@ -1321,161 +1039,20 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
                                                         isLoading={isPosting}
                                                         disabled={isPosting || !newComment.trim()}
                                                     >
-                                                        {isManualMode || isInitiated ? "Send Message" : "Post Comment"}
+                                                        Post Comment
                                                     </Button>
                                                 </div>
                                             </div>
-
-                                            {(isManualMode && !isInitiated) && comments.length > 0 && (
-                                                <div className="pt-4 mt-4 border-t border-white/5 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                                                    <Button
-                                                        variant="metallic"
-                                                        className="w-full h-14 !rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] shadow-xl shadow-brand-primary/20"
-                                                        onClick={handleSaveProof}
-                                                        isLoading={isSavingProof}
-                                                        leftIcon={<IconZap size={18} />}
-                                                    >
-                                                        Generate Project Brief from History
-                                                    </Button>
-                                                    <p className="text-center text-[10px] text-gray-600 font-bold uppercase tracking-tighter mt-3 italic">
-                                                        This will analyze the entire manual conversation to create your brief
-                                                    </p>
-                                                </div>
-                                            )}
                                         </div>
                                     </ElevatedMetallicCard>
                                 </div>
                             </div>
-                        )}
 
                     </div>
                 </main>
             </div>
 
-            {/* Client Message Text Expansion Modal */}
-            <Modal
-                isOpen={isClientTextModalOpen}
-                onClose={() => setIsClientTextModalOpen(false)}
-                title="Client Message Content"
-                size="xl"
-            >
-                <div className="space-y-6">
-                    <div className="p-1.5 rounded-xl bg-brand-primary/10 border border-brand-primary/20">
-                        <p className="text-[10px] text-brand-primary font-black uppercase tracking-widest text-center">
-                            Full Client Message Text
-                        </p>
-                    </div>
 
-                    <TextArea
-                        value={clientMessageText}
-                        onChange={(e) => setClientMessageText(e.target.value)}
-                        placeholder="Paste the full client message here..."
-                        variant="recessed"
-                        className="h-[500px] text-[13px] font-medium leading-relaxed"
-                        autoFocus
-                    />
-
-                    <div className="flex justify-center pt-2">
-                        <Button
-                            variant="metallic"
-                            className="!rounded-2xl !py-4 !px-12 font-black tracking-[0.2em] text-[12px] uppercase shadow-nova hover:scale-[1.05] active:scale-[0.95] transition-all min-w-[200px]"
-                            onClick={() => setIsClientTextModalOpen(false)}
-                        >
-                            Confirm Content
-                        </Button>
-                    </div>
-                </div>
-            </Modal>
-
-            {/* Your Response Text Expansion Modal */}
-            <Modal
-                isOpen={isResponseTextModalOpen}
-                onClose={() => setIsResponseTextModalOpen(false)}
-                title="Your Response Content"
-                size="xl"
-            >
-                <div className="space-y-6">
-                    <div className="p-1.5 rounded-xl bg-brand-primary/10 border border-brand-primary/20">
-                        <p className="text-[10px] text-brand-primary font-black uppercase tracking-widest text-center">
-                            Full Response Text
-                        </p>
-                    </div>
-
-                    <TextArea
-                        value={responseText}
-                        onChange={(e) => setResponseText(e.target.value)}
-                        placeholder="Write your full response here..."
-                        variant="recessed"
-                        className="h-[500px] text-[13px] font-medium leading-relaxed"
-                        autoFocus
-                    />
-
-                    <div className="flex justify-center pt-2">
-                        <Button
-                            variant="metallic"
-                            className="!rounded-2xl !py-4 !px-12 font-black tracking-[0.2em] text-[12px] uppercase shadow-nova hover:scale-[1.05] active:scale-[0.95] transition-all min-w-[200px]"
-                            onClick={() => setIsResponseTextModalOpen(false)}
-                        >
-                            Confirm Content
-                        </Button>
-                    </div>
-                </div>
-            </Modal>
-
-            {/* Interaction Proof Evidence Modal */}
-            <Modal
-                isOpen={isProofModalOpen}
-                onClose={() => setIsProofModalOpen(false)}
-                title="Interaction Evidence"
-                size="xl"
-            >
-                <div className="space-y-8 py-2">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-2 px-1">
-                                <div className="w-1.5 h-1.5 rounded-full bg-brand-primary" />
-                                <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Client Message Proof</span>
-                            </div>
-                            <div className="rounded-2xl border border-white/10 overflow-hidden bg-black/40 aspect-video flex items-center justify-center group">
-                                {clientMessageScreenshot ? (
-                                    <img src={clientMessageScreenshot} alt="Client Proof" className="w-full h-full object-contain group-hover:scale-[1.02] transition-transform duration-500" />
-                                ) : (
-                                    <div className="flex flex-col items-center gap-2 text-gray-600">
-                                        <IconPhotoOff size={32} />
-                                        <span className="text-[9px] font-bold uppercase tracking-widest">No Image Attached</span>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-2 px-1">
-                                <div className="w-1.5 h-1.5 rounded-full bg-brand-primary" />
-                                <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Your Response Proof</span>
-                            </div>
-                            <div className="rounded-2xl border border-white/10 overflow-hidden bg-black/40 aspect-video flex items-center justify-center group">
-                                {responseScreenshot ? (
-                                    <img src={responseScreenshot} alt="Response Proof" className="w-full h-full object-contain group-hover:scale-[1.02] transition-transform duration-500" />
-                                ) : (
-                                    <div className="flex flex-col items-center gap-2 text-gray-600">
-                                        <IconPhotoOff size={32} />
-                                        <span className="text-[9px] font-bold uppercase tracking-widest">No Image Attached</span>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="flex justify-center pt-4">
-                        <Button
-                            variant="metallic"
-                            className="!rounded-2xl !py-3 !px-10 font-black tracking-[0.2em] text-[11px] uppercase shadow-nova"
-                            onClick={() => setIsProofModalOpen(false)}
-                        >
-                            Close Preview
-                        </Button>
-                    </div>
-                </div>
-            </Modal>
 
             {/* Full Image Preview Modal */}
             <Modal
@@ -2174,7 +1751,7 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
                     )}
 
                     {initiateStep === 'review' && (
-                        <div className="space-y-10 animate-in slide-in-from-right-4 duration-300 pb-6 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
+                        <div className="space-y-10 animate-in slide-in-from-right-4 duration-300 pb-6 pr-2">
                             {/* Project Details */}
                             <div className="space-y-6">
                                 <h4 className="text-[10px] font-bold text-brand-primary uppercase tracking-[0.2em] px-1">Project Details</h4>
@@ -2182,8 +1759,10 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
                                     <Input
                                         variant="metallic"
                                         label="Project ID"
-                                        value={projectIdMode === 'Add Manually' ? newProjectId : `Will be Auto-Generated (e.g. ${lead?.account || 'LD'} 123456)`}
+                                        value={projectIdMode === 'Add Manually' ? newProjectId : 'Will be Auto-Generated'}
                                         readOnly
+                                        disabled={projectIdMode !== 'Add Manually'}
+                                        inputClassName={projectIdMode !== 'Add Manually' ? '!text-gray-500 opacity-60' : ''}
                                     />
                                     <Input
                                         variant="metallic"
@@ -2230,6 +1809,54 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
                                             </ReactMarkdown>
                                         </div>
                                     </div>
+
+                                    {/* Brief Attachments */}
+                                    {projectBriefFiles.length > 0 && (
+                                        <div className="space-y-4 animate-in fade-in duration-300">
+                                            <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Attachments</label>
+                                            <div className="flex flex-wrap gap-4 mt-2">
+                                                {projectBriefFiles.map((file, index) => {
+                                                    const isImage = file.type.startsWith('image/');
+                                                    const previewUrl = isImage ? URL.createObjectURL(file) : null;
+                                                    return (
+                                                        <div key={index} title={file.name} className="relative group w-24 flex flex-col items-center animate-in fade-in zoom-in duration-300 cursor-default">
+                                                            <div className="w-24 h-24 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center group-hover:border-white/20 transition-all duration-300 shadow-lg mb-2 overflow-hidden relative">
+                                                                {previewUrl ? (
+                                                                    <img
+                                                                        src={previewUrl}
+                                                                        alt={file.name}
+                                                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                                                                    />
+                                                                ) : (
+                                                                    <IconPaperclip className="w-8 h-8 text-gray-500 group-hover:text-brand-primary transition-colors duration-300" />
+                                                                )}
+
+                                                                {/* Hover Actions Overlay */}
+                                                                {previewUrl && (
+                                                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center z-10">
+                                                                        <button
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                setPreviewImageUrl(previewUrl);
+                                                                            }}
+                                                                            className="w-8 h-8 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-white flex items-center justify-center hover:bg-brand-primary hover:border-brand-primary transition-all duration-300 transform scale-90 group-hover:scale-100"
+                                                                            title="Preview Image"
+                                                                        >
+                                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                                            </svg>
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            <span className="text-[10px] text-gray-500 font-bold truncate w-full text-center px-1">{file.name}</span>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -2274,90 +1901,7 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
     );
 }
 
-// UI Subcomponents
-const ScreenshotUpload = ({ label, url, onUpload, className }: { label: string, url: string, onUpload: (url: string) => void, className?: string }) => {
-    const [isUploading, setIsUploading] = useState(false);
-    const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        setIsUploading(true);
-        try {
-            const result = await uploadFile(file, 'leads-proof');
-            onUpload(result.url);
-            addToast({ type: 'success', title: 'Uploaded', message: 'Screenshot uploaded successfully.' });
-        } catch (err) {
-            console.error('Upload error:', err);
-            addToast({ type: 'error', title: 'Error', message: 'Failed to upload screenshot.' });
-        } finally {
-            setIsUploading(false);
-        }
-    };
-
-    return (
-        <div className={`space-y-4 flex flex-col ${className}`}>
-            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">{label}</p>
-
-            <div
-                onClick={() => !isUploading && fileInputRef.current?.click()}
-                className={`
-                    group relative w-full rounded-2xl border-2 border-dashed transition-all duration-500 overflow-hidden flex-1 min-h-[200px]
-                    ${isUploading ? 'cursor-wait border-brand-primary/50 bg-brand-primary/[0.02]' : 'border-white/10 hover:border-brand-primary/40 bg-white/[0.02] hover:bg-white/[0.04] cursor-pointer'}
-                `}
-            >
-                {/* Always show Placeholder in the main box */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 transition-colors">
-                    <div className="w-14 h-14 rounded-2xl bg-white/[0.03] border border-white/10 flex items-center justify-center text-gray-600 group-hover:text-brand-primary group-hover:border-brand-primary/30 group-hover:scale-110 transition-all duration-500 shadow-xl">
-                        <IconCamera size={24} />
-                    </div>
-                    <div className="flex flex-col items-center">
-                        <span className="text-[10px] font-black text-gray-500 group-hover:text-white uppercase tracking-[0.15em] transition-colors">Click to upload</span>
-                        <span className="text-[9px] font-bold text-gray-600 uppercase tracking-widest mt-1">{url ? 'Replace Screenshot' : 'Proof Screenshot'}</span>
-                    </div>
-                </div>
-
-                {/* Loading Overlay */}
-                {isUploading && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300 z-10">
-                        <div className="relative">
-                            <div className="w-12 h-12 rounded-full border-2 border-brand-primary/20 border-t-brand-primary animate-spin" />
-                            <div className="absolute inset-0 flex items-center justify-center">
-                                <IconLoader2 className="text-brand-primary animate-pulse" size={20} />
-                            </div>
-                        </div>
-                        <span className="text-[9px] font-black text-brand-primary uppercase tracking-[0.2em] animate-pulse">Uploading...</span>
-                    </div>
-                )}
-
-                <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
-            </div>
-
-            {/* Thumbnail Preview below the field */}
-            {url && !isUploading && (
-                <div className="animate-in slide-in-from-top-2 duration-500">
-                    <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/10 flex items-center gap-4 group/thumb hover:border-brand-primary/30 transition-colors">
-                        <div className="w-16 h-16 rounded-lg overflow-hidden border border-white/10 bg-black/40 shrink-0">
-                            <img src={url} alt="Thumbnail" className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <p className="text-[10px] font-black text-white uppercase tracking-widest truncate">Screenshot Attached</p>
-                            <p className="text-[9px] font-bold text-brand-primary uppercase tracking-wider mt-0.5">File Uploaded Successfully</p>
-                        </div>
-                        <button
-                            onClick={(e) => { e.stopPropagation(); onUpload(''); }}
-                            className="p-2 rounded-xl bg-white/5 text-gray-500 hover:bg-red-500/10 hover:text-red-500 transition-all mr-1"
-                            title="Remove Screenshot"
-                        >
-                            <IconTrash size={16} />
-                        </button>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-};
 
 const MetadataSection: React.FC<{
     title: string;

@@ -21,7 +21,7 @@ export interface SettingsHandle {
     discard: () => void;
 }
 
-const Settings = React.forwardRef<{ save: () => Promise<void>; discard: () => void }, { onBack?: () => void, onDirtyChange?: (isDirty: boolean) => void, profileOnly?: boolean }>(({ onBack, onDirtyChange, profileOnly }, ref) => {
+const Settings = React.forwardRef<{ save: () => Promise<void>, discard: () => void }, { onBack?: () => void, onDirtyChange?: (isDirty: boolean) => void, profileOnly?: boolean }>(({ onBack, onDirtyChange, profileOnly }, ref) => {
     const { profile, loading, refreshProfile, effectiveRole } = useUser();
     const [settingsTab, setSettingsTab] = useState<'profile' | 'page-access' | 'account-access'>(() => getInitialTab('Settings', 'profile') as any);
     const [updating, setUpdating] = useState(false);
@@ -439,8 +439,7 @@ const Settings = React.forwardRef<{ save: () => Promise<void>; discard: () => vo
         { id: 'profile', label: 'Profile Details', icon: <IconUser size={15} /> },
         ...(isSuperAdmin && !profileOnly ? [
             { id: 'page-access', label: 'Page Access Rules', icon: <IconShield size={15} /> },
-            { id: 'account-access', label: 'Account Scoping', icon: <IconBuilding size={15} /> },
-            { id: 'payout-rules', label: 'Payout Rules', icon: <IconDollar size={15} /> }
+            { id: 'account-access', label: 'Account Scoping', icon: <IconBuilding size={15} /> }
         ] : []),
     ];
 
@@ -492,10 +491,6 @@ const Settings = React.forwardRef<{ save: () => Promise<void>; discard: () => vo
                             onTabChange={(t) => setSettingsTab(t as any)}
                             onSimulate={() => onBack?.()}
                         />
-                    </div>
-                ) : settingsTab === 'payout-rules' && isSuperAdmin && !profileOnly ? (
-                    <div className="animate-in fade-in duration-500">
-                        <PayoutRulesManager />
                     </div>
                 ) : (
                     <div className="space-y-6 animate-in">

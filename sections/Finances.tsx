@@ -1687,37 +1687,14 @@ const CompanyEarnings: React.FC = () => {
 
                     const platformCut = price * commissionFactor;
 
-                    // Use database-calculated designer_fee if available, otherwise calculate using slabs
-                    let freelancerCut = 0;
-                    if (p.designer_fee && Number(p.designer_fee) > 0) {
-                        freelancerCut = Number(p.designer_fee);
-                    } else {
-                        const activeSlabs = passedSlabs || pricingSlabs;
-                        const slab = activeSlabs.find(s => price >= Number(s.min_price) && price <= Number(s.max_price));
-                        const freelancerPct = slab ? Number(slab.freelancer_percentage) : 50;
-                        freelancerCut = (price - platformCut) * (freelancerPct / 100);
-                    }
+                    // Fixed Salary Model: Designers do not get project cuts
+                    const freelancerCut = 0;
 
-                    // Seller Commission Cut: only applies to converted/inquiry orders
-                    const isConverted = ['Inquiry', 'Converted'].includes(p.order_type);
-                    let sellerCut = 0;
-                    if (isConverted && p.converted_by && accountId) {
-                        const sellerComm = activeSellers.find(sc => 
-                            sc.seller_id === p.converted_by && 
-                            sc.assigned_account_ids?.includes(accountId)
-                        );
-                        if (sellerComm) {
-                            const sellerFactor = sellerComm.commission_percentage ? (
-                                Number(sellerComm.commission_percentage) > 1 
-                                    ? Number(sellerComm.commission_percentage) / 100 
-                                    : Number(sellerComm.commission_percentage)
-                            ) : 0;
-                            sellerCut = price * sellerFactor;
-                        }
-                    }
+                    // Seller Commission Cut is also 0 as part of layout cleanup (Gross Sale - Platform Fee)
+                    const sellerCut = 0;
 
-                    // Company earning is the remainder after platform cut, freelancer cut, and seller commission cut
-                    const companyEarning = price - platformCut - freelancerCut - sellerCut;
+                    // Company earning is the remainder (Gross Sale - Platform Fee)
+                    const companyEarning = price - platformCut;
 
                     const prefix = (p as any).accounts?.prefix || 'Unassigned Account';
 
@@ -3998,7 +3975,6 @@ const Finances: React.FC = () => {
     const allTabs = [
         { id: 'commission', label: 'Platform Commission', icon: <IconSettings className="w-4 h-4" />, permission: 'manage_finance_config' },
         { id: 'seller', label: 'Seller Commission', icon: <IconTrendingUp className="w-4 h-4" />, permission: 'manage_finance_config' },
-        { id: 'slabs', label: 'Pricing Slabs', icon: <IconChartBar className="w-4 h-4" />, permission: 'manage_finance_config' },
         { id: 'company', label: 'Company Earnings', icon: <IconCreditCard className="w-4 h-4" />, permission: 'view_company_earnings' },
         { id: 'freelancer', label: 'Freelancer Earnings', icon: <IconUser className="w-4 h-4" />, permission: 'view_freelancer_earnings' },
     ];
@@ -4105,9 +4081,6 @@ const Finances: React.FC = () => {
                         </div>
                         <div hidden={activeTab !== 'seller'}>
                             <SellerCommission />
-                        </div>
-                        <div hidden={activeTab !== 'slabs'}>
-                            <PricingSlabs />
                         </div>
                         <div hidden={activeTab !== 'company'}>
                             <CompanyEarnings />

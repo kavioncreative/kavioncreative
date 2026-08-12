@@ -1,6 +1,7 @@
 -- Create performance_metrics table
 CREATE TABLE IF NOT EXISTS performance_metrics (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
     date date NOT NULL,
     success_score numeric,
     rating numeric,

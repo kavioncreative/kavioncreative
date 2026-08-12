@@ -589,19 +589,11 @@ const EarningsBreakdownWidget = memo(({ profile, role }: { profile: any, role: s
 
                     const platformCut = price * commissionFactor;
 
-                    // Use database-calculated designer_fee if available, otherwise calculate using slabs
-                    let freelancerCut = 0;
-                    if (p.designer_fee && Number(p.designer_fee) > 0) {
-                        freelancerCut = Number(p.designer_fee);
-                    } else {
-                        const activeSlabs = passedSlabs || pricingSlabs;
-                        const slab = activeSlabs.find(s => price >= Number(s.min_price) && price <= Number(s.max_price));
-                        const freelancerPct = slab ? Number(slab.freelancer_percentage) : 50;
-                        freelancerCut = (price - platformCut) * (freelancerPct / 100);
-                    }
+                    // Fixed Salary Model: Designers do not get project cuts
+                    const freelancerCut = 0;
 
-                    // Company earning is the remainder
-                    const companyEarning = price - platformCut - freelancerCut;
+                    // Company earning is the remainder (Gross Sale - Platform Fee)
+                    const companyEarning = price - platformCut;
 
                     const prefix = (p as any).accounts?.prefix || 'Unassigned Account';
 

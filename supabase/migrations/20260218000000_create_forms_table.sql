@@ -34,3 +34,24 @@ CREATE TRIGGER update_forms_updated_at
     BEFORE UPDATE ON forms
     FOR EACH ROW
     EXECUTE PROCEDURE update_updated_at_column();
+
+-- Create form_assignments table
+CREATE TABLE IF NOT EXISTS form_assignments (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    form_id text NOT NULL,
+    user_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE,
+    trigger_time text DEFAULT '09:00',
+    frequency text DEFAULT 'daily',
+    is_mandatory boolean DEFAULT false,
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now()
+);
+
+-- Create form_logs table
+CREATE TABLE IF NOT EXISTS form_logs (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    assignment_id uuid REFERENCES form_assignments(id) ON DELETE CASCADE,
+    user_id uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
+    form_id text NOT NULL,
+    created_at timestamptz DEFAULT now()
+);

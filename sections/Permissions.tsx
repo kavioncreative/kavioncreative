@@ -109,7 +109,6 @@ export const Permissions: React.FC<PermissionsProps> = ({ onSimulate, hideTabs, 
         { code: 'manage_teams', name: 'Manage Teams', category: 'Users', description: 'Create and organize team structures' },
 
         { code: 'view_channels', name: 'Channels', category: 'Channels', description: 'Access to communication channels' },
-        { code: 'view_forms', name: 'Forms', category: 'Forms', description: 'Access to the forms engine' },
         { code: 'access_integrations', name: 'Integrations', category: 'System', description: 'Manage external platform links' },
         { code: 'access_algorithm_studio', name: 'Algorithm', category: 'General', description: 'Advanced Logic Engine & Configuration' },
         { code: 'view_settings', name: 'Settings', category: 'General', description: 'Access to personal account settings' },

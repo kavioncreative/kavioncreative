@@ -7,7 +7,7 @@ import Button from '../components/Button';
 import { Tabs } from '../components/Navigation';
 import { DatePicker, formatDate as systemFormatDate } from '../components/DatePicker';
 import { Dropdown } from '../components/Dropdown';
-import { IconCalendar, IconX, IconChartBar, IconClock, IconCheckCircle, IconXCircle, IconMaximize, IconChevronRight, IconDollar, IconLock } from '../components/Icons';
+import { IconCalendar, IconX, IconChartBar, IconClock, IconCheckCircle, IconXCircle, IconMaximize, IconChevronRight, IconDollar, IconLock, IconPlus } from '../components/Icons';
 import { useAccounts } from '../contexts/AccountContext';
 import { getInitialTab, updateRoute } from '../utils/routing';
 import { formatDisplayName, truncateByWords } from '../utils/formatter';
@@ -15,6 +15,7 @@ import { useUser } from '../contexts/UserContext';
 import { getStatusCapsuleClasses } from '../components/Badge';
 
 import PerformanceChart, { PerformanceMetric } from '../components/PerformanceChart';
+import { PerformanceForm } from '../components/PerformanceForm';
 
 interface AnalyticsProject {
     id: string;
@@ -73,6 +74,8 @@ const Analytics: React.FC = () => {
     const [activeSummaryFilter, setActiveSummaryFilter] = useState<'pipeline' | 'secured' | 'cancelled'>(getInitialTab('Analytics', 'pipeline') as any);
     const [cancellationReasonModal, setCancellationReasonModal] = useState<{ isOpen: boolean; text: string }>({ isOpen: false, text: '' });
     const [metricsLoading, setMetricsLoading] = useState(true);
+    const [isPerformanceModalOpen, setIsPerformanceModalOpen] = useState(false);
+    const [isSubmittingPerformance, setIsSubmittingPerformance] = useState(false);
 
     const [activeTab, setActiveTab] = useState(() => {
         return availableTabs[0]?.id || 'gig-stats';
@@ -577,11 +580,11 @@ const Analytics: React.FC = () => {
         const cancelled = base.filter(p => p.status === 'Cancelled');
 
         return {
-            pipelineRevenue: pipeline.reduce((sum, p) => sum + p.price, 0),
+            pipelineRevenue: pipeline.reduce((sum, p) => sum + (p.price * 0.8), 0),
             pipelineCount: pipeline.length,
-            securedRevenue: secured.reduce((sum, p) => sum + p.price, 0),
+            securedRevenue: secured.reduce((sum, p) => sum + (p.price * 0.8), 0),
             securedCount: secured.length,
-            cancelledRevenue: cancelled.reduce((sum, p) => sum + p.price, 0),
+            cancelledRevenue: cancelled.reduce((sum, p) => sum + (p.price * 0.8), 0),
             cancelledCount: cancelled.length
         };
     }, [projectsData, fromDate, toDate, selectedAccount]);
@@ -621,13 +624,25 @@ const Analytics: React.FC = () => {
         <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
 
 
-            {!isProjectOpsManager && availableTabs.length > 1 && (
-                <Tabs
-                    tabs={availableTabs}
-                    activeTab={activeTab}
-                    onTabChange={setActiveTab}
-                />
-            )}
+            <div className="flex flex-row items-center justify-between gap-4">
+                <div>
+                    {!isProjectOpsManager && availableTabs.length > 1 && (
+                        <Tabs
+                            tabs={availableTabs}
+                            activeTab={activeTab}
+                            onTabChange={setActiveTab}
+                        />
+                    )}
+                </div>
+                <Button
+                    variant="metallic"
+                    onClick={() => setIsPerformanceModalOpen(true)}
+                    leftIcon={<IconPlus className="w-4 h-4 text-brand-primary" />}
+                    className="px-4 py-2 text-xs font-bold uppercase tracking-wider h-[38px] min-w-max"
+                >
+                    Enter Stats
+                </Button>
+            </div>
 
             {/* Global Filter Bar */}
             <Card
@@ -1130,6 +1145,45 @@ const Analytics: React.FC = () => {
                         {cancellationReasonModal.text}
                     </p>
                 </div>
+            </Modal>
+
+            {/* Performance Tracking Modal */}
+            <Modal
+                isOpen={isPerformanceModalOpen}
+                onClose={() => setIsPerformanceModalOpen(false)}
+                title="Performance Tracking"
+                size="md"
+                variant="metallic"
+                footer={
+                    <div className="flex items-center justify-end gap-3 w-full">
+                        <Button
+                            variant="flat"
+                            onClick={() => setIsPerformanceModalOpen(false)}
+                            disabled={isSubmittingPerformance}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="metallic"
+                            onClick={() => {
+                                document.getElementById('perf-form-submit')?.click();
+                            }}
+                            loading={isSubmittingPerformance}
+                        >
+                            Submit
+                        </Button>
+                    </div>
+                }
+            >
+                <PerformanceForm
+                    userId={profile?.id}
+                    onComplete={() => {
+                        setIsPerformanceModalOpen(false);
+                        fetchPerformanceMetrics();
+                        fetchProjects();
+                    }}
+                    onSubmitStatusChange={setIsSubmittingPerformance}
+                />
             </Modal>
         </div >
     );

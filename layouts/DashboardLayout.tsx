@@ -48,11 +48,10 @@ import { addToast } from '../components/Toast';
 
 import { useUser } from '../contexts/UserContext';
 import { formatDisplayName } from '../utils/formatter';
-import { PerformanceForm } from '../components/PerformanceForm';
 import { Dropdown } from '../components/Dropdown';
 import { updateRoute } from '../utils/routing';
 
-export type DashboardView = 'Dashboard' | 'Tasks' | 'Analytics' | 'Leads' | 'Projects' | 'Finances' | 'Earnings' | 'Accounts' | 'ActivityLogs' | 'Assets' | 'Chats' | 'Users' | 'Team' | 'Workload' | 'Tickets' | 'Channels' | 'Forms' | 'Integrations' | 'Settings' | 'Reminders' | 'Profile' | 'UserDetailsV2' | 'AlgorithmStudio' | 'LevelsGuide' | 'Applicants' | 'TeamSlabs' | 'TeamEarnings' | 'TeamDesignerEarnings' | 'Training' | 'MyNotes' | 'Notifications' | 'Guide' | 'GuideAddProject' | 'GuideRemoveProject' | 'GuideMarkCancelled' | 'GuideMarkApproved' | 'GuideTriggerDispute' | 'GuideTriggerArtHelp' | 'GuidePostComments' | 'GuideSendFiles' | 'GuideVideoIntro' | 'GuideSystemWorks' | 'GuideWorkflowSummary' | 'GuidePaymentOverview' | 'GuideJoinDesigner';
+export type DashboardView = 'Dashboard' | 'Tasks' | 'Analytics' | 'Leads' | 'Projects' | 'Finances' | 'Earnings' | 'Accounts' | 'ActivityLogs' | 'Assets' | 'Chats' | 'Users' | 'Team' | 'Workload' | 'Tickets' | 'Channels' | 'Integrations' | 'Settings' | 'Reminders' | 'Profile' | 'UserDetailsV2' | 'AlgorithmStudio' | 'LevelsGuide' | 'Applicants' | 'TeamSlabs' | 'TeamEarnings' | 'TeamDesignerEarnings' | 'Training' | 'MyNotes' | 'Notifications' | 'Guide' | 'GuideAddProject' | 'GuideRemoveProject' | 'GuideMarkCancelled' | 'GuideMarkApproved' | 'GuideTriggerDispute' | 'GuideTriggerArtHelp' | 'GuidePostComments' | 'GuideSendFiles' | 'GuideVideoIntro' | 'GuideSystemWorks' | 'GuideWorkflowSummary' | 'GuidePaymentOverview' | 'GuideJoinDesigner';
 
 export const DashboardLayout: React.FC<{
   children: React.ReactNode;
@@ -170,183 +169,7 @@ export const DashboardLayout: React.FC<{
     }
   }, [profile]);
 
-  const [activeFormPopup, setActiveFormPopup] = useState<{ id: string, assignmentId: string } | null>(null);
-  const [pendingForms, setPendingForms] = useState<{ id: string, assignmentId: string, form_id: string, snoozed_until?: string }[]>([]);
-  const [countdownText, setCountdownText] = useState<string>('');
-  const [submitting, setSubmitting] = useState(false);
 
-  const checkForAssignedForms = async () => {
-    if (!profile?.id) return;
-
-    try {
-      const now = new Date();
-      // Ensure HH:mm format for current time
-      const currentH = String(now.getHours()).padStart(2, '0');
-      const currentM = String(now.getMinutes()).padStart(2, '0');
-      const currentTimeStr = `${currentH}:${currentM}`;
-      
-      // Robust YYYY-MM-DD in local time
-      const todayStr = now.getFullYear() + '-' + 
-                      String(now.getMonth() + 1).padStart(2, '0') + '-' + 
-                      String(now.getDate()).padStart(2, '0');
-
-      console.log(`[Forms Debug] Checking at ${currentTimeStr} (${todayStr}) for User: ${profile.id}`);
-
-      const { data: assignments, error: asgError } = await supabase
-        .from('form_assignments')
-        .select('*')
-        .eq('user_id', profile.id);
-
-      if (asgError) {
-        console.error('[Forms Debug] DB Error fetching assignments:', asgError);
-        return;
-      }
-
-      console.log(`[Forms Debug] Found ${(assignments || []).length} assignments in DB`);
-
-      const pending = [];
-      let formToTrigger = null;
-
-      for (const asg of (assignments || [])) {
-        // Log all raw values for each assignment to help identify format mismatches
-        console.log(`[Forms Debug] Checking ASG: ID[${asg.id}] Trigger[${asg.trigger_time}]`);
-
-        // Removing specific column filters to see what the table ACTUALLY has
-        const { data: logs, error: logError } = await supabase
-          .from('form_logs')
-          .select('*')
-          .eq('assignment_id', asg.id);
-
-        if (logError) {
-          console.error(`[Forms Debug] ❌ Query failed for assignment ${asg.id}:`, logError.message);
-          continue;
-        }
-
-        if (logs && logs.length > 0) {
-          console.log(`[Forms Debug] Found keys in form_logs: ${Object.keys(logs[0]).join(', ')}`);
-        }
-
-        // Using a more generic date check once we know the column name
-        const isCompletedToday = logs && logs.some(l => {
-          // Fallback to whatever timestamp column we find
-          const ts = l.created_at || l.timestamp || l.created_on || l.date;
-          return ts && String(ts).startsWith(todayStr);
-        });
-        
-        if (!isCompletedToday) {
-          pending.push({
-            id: asg.form_id,
-            assignmentId: asg.id,
-            form_id: asg.form_id,
-            snoozed_until: asg.snoozed_until
-          });
-
-          const isSnoozed = asg.snoozed_until && new Date(asg.snoozed_until) > now;
-          
-          // Normalize trigger time: handle formats like "9:20", "09:20", "09:20:00"
-          let rawTrigger = asg.trigger_time || "09:00";
-          let [h, m] = rawTrigger.split(':');
-          const triggerTime = `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
-          
-          const isPastTrigger = currentTimeStr >= triggerTime;
-          
-          console.log(`[Forms Debug] Form ${asg.form_id}: Trigger[${triggerTime}] Current[${currentTimeStr}] Past[${isPastTrigger}] Snoozed[${isSnoozed}]`);
-
-          if (isPastTrigger && !isSnoozed && !formToTrigger) {
-            console.log(`[Forms Debug] 🔥 Triggering popup now for ${asg.form_id}`);
-            formToTrigger = { id: asg.form_id, assignmentId: asg.id };
-          }
-        } else {
-          console.log(`[Forms Debug] Form ${asg.form_id} already completed today.`);
-        }
-      }
-
-      setPendingForms(pending);
-      if (formToTrigger && !activeFormPopup) {
-        setActiveFormPopup(formToTrigger);
-      }
-    } catch (error) {
-      console.error('[Forms Debug] Unexpected error:', error);
-    }
-  };
-
-  useEffect(() => {
-    const interval = setInterval(checkForAssignedForms, 60000);
-    checkForAssignedForms();
-    return () => clearInterval(interval);
-  }, [profile?.id]);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (pendingForms.length > 0) {
-        const now = new Date();
-        // Find forms that are currently snoozed
-        const snoozedForms = pendingForms.filter(f => f.snoozed_until && new Date(f.snoozed_until) > now);
-
-        if (snoozedForms.length > 0) {
-          const firstForm = snoozedForms[0];
-          const snoozeEnd = new Date(firstForm.snoozed_until!);
-          const diff = snoozeEnd.getTime() - now.getTime();
-
-          if (diff > 0) {
-            const minutes = Math.floor(diff / 60000);
-            const seconds = Math.floor((diff % 60000) / 1000);
-            setCountdownText(`${minutes}:${seconds.toString().padStart(2, '0')}`);
-          } else {
-            setCountdownText("0:00");
-            // Auto reopen
-            if (!activeFormPopup) {
-              setActiveFormPopup({ id: firstForm.id, assignmentId: firstForm.assignmentId });
-              // Trigger a refresh to clear snooze state
-              checkForAssignedForms();
-            }
-          }
-        } else {
-          setCountdownText("READY");
-        }
-      }
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [pendingForms, activeFormPopup]);
-
-  const handleSnooze = async (minutes: number = 15) => {
-    if (!activeFormPopup) return;
-    try {
-      const snoozeTime = new Date(Date.now() + minutes * 60000).toISOString();
-      await supabase
-        .from('form_assignments')
-        .update({ snoozed_until: snoozeTime })
-        .eq('id', activeFormPopup.assignmentId);
-
-      setActiveFormPopup(null);
-      addToast({ type: 'info', title: 'Snoozed', message: `Form will reappear in ${minutes < 60 ? minutes + ' minutes' : (minutes / 60) + ' hour(s)'}.` });
-      // Refresh local state immediately to start the countdown
-      checkForAssignedForms();
-    } catch (error) {
-      console.error('Snooze error:', error);
-    }
-  };
-
-  const handleFormComplete = async () => {
-    if (!activeFormPopup) return;
-    try {
-      const { error } = await supabase.from('form_logs').insert({
-        assignment_id: activeFormPopup.assignmentId,
-        user_id: profile?.id,
-        form_id: activeFormPopup.id
-      });
-
-      if (error) throw error;
-
-      setActiveFormPopup(null);
-      addToast({ type: 'success', title: 'Completed', message: 'Thank you for your response.' });
-      // Refresh immediately to clear the lurking reminder
-      await checkForAssignedForms();
-    } catch (error) {
-      console.error('Log error:', error);
-      addToast({ type: 'error', title: 'Error', message: 'Failed to record completion. Please try again.' });
-    }
-  };
 
   const unreadCount = notifications?.filter(n => !n.is_read).length || 0;
 
@@ -400,7 +223,6 @@ export const DashboardLayout: React.FC<{
     { name: 'Workload', icon: <IconActivity />, permission: 'view_workload' },
     { name: 'Tickets', icon: <IconTicket />, permission: 'view_capacity_tickets' },
     { name: 'Channels', icon: <IconLink />, permission: 'view_channels' },
-    { name: 'Forms', icon: <IconFileText />, permission: 'view_forms' },
     { name: 'Integrations', icon: <IconFilter />, permission: 'access_integrations' },
     { name: 'AlgorithmStudio', label: 'Algorithm', icon: <IconCpu />, permission: 'access_algorithm_studio' },
     { name: 'LevelsGuide', label: 'Level Guide', icon: <IconShield />, permission: 'view_levels_guide' },
@@ -463,7 +285,6 @@ export const DashboardLayout: React.FC<{
       { name: 'Tickets', permission: 'view_capacity_tickets' },
 
       { name: 'Channels', permission: 'view_channels' },
-      { name: 'Forms', permission: 'view_forms' },
       { name: 'Integrations', permission: 'access_integrations' },
       { name: 'Settings', permission: 'view_settings' },
       { name: 'Earnings', permission: 'view_personal_earnings' },
@@ -1183,113 +1004,7 @@ export const DashboardLayout: React.FC<{
           </div>
         )}
       </Modal>
-      {/* Triggered Form Modal */}
-      <Modal
-        isOpen={!!activeFormPopup}
-        onClose={() => setActiveFormPopup(null)}
-        title={activeFormPopup?.id === 'performance_tracking' ? "Daily Performance Tracking" : "Active Task"}
-        size="md"
-        isElevatedFooter
-        footer={(
-          <div className="flex justify-between items-center w-full">
-            <Dropdown
-              options={[
-                { value: '5', label: '5 Minutes' },
-                { value: '10', label: '10 Minutes' },
-                { value: '15', label: '15 Minutes' },
-                { value: '20', label: '20 Minutes' },
-                { value: '25', label: '25 Minutes' },
-                { value: '30', label: '30 Minutes' },
-              ]}
-              value=""
-              onChange={(val) => handleSnooze(parseInt(val))}
-              className="w-fit"
-            >
-              <Button
-                variant="recessed"
-                size="md"
-                leftIcon={<IconClock size={16} className="text-gray-600 group-hover/snooze:text-brand-primary transition-colors" />}
-                className="h-[46px] px-8 group/snooze text-[11px] font-black uppercase tracking-widest"
-                disabled={submitting}
-              >
-                Snooze...
-              </Button>
-            </Dropdown>
-            <Button
-              variant="metallic"
-              size="md"
-              onClick={() => document.getElementById('perf-form-submit')?.click()}
-              isLoading={submitting}
-              className="h-[46px] px-8"
-            >
-              Complete Submission
-            </Button>
-          </div>
-        )}
-      >
-        <div className="py-2">
-          {activeFormPopup?.id === 'performance_tracking' ? (
-            <PerformanceForm
-              onComplete={handleFormComplete}
-              onSubmitStatusChange={setSubmitting}
-              userId={profile?.id}
-            />
-          ) : (
-            <>
-              <p className="text-white text-sm">This form has been assigned to you for mandatory completion at this time.</p>
-              <div className="mt-6 p-6 border border-dashed border-white/10 rounded-2xl bg-white/[0.02] text-center">
-                <IconFileText size={32} className="mx-auto text-brand-primary mb-2" />
-                <p className="text-gray-400 text-xs italic">Please navigate to the Forms page to provide full data, or confirm completion here if already done.</p>
-              </div>
-            </>
-          )}
-        </div>
-      </Modal>
 
-      {/* Lurking Reminder: Floating icon for pending forms */}
-      {
-        !activeFormPopup && pendingForms.length > 0 && countdownText === "READY" && (
-          <div
-            className="fixed bottom-10 right-10 z-[100] animate-in fade-in slide-in-from-bottom-8 duration-500"
-          >
-            <button
-              onClick={() => setActiveFormPopup(pendingForms[0])}
-              className="group relative flex items-center gap-3.5 p-1.5 pr-6 bg-surface-card border border-surface-border rounded-full shadow-[0_20px_50px_-12px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.05)] hover:border-brand-primary/40 transition-all duration-300 hover:-translate-y-1 active:scale-95 overflow-hidden"
-            >
-              {/* 1. Global Brushed Metal Background */}
-              <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.01)_0%,rgba(255,255,255,0.03)_40%,rgba(255,255,255,0.06)_50%,rgba(255,255,255,0.03)_60%,rgba(255,255,255,0.01)_100%)] pointer-events-none opacity-40 group-hover:opacity-60 transition-opacity" />
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.03)_0%,transparent_70%)] pointer-events-none" />
-
-              {/* 2. Machined Sheen Overlay */}
-              <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.05)_50%,transparent_100%)] pointer-events-none opacity-30" />
-
-              {/* 3. Icon Container (Metallic Primary) */}
-              <div className="relative w-11 h-11 rounded-full flex items-center justify-center bg-gradient-to-b from-[#FF6B4B] to-[#D9361A] border border-[#FF4D2D] shadow-[inset_0_1.5px_0_rgba(255,255,255,0.4),inset_0_-1px_1px_rgba(0,0,0,0.2),0_4px_12px_-2px_rgba(217,54,26,0.5)] flex-shrink-0 group-hover:brightness-[1.1] transition-all">
-                {/* Inner Gloss */}
-                <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.2)_50%,transparent_100%)] pointer-events-none opacity-40" />
-                <IconFileText size={22} className="text-white relative z-10 animate-pulse" />
-
-                {/* Badge */}
-                <div className="absolute -top-0.5 -right-0.5 min-w-[20px] h-[20px] bg-white text-[#D9361A] text-[10px] font-black rounded-full flex items-center justify-center shadow-[0_2px_4px_rgba(0,0,0,0.2)] border border-white/50 px-1">
-                  {pendingForms.length}
-                </div>
-              </div>
-
-              <div className="flex flex-col items-start relative z-10">
-                <span className="text-[10px] font-black uppercase tracking-[0.25em] text-brand-primary drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">
-                  {countdownText === "READY" ? "TASK READY" : countdownText}
-                </span>
-                <span className="text-sm font-bold text-gray-300 group-hover:text-white transition-colors tracking-tight">
-                  {pendingForms[0].id === 'performance_tracking' ? 'Performance Tracking' : 'Form Pending'}
-                </span>
-              </div>
-
-              {/* 4. Highlighted Border (on hover) */}
-              <div className="absolute inset-0 border border-brand-primary/0 group-hover:border-brand-primary/20 rounded-full transition-all pointer-events-none" />
-            </button>
-          </div>
-        )
-      }
     </div >
   );
 };

@@ -23,7 +23,7 @@ import PendingApproval from './sections/PendingApproval';
 import Reminders from './sections/Reminders';
 import Analytics from './sections/Analytics';
 import Tasks from './sections/Tasks';
-import Forms from './sections/Forms';
+
 import AlgorithmStudio from './sections/AlgorithmStudio';
 import FreelancerLevelsGuide from './sections/FreelancerLevelsGuide';
 import Applicants from './sections/Applicants';
@@ -656,7 +656,7 @@ const App: React.FC = () => {
         case 'Workload': return <Workload />;
         case 'Tickets': return <CapacityTickets />;
         case 'Channels': return <Channels />;
-        case 'Forms': return <Forms />;
+
         case 'Integrations': return <Integrations />;
         case 'Settings': return (
           <Settings

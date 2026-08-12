@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS roles (
 
 -- Insert default roles
 INSERT INTO roles (name, description) VALUES
+  ('Super Admin', 'Owner access to all systems and destructive operations'),
   ('Admin', 'Full access to all system features'),
   ('Project Manager', 'Manage projects, timelines, and resources'),
   ('Freelancer', 'External contributor working on assigned tasks'),
