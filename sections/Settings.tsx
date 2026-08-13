@@ -4,7 +4,7 @@ import { Card, Modal, ElevatedMetallicCard } from '../components/Surfaces';
 import Button from '../components/Button';
 import { Input } from '../components/Input';
 import { Avatar } from '../components/Avatar';
-import { IconUser, IconMail, IconPhone, IconCreditCard, IconLock, IconShield, IconBuilding, IconSettings, IconFileImage, IconMaximize, IconDollar, IconCheck, IconX, IconCamera, IconLoader, IconBell, IconClock, IconPlay, IconStop, IconVolumeHigh, IconVolumeMute, IconBank, IconPlus, IconTrash, IconZap } from '../components/Icons';
+import { IconUser, IconMail, IconPhone, IconCreditCard, IconLock, IconShield, IconBuilding, IconSettings, IconFileImage, IconMaximize, IconDollar, IconCheck, IconX, IconCamera, IconLoader, IconBell, IconClock, IconPlay, IconStop, IconVolumeHigh, IconVolumeMute, IconBank, IconPlus, IconTrash, IconZap, IconEye } from '../components/Icons';
 import { Tabs } from '../components/Navigation';
 import { Switch } from '../components/Selection';
 import { supabase } from '../lib/supabase';
@@ -25,6 +25,7 @@ const Settings = React.forwardRef<{ save: () => Promise<void>, discard: () => vo
     const { profile, loading, refreshProfile, effectiveRole } = useUser();
     const [settingsTab, setSettingsTab] = useState<'profile' | 'page-access' | 'account-access'>(() => getInitialTab('Settings', 'profile') as any);
     const [updating, setUpdating] = useState(false);
+    const [isSavingPermissions, setIsSavingPermissions] = useState(false);
     const [saving, setSaving] = useState(false);
     const [uploadingAvatar, setUploadingAvatar] = useState(false);
     const [persistedLocalPreview, setPersistedLocalPreview] = useState<string | null>(null);
@@ -469,9 +470,28 @@ const Settings = React.forwardRef<{ save: () => Promise<void>, discard: () => vo
                         onTabChange={(id) => setSettingsTab(id as any)}
                     />
 
-                    {settingsTab !== 'profile' && (
-                        <div className="flex items-center gap-4">
-                            {/* These actions will be handled inside the Permissions component via callback or shared state if needed, but for now we let it manage itself */}
+                    {settingsTab === 'page-access' && (
+                        <div className="flex items-center gap-3">
+                            <Button
+                                variant="recessed"
+                                size="sm"
+                                onClick={() => {
+                                    document.getElementById('permissions-simulate-trigger')?.click();
+                                }}
+                                leftIcon={<IconEye size={16} />}
+                            >
+                                Simulate Role
+                            </Button>
+                            <Button
+                                variant="metallic"
+                                size="sm"
+                                isLoading={isSavingPermissions}
+                                onClick={() => {
+                                    document.getElementById('permissions-save-trigger')?.click();
+                                }}
+                            >
+                                Save Changes
+                            </Button>
                         </div>
                     )}
                 </div>
@@ -490,6 +510,7 @@ const Settings = React.forwardRef<{ save: () => Promise<void>, discard: () => vo
                             activeTab={settingsTab === 'page-access' ? 'page-access' : 'account-access'}
                             onTabChange={(t) => setSettingsTab(t as any)}
                             onSimulate={() => onBack?.()}
+                            onSavingChange={setIsSavingPermissions}
                         />
                     </div>
                 ) : (

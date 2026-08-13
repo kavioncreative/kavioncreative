@@ -42,9 +42,10 @@ interface PermissionsProps {
     hideTabs?: boolean;
     activeTab?: ActiveTab;
     onTabChange?: (tab: ActiveTab) => void;
+    onSavingChange?: (saving: boolean) => void;
 }
 
-export const Permissions: React.FC<PermissionsProps> = ({ onSimulate, hideTabs, activeTab: externalTab, onTabChange }) => {
+export const Permissions: React.FC<PermissionsProps> = ({ onSimulate, hideTabs, activeTab: externalTab, onTabChange, onSavingChange }) => {
     const [localTab, setLocalTab] = useState<ActiveTab>('page-access');
     const activeTab = externalTab || localTab;
     const setActiveTab = (tab: ActiveTab) => {
@@ -62,6 +63,10 @@ export const Permissions: React.FC<PermissionsProps> = ({ onSimulate, hideTabs, 
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const hasRestoredRef = React.useRef(false);
+
+    useEffect(() => {
+        onSavingChange?.(isSaving);
+    }, [isSaving, onSavingChange]);
 
     // Account scoping state
     const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
@@ -509,22 +514,19 @@ export const Permissions: React.FC<PermissionsProps> = ({ onSimulate, hideTabs, 
             {activeTab === 'page-access' && (
                 <div className="space-y-6 text-left">
                     {hideTabs && (
-                        <div className="flex items-center justify-end gap-3 px-1">
-                            <Button
-                                variant="recessed"
-                                size="sm"
+                        <div className="hidden">
+                            <button
+                                id="permissions-simulate-trigger"
                                 onClick={() => {
                                     const currentLocalPerms = rolePermissions[selectedRole] || [];
                                     setSimulatedRole(selectedRole, currentLocalPerms);
                                     if (onSimulate) onSimulate();
                                 }}
-                                leftIcon={<IconEye size={16} />}
-                            >
-                                Simulate Role
-                            </Button>
-                            <Button variant="metallic" size="sm" isLoading={isSaving} onClick={handleSaveRolePermissions}>
-                                Save Changes
-                            </Button>
+                            />
+                            <button
+                                id="permissions-save-trigger"
+                                onClick={handleSaveRolePermissions}
+                            />
                         </div>
                     )}
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-x-8 gap-y-6 items-start">
