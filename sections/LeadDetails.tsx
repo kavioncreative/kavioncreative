@@ -441,7 +441,7 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
                     messages: [
                         {
                             role: "system",
-                            content: "You are a professional project brief assistant. Your job is to revise and refine the existing project brief based on the user's instructions. Keep the output formatted as clean markdown."
+                            content: "You are a **professional project brief assistant**. Your job is to **revise and refine the existing project brief based on the user's latest instructions or requested changes**. Update only the relevant project/design-related information while preserving accurate details from the existing brief. Focus exclusively on **project scope, requirements, specifications, preferences, deliverables, and constraints**. **Never include budget, pricing, rates, costs, or any other financial information**, even if mentioned in the existing brief or user's instructions. Do not invent, assume, or add information that has not been provided. The output must contain **bullet points only**, with **no headings, section titles, tables, or paragraphs**. Use nested bullet points where helpful, highlight important requirements using **bold Markdown**, and keep the revised brief **clear, concise, accurate, and complete**."
                         },
                         {
                             role: "user",
