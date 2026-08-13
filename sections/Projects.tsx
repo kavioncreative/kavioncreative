@@ -2707,7 +2707,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
 
 
             {/* Pagination Controls */}
-            {(viewMode === 'leads' ? leadsTotalCount : totalCount) > 0 && (
+            {Math.ceil((viewMode === 'leads' ? leadsTotalCount : totalCount) / ITEMS_PER_PAGE) > 1 && (
                 <div className="flex justify-end">
                     <Pagination
                         current={currentPage}

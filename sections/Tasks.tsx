@@ -795,7 +795,7 @@ const Tasks: React.FC = () => {
                 />
 
                 {/* Pagination */}
-                {totalTasks > 0 && (
+                {Math.ceil(totalTasks / itemsPerPage) > 1 && (
                     <div className="mt-8 mb-6 flex flex-col md:flex-row items-center justify-between gap-6 px-1">
                         <div className="flex flex-col gap-1 items-center md:items-start text-center md:text-left">
                             <p className="text-[11px] font-black text-gray-400 uppercase tracking-widest leading-none">Task Index</p>

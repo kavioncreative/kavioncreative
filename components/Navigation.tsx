@@ -53,7 +53,7 @@ export const Breadcrumbs: React.FC<{ items: { label: string; href?: string }[] }
 };
 
 export const Pagination: React.FC<{ current: number; total: number; onChange: (p: number) => void }> = ({ current, total, onChange }) => {
-  if (total < 1) return null;
+  if (total <= 1) return null;
 
   // Build the page number sequence with ellipsis markers
   const getPageNumbers = (): (number | '...')[] => {

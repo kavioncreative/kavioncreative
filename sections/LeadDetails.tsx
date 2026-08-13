@@ -35,6 +35,7 @@ import { markdownPlugins, markdownComponents, parseCodesLogicMarkdown } from '..
 import { Dropdown } from '../components/Dropdown';
 import { getStatusCapsuleClasses, getStatusTextColor } from '../components/Badge';
 import { triggerWebhooks } from '../utils/webhookTrigger';
+import { Tabs } from '../components/Navigation';
 
 
 interface LeadDetailsProps {
@@ -914,32 +915,14 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
                                         }
                                         rightElement={
                                             (isManualMode || isInitiated) ? (
-                                                <div className="flex p-1 bg-[#0a0a0a] border border-white/[0.05] rounded-xl w-fit shadow-[inset_0_2px_8px_rgba(0,0,0,0.5)] relative overflow-hidden">
-                                                    <button
-                                                        onClick={() => setManualSender('me')}
-                                                        className={`relative px-6 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all duration-300 ${manualSender === 'me'
-                                                            ? 'text-white shadow-[0_4px_12px_rgba(255,107,0,0.3)]'
-                                                            : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
-                                                            }`}
-                                                    >
-                                                        {manualSender === 'me' && (
-                                                            <div className="absolute inset-0 bg-gradient-to-br from-brand-primary to-[#ff6b00] opacity-90 z-0 rounded-lg border border-white/20" />
-                                                        )}
-                                                        <span className="relative z-10">Me</span>
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setManualSender('client')}
-                                                        className={`relative px-6 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all duration-300 ${manualSender === 'client'
-                                                            ? 'text-white shadow-[0_4px_12px_rgba(255,107,0,0.3)]'
-                                                            : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
-                                                            }`}
-                                                    >
-                                                        {manualSender === 'client' && (
-                                                            <div className="absolute inset-0 bg-gradient-to-br from-brand-primary to-[#ff6b00] opacity-90 z-0 rounded-lg border border-white/20" />
-                                                        )}
-                                                        <span className="relative z-10">Client</span>
-                                                    </button>
-                                                </div>
+                                                <Tabs
+                                                     tabs={[
+                                                         { id: 'me', label: 'Me' },
+                                                         { id: 'client', label: 'Client' }
+                                                     ]}
+                                                     activeTab={manualSender}
+                                                     onTabChange={(id) => setManualSender(id as 'me' | 'client')}
+                                                 />
                                             ) : undefined
                                         }
                                         headerClassName="px-8 py-3 flex items-center justify-between"
