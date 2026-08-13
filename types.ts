@@ -7,7 +7,7 @@ import React from 'react';
 // - "CodesLogic Elevated": For surfaces, cards, and headers (Raised look, diagonal shine, outer shadow)
 // - "CodesLogic Recessed": For inputs and dropdowns (Deep sunken/machined look, inner top shadow, bottom rim light)
 // - "CodesLogic Metallic": For buttons and active states (Vibrant orange gradient, glowing, shine overlay)
-export type Variant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'error' | 'success' | 'metallic' | 'recessed' | 'metallic-error' | 'flat';
+export type Variant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'error' | 'success' | 'metallic' | 'recessed' | 'metallic-error' | 'metallic-dispute' | 'metallic-arthelp' | 'metallic-success' | 'flat';
 export type Size = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'none';
 
 export interface ComponentProps {
