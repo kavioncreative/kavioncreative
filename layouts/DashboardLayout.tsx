@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Bot } from 'lucide-react';
 import {
   IconLayout,
@@ -74,6 +74,161 @@ export const DashboardLayout: React.FC<{
   const [showEarningsHeader, setShowEarningsHeader] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
+
+  // Attendance & Tracking Header States
+  const [attendanceStatus, setAttendanceStatus] = useState<string>('PunchedOut');
+  const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
+  const [isPunching, setIsPunching] = useState<boolean>(false);
+  const elapsedTimerRef = useRef<any>(null);
+
+  useEffect(() => {
+    // Initial load
+    const cachedStatus = localStorage.getItem('kavion_attendance_status') || 'PunchedOut';
+    setAttendanceStatus(cachedStatus);
+    calculateElapsed();
+
+    const handleUpdate = () => {
+      const nextStatus = localStorage.getItem('kavion_attendance_status') || 'PunchedOut';
+      setAttendanceStatus(nextStatus);
+      calculateElapsed();
+    };
+
+    window.addEventListener('kavion-attendance-update', handleUpdate);
+    return () => window.removeEventListener('kavion-attendance-update', handleUpdate);
+  }, []);
+
+  const calculateElapsed = () => {
+    const recordStr = localStorage.getItem('kavion_attendance_record');
+    if (recordStr && localStorage.getItem('kavion_attendance_status') !== 'PunchedOut') {
+      try {
+        const record = JSON.parse(recordStr);
+        if (record && record.punch_in_at) {
+          const punchInTime = new Date(record.punch_in_at).getTime();
+          setElapsedSeconds(Math.floor((Date.now() - punchInTime) / 1000));
+          
+          if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
+          elapsedTimerRef.current = setInterval(() => {
+            setElapsedSeconds(Math.floor((Date.now() - punchInTime) / 1000));
+          }, 1000);
+          return;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    
+    setElapsedSeconds(0);
+    if (elapsedTimerRef.current) {
+      clearInterval(elapsedTimerRef.current);
+      elapsedTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
+    };
+  }, []);
+
+  const formatElapsed = (totalSeconds: number) => {
+    const hrs = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+    return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
+  const handlePunchIn = async () => {
+    if (!profile || isPunching) return;
+    setIsPunching(true);
+    try {
+      const { data, error } = await supabase
+        .from('attendance_records')
+        .insert([{
+          user_id: profile.id,
+          status: 'Active',
+          punch_in_at: new Date().toISOString()
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        localStorage.setItem('kavion_attendance_status', 'Active');
+        localStorage.setItem('kavion_attendance_record', JSON.stringify(data));
+        window.dispatchEvent(new Event('kavion-attendance-force-refresh'));
+        addToast({ type: 'success', title: 'Punched In', message: 'Your attendance shift session is now active.' });
+      }
+    } catch (e) {
+      console.error(e);
+      addToast({ type: 'error', title: 'Error', message: 'Failed to punch in. Please try again.' });
+    } finally {
+      setIsPunching(false);
+    }
+  };
+
+  const handlePunchOut = async () => {
+    const recordStr = localStorage.getItem('kavion_attendance_record');
+    if (!recordStr || isPunching) return;
+    setIsPunching(true);
+    try {
+      const record = JSON.parse(recordStr);
+      const { error } = await supabase
+        .from('attendance_records')
+        .update({
+          punch_out_at: new Date().toISOString(),
+          status: 'Completed'
+        })
+        .eq('id', record.id);
+
+      if (error) throw error;
+
+      localStorage.setItem('kavion_attendance_status', 'PunchedOut');
+      localStorage.removeItem('kavion_attendance_record');
+      window.dispatchEvent(new Event('kavion-attendance-force-refresh'));
+      addToast({ type: 'success', title: 'Punched Out', message: 'Session completed. Have a great rest of your day!' });
+    } catch (e) {
+      console.error(e);
+      addToast({ type: 'error', title: 'Error', message: 'Failed to punch out. Please try again.' });
+    } finally {
+      setIsPunching(false);
+    }
+  };
+
+  const handleToggleBreak = async () => {
+    const recordStr = localStorage.getItem('kavion_attendance_record');
+    if (!recordStr || isPunching) return;
+    setIsPunching(true);
+    try {
+      const record = JSON.parse(recordStr);
+      const nextStatus = attendanceStatus === 'Break' ? 'Active' : 'Break';
+      
+      const { data, error } = await supabase
+        .from('attendance_records')
+        .update({ status: nextStatus })
+        .eq('id', record.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        localStorage.setItem('kavion_attendance_status', nextStatus);
+        localStorage.setItem('kavion_attendance_record', JSON.stringify(data));
+        window.dispatchEvent(new Event('kavion-attendance-force-refresh'));
+        addToast({ 
+          type: 'success', 
+          title: nextStatus === 'Break' ? 'On Break' : 'Resumed Session', 
+          message: nextStatus === 'Break' ? 'Session paused. Break clock is active.' : 'Welcome back! Shift is active.' 
+        });
+      }
+    } catch (e) {
+      console.error(e);
+      addToast({ type: 'error', title: 'Error', message: 'Failed to update break status.' });
+    } finally {
+      setIsPunching(false);
+    }
+  };
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -756,6 +911,57 @@ export const DashboardLayout: React.FC<{
           </div>
 
           <div className="flex-1 flex items-center gap-2 lg:gap-5 lg:min-w-[200px] justify-end">
+            {!isGuideMode && (
+              <div className="flex items-center gap-3 mr-2 sm:mr-4 border-r border-white/5 pr-4">
+                {attendanceStatus === 'PunchedOut' ? (
+                  <Button
+                    variant="metallic"
+                    size="xs"
+                    onClick={handlePunchIn}
+                    isLoading={isPunching}
+                    leftIcon={<IconActivity size={14} className="text-emerald-400" />}
+                  >
+                    Punch In
+                  </Button>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    {/* Glowing Status indicator */}
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/40 border border-white/5 text-[11px] font-bold">
+                      <span className={`w-2 h-2 rounded-full animate-pulse
+                        ${attendanceStatus === 'Active' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : ''}
+                        ${attendanceStatus === 'Idle' ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]' : ''}
+                        ${attendanceStatus === 'Break' ? 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.5)]' : ''}
+                      `} />
+                      <span className="text-white uppercase tracking-wider">{attendanceStatus}</span>
+                      <span className="text-gray-500 font-mono pl-1 border-l border-white/5">{formatElapsed(elapsedSeconds)}</span>
+                    </div>
+
+                    {/* Break Toggle Button */}
+                    <button
+                      onClick={handleToggleBreak}
+                      disabled={isPunching}
+                      className={`px-2 py-1 rounded-lg border text-[10px] font-black uppercase tracking-wider transition-all
+                        ${attendanceStatus === 'Break'
+                          ? 'bg-brand-primary/10 border-brand-primary/30 text-brand-primary'
+                          : 'bg-white/5 border-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+                        }
+                      `}
+                    >
+                      {attendanceStatus === 'Break' ? 'End Break' : 'Take Break'}
+                    </button>
+
+                    {/* Punch Out Button */}
+                    <button
+                      onClick={handlePunchOut}
+                      disabled={isPunching}
+                      className="px-2 py-1 rounded-lg border border-red-500/20 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300 text-[10px] font-black uppercase tracking-wider transition-all"
+                    >
+                      Punch Out
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
             {!isGuideMode && (
               <div className="flex items-center gap-1 sm:gap-3">
                 <div className="relative">

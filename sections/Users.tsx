@@ -75,6 +75,18 @@ const Users = forwardRef<UsersHandle, UsersProps>(({ onUserOpen, isUserOpen }, r
     const [isSelectionMode, setIsSelectionMode] = useState(false);
     const [filterState, setFilterState] = useState<'total' | 'active' | 'pending' | 'requests'>('total');
 
+    const [shiftsSubTab, setShiftsSubTab] = useState<'assign' | 'logs'>('assign');
+    const [userShifts, setUserShifts] = useState<any[]>([]);
+    const [attendanceLogs, setAttendanceLogs] = useState<any[]>([]);
+    const [isSavingShift, setIsSavingShift] = useState(false);
+    
+    // Shift editor modal state
+    const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
+    const [selectedShiftUser, setSelectedShiftUser] = useState<any>(null);
+    const [shiftStartTime, setShiftStartTime] = useState('09:00');
+    const [shiftEndTime, setShiftEndTime] = useState('18:00');
+    const [shiftTimezone, setShiftTimezone] = useState('Asia/Karachi');
+
     const [accountRequests, setAccountRequests] = useState<AccountRequest[]>([]);
     const [selectedRequest, setSelectedRequest] = useState<AccountRequest | null>(null);
     const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
@@ -117,7 +129,7 @@ const Users = forwardRef<UsersHandle, UsersProps>(({ onUserOpen, isUserOpen }, r
     const tabs = [
         { id: 'users', label: 'Users', icon: <IconUser size={16} /> },
         { id: 'teams', label: 'Teams', icon: <IconUsers size={16} /> },
-        { id: 'shifts', label: 'Designer Shifts', icon: <IconClock size={16} /> },
+        { id: 'shifts', label: 'Attendance & Shifts', icon: <IconClock size={16} /> },
         { id: 'performance', label: 'Performance', icon: <IconChartBar size={16} /> },
     ];
 
@@ -150,6 +162,65 @@ const Users = forwardRef<UsersHandle, UsersProps>(({ onUserOpen, isUserOpen }, r
             updateRoute('Users', activeTab);
         }
     }, [activeTab, isUserOpen]);
+
+    useEffect(() => {
+        if (activeTab === 'shifts') {
+            fetchShiftsAndLogs();
+        }
+    }, [activeTab, shiftsSubTab]);
+
+    const fetchShiftsAndLogs = async () => {
+        try {
+            // Fetch all shifts
+            const { data: shiftsData } = await supabase
+                .from('user_shifts')
+                .select('*');
+            
+            setUserShifts(shiftsData || []);
+
+            // Fetch today's attendance logs
+            const startOfToday = new Date();
+            startOfToday.setHours(0, 0, 0, 0);
+            
+            const { data: logsData } = await supabase
+                .from('attendance_records')
+                .select('*, profiles(name, email, role, avatar_url)')
+                .gte('punch_in_at', startOfToday.toISOString())
+                .order('punch_in_at', { ascending: false });
+
+            setAttendanceLogs(logsData || []);
+        } catch (e) {
+            console.error('Error fetching shifts/logs:', e);
+        }
+    };
+
+    const handleSaveShift = async () => {
+        if (!selectedShiftUser) return;
+        setIsSavingShift(true);
+        try {
+            const payload = {
+                user_id: selectedShiftUser.id,
+                start_time: shiftStartTime.includes(':') && shiftStartTime.split(':').length === 2 ? shiftStartTime + ':00' : shiftStartTime,
+                end_time: shiftEndTime.includes(':') && shiftEndTime.split(':').length === 2 ? shiftEndTime + ':00' : shiftEndTime,
+                timezone: shiftTimezone
+            };
+
+            const { error } = await supabase
+                .from('user_shifts')
+                .upsert([payload], { onConflict: 'user_id' });
+
+            if (error) throw error;
+
+            addToast({ type: 'success', title: 'Shift Saved', message: `Shift timing updated for ${selectedShiftUser.name || selectedShiftUser.email}.` });
+            setIsShiftModalOpen(false);
+            fetchShiftsAndLogs();
+        } catch (e) {
+            console.error(e);
+            addToast({ type: 'error', title: 'Error', message: 'Failed to update shift timing.' });
+        } finally {
+            setIsSavingShift(false);
+        }
+    };
 
     const fetchMembers = async (isInitial = false) => {
         try {
@@ -1429,18 +1500,211 @@ const Users = forwardRef<UsersHandle, UsersProps>(({ onUserOpen, isUserOpen }, r
                     )}
                 </div>
             ) : (
-                <div className="flex flex-col items-center justify-center py-20 px-4 text-center space-y-4">
-                    <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-gray-500 mb-2">
-                        <IconClock size={32} />
+                <div className="space-y-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-2">
+                        <Tabs
+                            tabs={[
+                                { id: 'assign', label: 'Assign Shifts', icon: <IconSettings size={14} /> },
+                                { id: 'logs', label: 'Attendance Log', icon: <IconClock size={14} /> }
+                            ]}
+                            activeTab={shiftsSubTab}
+                            onTabChange={(id) => setShiftsSubTab(id as any)}
+                        />
                     </div>
-                    <div className="space-y-1">
-                        <h3 className="text-xl font-bold text-white uppercase tracking-tight">Designer Shifts Coming Soon</h3>
-                        <p className="text-sm text-gray-500 max-w-sm mx-auto">
-                            We're currently refining this section to provide you with a powerful way to manage workflow schedules.
-                        </p>
-                    </div>
+
+                    {shiftsSubTab === 'assign' ? (
+                        <div className="space-y-4 animate-in fade-in duration-300">
+                            <Card className="overflow-hidden bg-surface-card border border-surface-border rounded-3xl">
+                                <div className="p-6 md:p-8 border-b border-surface-border">
+                                    <h3 className="text-xl font-bold text-white uppercase tracking-wider">Shift Timing Management</h3>
+                                    <p className="text-sm text-gray-500 mt-1">Assign standard shift start and end times to your managers and designers.</p>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-[13px] text-gray-300">
+                                        <thead className="bg-white/[0.02] text-gray-400 font-bold uppercase tracking-widest text-[10px] border-b border-surface-border">
+                                            <tr>
+                                                <th className="px-6 py-4">Name</th>
+                                                <th className="px-6 py-4">Role</th>
+                                                <th className="px-6 py-4">Shift Timings</th>
+                                                <th className="px-6 py-4">Timezone</th>
+                                                <th className="px-6 py-4 text-right">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-surface-border">
+                                            {profiles.map(user => {
+                                                const userShift = userShifts.find(s => s.user_id === user.id);
+                                                return (
+                                                    <tr key={user.id} className="hover:bg-white/[0.01] transition-colors">
+                                                        <td className="px-6 py-4 font-bold text-white">{user.name || user.email}</td>
+                                                        <td className="px-6 py-4">
+                                                            <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                                                                {user.role}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-6 py-4 font-semibold">
+                                                            {userShift ? `${userShift.start_time.substring(0, 5)} - ${userShift.end_time.substring(0, 5)}` : 'Not Assigned'}
+                                                        </td>
+                                                        <td className="px-6 py-4 text-gray-500 font-mono">
+                                                            {userShift ? userShift.timezone : 'Asia/Karachi'}
+                                                        </td>
+                                                        <td className="px-6 py-4 text-right">
+                                                            <Button
+                                                                variant="recessed"
+                                                                size="xs"
+                                                                onClick={() => {
+                                                                    setSelectedShiftUser(user);
+                                                                    if (userShift) {
+                                                                        setShiftStartTime(userShift.start_time.substring(0, 5));
+                                                                        setShiftEndTime(userShift.end_time.substring(0, 5));
+                                                                        setShiftTimezone(userShift.timezone);
+                                                                    } else {
+                                                                        setShiftStartTime('09:00');
+                                                                        setShiftEndTime('18:00');
+                                                                        setShiftTimezone('Asia/Karachi');
+                                                                    }
+                                                                    setIsShiftModalOpen(true);
+                                                                }}
+                                                            >
+                                                                Assign Shift
+                                                            </Button>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </Card>
+                        </div>
+                    ) : (
+                        <div className="space-y-4 animate-in fade-in duration-300">
+                            <Card className="overflow-hidden bg-surface-card border border-surface-border rounded-3xl">
+                                <div className="p-6 md:p-8 border-b border-surface-border">
+                                    <h3 className="text-xl font-bold text-white uppercase tracking-wider">Today's Attendance Logs</h3>
+                                    <p className="text-sm text-gray-500 mt-1">Live tracking status of logged in staff, active hours, breaks, and idle checks.</p>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-[13px] text-gray-300">
+                                        <thead className="bg-white/[0.02] text-gray-400 font-bold uppercase tracking-widest text-[10px] border-b border-surface-border">
+                                            <tr>
+                                                <th className="px-6 py-4">Staff Member</th>
+                                                <th className="px-6 py-4">Punch In</th>
+                                                <th className="px-6 py-4">Punch Out</th>
+                                                <th className="px-6 py-4">Status</th>
+                                                <th className="px-6 py-4 text-right">Active</th>
+                                                <th className="px-6 py-4 text-right">Idle</th>
+                                                <th className="px-6 py-4 text-right">Break</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-surface-border">
+                                            {attendanceLogs.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={7} className="px-6 py-10 text-center text-gray-500">
+                                                        No attendance records logged today.
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                attendanceLogs.map(log => (
+                                                    <tr key={log.id} className="hover:bg-white/[0.01] transition-colors">
+                                                        <td className="px-6 py-4">
+                                                            <div className="flex items-center gap-3">
+                                                                {log.profiles?.avatar_url ? (
+                                                                    <img src={log.profiles.avatar_url} alt="Avatar" className="w-8 h-8 rounded-full object-cover" />
+                                                                ) : (
+                                                                    <div className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center font-bold text-xs text-white">
+                                                                        {(log.profiles?.name || log.profiles?.email || 'U').charAt(0).toUpperCase()}
+                                                                    </div>
+                                                                )}
+                                                                <div>
+                                                                    <p className="font-bold text-white leading-none">{log.profiles?.name || 'Unknown'}</p>
+                                                                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mt-1">{log.profiles?.role}</p>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-6 py-4 font-semibold text-gray-400">
+                                                            {new Date(log.punch_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        </td>
+                                                        <td className="px-6 py-4 font-semibold text-gray-400">
+                                                            {log.punch_out_at ? new Date(log.punch_out_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (
+                                                                <span className="text-emerald-500 font-bold animate-pulse uppercase tracking-wider text-[11px]">On-Going</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className={`w-2 h-2 rounded-full
+                                                                    ${log.status === 'Active' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : ''}
+                                                                    ${log.status === 'Idle' ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]' : ''}
+                                                                    ${log.status === 'Break' ? 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.5)]' : ''}
+                                                                    ${log.status === 'Completed' ? 'bg-blue-500' : ''}
+                                                                `} />
+                                                                <span className="font-bold text-[11px] uppercase tracking-wider text-white">{log.status}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-6 py-4 text-right font-mono text-white font-semibold">{log.total_active_mins}m</td>
+                                                        <td className="px-6 py-4 text-right font-mono text-amber-500 font-semibold">{log.total_idle_mins}m</td>
+                                                        <td className="px-6 py-4 text-right font-mono text-orange-500 font-semibold">{log.total_break_mins}m</td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </Card>
+                        </div>
+                    )}
                 </div>
             )}
+
+            {/* Shift Editor Modal */}
+            <Modal
+                isOpen={isShiftModalOpen}
+                onClose={() => setIsShiftModalOpen(false)}
+                title={`Assign Shift timing - ${selectedShiftUser?.name || selectedShiftUser?.email}`}
+                size="md"
+                footer={
+                    <div className="flex justify-end gap-3 w-full">
+                        <Button variant="recessed" size="sm" onClick={() => setIsShiftModalOpen(false)}>Cancel</Button>
+                        <Button variant="metallic" size="sm" onClick={handleSaveShift} isLoading={isSavingShift}>Save Shift</Button>
+                    </div>
+                }
+            >
+                <div className="space-y-4 p-6">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">Start Time</label>
+                            <input
+                                type="time"
+                                value={shiftStartTime}
+                                onChange={(e) => setShiftStartTime(e.target.value)}
+                                className="w-full px-4 py-3 rounded-xl border border-white/5 bg-black/40 text-sm text-white focus:outline-none focus:border-brand-primary/40"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">End Time</label>
+                            <input
+                                type="time"
+                                value={shiftEndTime}
+                                onChange={(e) => setShiftEndTime(e.target.value)}
+                                className="w-full px-4 py-3 rounded-xl border border-white/5 bg-black/40 text-sm text-white focus:outline-none focus:border-brand-primary/40"
+                            />
+                        </div>
+                    </div>
+                    <div className="space-y-1 col-span-2">
+                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">Timezone</label>
+                        <Dropdown
+                            variant="metallic"
+                            label="Select Timezone"
+                            placeholder="Choose timezone..."
+                            options={[
+                                { label: 'Pakistan Standard Time (Asia/Karachi)', value: 'Asia/Karachi' },
+                                { label: 'Coordinated Universal Time (UTC)', value: 'UTC' }
+                            ]}
+                            value={shiftTimezone}
+                            onChange={(val) => setShiftTimezone(val as string)}
+                        />
+                    </div>
+                </div>
+            </Modal>
             <Modal
                 isOpen={isModalOpen}
                 onClose={handleCloseModal}

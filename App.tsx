@@ -38,6 +38,7 @@ import GuidePostComments from './sections/GuidePostComments';
 import GuideSendFiles from './sections/GuideSendFiles';
 import TeamSlabs from './sections/TeamSlabs';
 import TeamEarnings from './sections/TeamEarnings';
+import { AttendanceTracker } from './components/AttendanceTracker';
 import TeamDesignerEarnings from './sections/TeamDesignerEarnings';
 import Leads, { LeadsHandle } from './sections/Leads';
 import LeadDetails from './sections/LeadDetails';
@@ -840,6 +841,7 @@ const App: React.FC = () => {
           <ToastContainer />
           {view === 'dashboard' && pendingView && renderDirtyModal()}
           <AiAgent />
+          {view === 'dashboard' && <AttendanceTracker />}
         </NotificationProvider>
       </AccountProvider>
     </UserProvider>
