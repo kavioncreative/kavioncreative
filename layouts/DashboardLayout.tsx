@@ -915,8 +915,9 @@ export const DashboardLayout: React.FC<{
               <div className="flex items-center gap-3 mr-2 sm:mr-4 border-r border-white/5 pr-4">
                 {attendanceStatus === 'PunchedOut' ? (
                   <Button
-                    variant="metallic-success"
+                    variant="metallic"
                     size="sm"
+                    className="w-28 justify-center"
                     onClick={handlePunchIn}
                     isLoading={isPunching}
                     leftIcon={<IconActivity size={14} className="text-white" />}
