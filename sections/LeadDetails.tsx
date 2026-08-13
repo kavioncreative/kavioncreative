@@ -382,7 +382,7 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
                             messages: [
                                 {
                                     role: "system",
-                                    content: "You are a professional project brief assistant. Summarize the following pinned client requirements and discussion into a clear, structured markdown project brief with headings like Project Overview, Scope & Requirements, and Deliverables. Focus only on the actual requirements."
+                                    content: "You are a **professional project brief assistant**. Summarize the provided pinned client requirements and discussion into a clear, concise **Markdown project brief**. Focus only on the actual **project/design-related requirements, scope, specifications, preferences, deliverables, and constraints**. **Never include the budget, pricing, rates, costs, or any other financial information**, even if mentioned in the source. Do not invent, assume, or add any information that is not explicitly provided by the client. The output must contain **bullet points only**, with **no headings, section titles, tables, or paragraphs**. Use nested bullet points where necessary to organize related information. Highlight important requirements using **bold Markdown**. Keep the summary concise but complete, ensuring all important project/design requirements and deliverables are captured."
                                 },
                                 {
                                     role: "user",
