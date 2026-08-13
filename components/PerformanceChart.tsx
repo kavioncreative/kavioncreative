@@ -23,6 +23,12 @@ export interface PerformanceMetric {
     profiles?: {
         name: string;
     };
+    on_time_delivery?: number;
+    avg_selling_price?: number;
+    response_rate?: number;
+    repeat_business_score?: number;
+    fos?: number;
+    cancellation_rate?: number;
 }
 
 // Define the data type
@@ -33,6 +39,7 @@ interface ChartDataPoint {
     orders: number;
     conversionRate: number;
     clickThroughRate: number;
+    fos: number;
 }
 
 
@@ -153,7 +160,8 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ data, isLoading }) 
             clicks: d.clicks || 0,
             orders: d.orders || 0,
             conversionRate: d.conversion_rate || 0,
-            clickThroughRate: d.ctr || 0
+            clickThroughRate: d.ctr || 0,
+            fos: d.fos || 0
         }));
     }, [data]);
 
@@ -163,7 +171,8 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ data, isLoading }) 
         clicks: true,
         orders: true,
         conversionRate: true,
-        clickThroughRate: true
+        clickThroughRate: true,
+        fos: true
     });
 
     const [activeTab, setActiveTab] = useState<'performance' | 'conversion'>('performance');
@@ -187,11 +196,12 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ data, isLoading }) 
 
     const secondaryMaxVal = useMemo(() => {
         if (chartData.length === 0 || activeTab === 'conversion') return 10;
-        // Performance Tab Secondary Axis: Clicks & Orders (Rounded to 5 intervals)
+        // Performance Tab Secondary Axis: Clicks & Orders & FOs (Rounded to 5 intervals)
         const max = chartData.reduce((currMax, d) => Math.max(
             currMax,
             visibleMetrics.clicks ? d.clicks : 0,
-            visibleMetrics.orders ? d.orders : 0
+            visibleMetrics.orders ? d.orders : 0,
+            visibleMetrics.fos ? d.fos : 0
         ), 0);
         const targetMax = Math.max(5, max);
         return Math.ceil(targetMax / 5) * 5;
@@ -203,12 +213,13 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ data, isLoading }) 
 
     const toggleAll = () => {
         if (activeTab === 'performance') {
-            const allVisible = visibleMetrics.impressions && visibleMetrics.clicks && visibleMetrics.orders;
+            const allVisible = visibleMetrics.impressions && visibleMetrics.clicks && visibleMetrics.orders && visibleMetrics.fos;
             setVisibleMetrics(prev => ({
                 ...prev,
                 impressions: !allVisible,
                 clicks: !allVisible,
-                orders: !allVisible
+                orders: !allVisible,
+                fos: !allVisible
             }));
         } else {
             const allVisible = visibleMetrics.conversionRate && visibleMetrics.clickThroughRate;
@@ -221,7 +232,7 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ data, isLoading }) 
     };
 
     const isAllVisible = activeTab === 'performance'
-        ? (visibleMetrics.impressions && visibleMetrics.clicks && visibleMetrics.orders)
+        ? (visibleMetrics.impressions && visibleMetrics.clicks && visibleMetrics.orders && visibleMetrics.fos)
         : (visibleMetrics.conversionRate && visibleMetrics.clickThroughRate);
 
     // Handle mouse move for tooltip
@@ -316,6 +327,15 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ data, isLoading }) 
                                         </div>
                                         <input type="checkbox" className="hidden" checked={visibleMetrics.orders} onChange={() => toggleMetric('orders')} />
                                         <span className="text-sm font-bold text-[#7fe6b4] group-hover:text-[#1DBF73]">Orders</span>
+                                    </label>
+
+                                    {/* FOs */}
+                                    <label className="flex items-center gap-2 cursor-pointer group">
+                                        <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${visibleMetrics.fos ? 'bg-[#EC4899] border-[#EC4899]' : 'border-gray-600 group-hover:border-gray-400'}`}>
+                                            {visibleMetrics.fos && <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12" /></svg>}
+                                        </div>
+                                        <input type="checkbox" className="hidden" checked={visibleMetrics.fos} onChange={() => toggleMetric('fos')} />
+                                        <span className="text-sm font-bold text-[#f472b6] group-hover:text-[#EC4899]">FOs</span>
                                     </label>
                                 </>
                             ) : (
@@ -454,6 +474,16 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ data, isLoading }) 
                                                     strokeLinejoin="round"
                                                 />
                                             )}
+                                            {visibleMetrics.fos && (
+                                                <path
+                                                    d={getPath(chartData, 'fos', 1000, 300, secondaryMaxVal)}
+                                                    fill="none"
+                                                    stroke="#EC4899"
+                                                    strokeWidth="2"
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                />
+                                            )}
                                         </>
                                     ) : (
                                         <>
@@ -497,8 +527,6 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ data, isLoading }) 
                                     )}
                                 </svg>
 
-                                {/* Loading Overlay - removed, replaced by SkeletonChart above */}
-
                                 {/* Hover Points (HTML for perfect roundness) */}
                                 {hoveredIndex !== null && (
                                     <>
@@ -528,6 +556,15 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ data, isLoading }) 
                                                         style={{
                                                             left: `${(hoveredIndex / (chartData.length - 1)) * 100}%`,
                                                             top: `${(1 - chartData[hoveredIndex].orders / secondaryMaxVal) * 100}%`
+                                                        }}
+                                                    />
+                                                )}
+                                                {visibleMetrics.fos && (
+                                                    <div
+                                                        className="absolute w-3 h-3 bg-[#EC4899] rounded-full border-2 border-white shadow-sm transform -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                                                        style={{
+                                                            left: `${(hoveredIndex / (chartData.length - 1)) * 100}%`,
+                                                            top: `${(1 - chartData[hoveredIndex].fos / secondaryMaxVal) * 100}%`
                                                         }}
                                                     />
                                                 )}
@@ -565,6 +602,7 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ data, isLoading }) 
                                         if (visibleMetrics.impressions) val = Math.max(val, point.impressions);
                                         if (visibleMetrics.clicks) val = Math.max(val, point.clicks);
                                         if (visibleMetrics.orders) val = Math.max(val, point.orders);
+                                        if (visibleMetrics.fos) val = Math.max(val, point.fos);
                                     } else {
                                         if (visibleMetrics.conversionRate) val = Math.max(val, point.conversionRate);
                                         if (visibleMetrics.clickThroughRate) val = Math.max(val, point.clickThroughRate);
@@ -612,12 +650,21 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ data, isLoading }) 
                                                         </div>
                                                     )}
                                                     {visibleMetrics.orders && (
-                                                        <div className="flex items-center justify-between gap-4">
+                                                        <div className="flex items-center justify-between gap-4 mb-1">
                                                             <div className="flex items-center gap-2">
                                                                 <div className="w-2 h-2 rounded-full bg-[#1DBF73]" />
                                                                 <span className="text-xs text-gray-300">Orders</span>
                                                             </div>
                                                             <span className="text-xs font-bold text-white">{point.orders}</span>
+                                                        </div>
+                                                    )}
+                                                    {visibleMetrics.fos && (
+                                                        <div className="flex items-center justify-between gap-4">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="w-2 h-2 rounded-full bg-[#EC4899]" />
+                                                                <span className="text-xs text-gray-300">FOs</span>
+                                                            </div>
+                                                            <span className="text-xs font-bold text-white">{point.fos}</span>
                                                         </div>
                                                     )}
                                                 </>

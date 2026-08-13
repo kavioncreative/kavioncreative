@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
-import { Card, Modal } from '../components/Surfaces';
+import { Card, Modal, Tooltip } from '../components/Surfaces';
 import { Table } from '../components/Table';
 import Button from '../components/Button';
 import { Tabs } from '../components/Navigation';
@@ -15,6 +15,7 @@ import { useUser } from '../contexts/UserContext';
 import { getStatusCapsuleClasses } from '../components/Badge';
 
 import PerformanceChart, { PerformanceMetric } from '../components/PerformanceChart';
+import { PerformanceBarChart } from '../components/PerformanceBarChart';
 import { PerformanceForm } from '../components/PerformanceForm';
 
 interface AnalyticsProject {
@@ -520,8 +521,14 @@ const Analytics: React.FC = () => {
                 existing.clicks = (existing.clicks || 0) + (m.clicks || 0);
                 existing.orders = (existing.orders || 0) + (m.orders || 0);
                 existing.cancelled_orders = (existing.cancelled_orders || 0) + (m.cancelled_orders || 0);
+                existing.fos = (existing.fos || 0) + (m.fos || 0);
                 existing.success_score = Math.max(existing.success_score || 0, m.success_score || 0);
                 existing.rating = Math.max(existing.rating || 0, m.rating || 0);
+                existing.on_time_delivery = Math.max(existing.on_time_delivery || 0, m.on_time_delivery || 0);
+                existing.avg_selling_price = Math.max(existing.avg_selling_price || 0, m.avg_selling_price || 0);
+                existing.response_rate = Math.max(existing.response_rate || 0, m.response_rate || 0);
+                existing.repeat_business_score = Math.max(existing.repeat_business_score || 0, m.repeat_business_score || 0);
+                existing.cancellation_rate = Math.max(existing.cancellation_rate || 0, m.cancellation_rate || 0);
             }
         });
 
@@ -1051,6 +1058,8 @@ const Analytics: React.FC = () => {
                 <div className="space-y-6">
                     <PerformanceChart data={reconciledMetrics} isLoading={metricsLoading} />
 
+                    <PerformanceBarChart rawData={performanceMetricData} accountsList={accounts} isLoading={metricsLoading} />
+
                     {/* Detailed Metrics Table */}
                     <div className="space-y-4">
                         <div className="flex items-center justify-between px-2">
@@ -1064,49 +1073,169 @@ const Analytics: React.FC = () => {
                                     render: (row) => <span className="text-gray-300">{systemFormatDate(new Date(row.date))}</span>
                                 },
                                 {
-                                    header: 'Account',
+                                    header: (
+                                        <Tooltip content="Account">
+                                            <span className="cursor-help border-b border-white/20 border-dotted hover:text-brand-primary transition-colors uppercase">
+                                                ACC
+                                            </span>
+                                        </Tooltip>
+                                    ),
                                     key: 'account',
                                     render: (row) => <span className="text-brand-primary font-bold uppercase tracking-wider">{row.accounts?.prefix?.toUpperCase() || '-'}</span>
                                 },
                                 {
-                                    header: 'Success Score',
+                                    header: (
+                                        <Tooltip content="Success Score">
+                                            <span className="cursor-help border-b border-white/20 border-dotted hover:text-brand-primary transition-colors uppercase">
+                                                SS
+                                            </span>
+                                        </Tooltip>
+                                    ),
                                     key: 'success_score',
                                     render: (row) => <span className="text-white font-bold">{row.success_score || '-'}</span>
                                 },
                                 {
-                                    header: 'Rating',
+                                    header: (
+                                        <Tooltip content="Rating">
+                                            <span className="cursor-help border-b border-white/20 border-dotted hover:text-brand-primary transition-colors uppercase">
+                                                RTG
+                                            </span>
+                                        </Tooltip>
+                                    ),
                                     key: 'rating',
                                     render: (row) => <span className="text-white">{row.rating || '-'}</span>
                                 },
                                 {
-                                    header: 'CTR',
+                                    header: (
+                                        <Tooltip content="Click Through Rate">
+                                            <span className="cursor-help border-b border-white/20 border-dotted hover:text-brand-primary transition-colors uppercase">
+                                                CTR
+                                            </span>
+                                        </Tooltip>
+                                    ),
                                     key: 'ctr',
                                     render: (row) => <span className="text-yellow-400 font-bold">{row.ctr ? `${row.ctr}%` : '-'}</span>
                                 },
                                 {
-                                    header: 'Conv. Rate',
+                                    header: (
+                                        <Tooltip content="Conversion Rate">
+                                            <span className="cursor-help border-b border-white/20 border-dotted hover:text-brand-primary transition-colors uppercase">
+                                                CR
+                                            </span>
+                                        </Tooltip>
+                                    ),
                                     key: 'conversion_rate',
                                     render: (row) => <span className="text-purple-400 font-bold">{row.conversion_rate ? `${row.conversion_rate}%` : '-'}</span>
                                 },
                                 {
-                                    header: 'Impressions',
+                                    header: (
+                                        <Tooltip content="Impressions">
+                                            <span className="cursor-help border-b border-white/20 border-dotted hover:text-brand-primary transition-colors uppercase">
+                                                IMP
+                                            </span>
+                                        </Tooltip>
+                                    ),
                                     key: 'impressions',
                                     render: (row) => <span className="text-gray-300">{row.impressions || 0}</span>
                                 },
                                 {
-                                    header: 'Clicks',
+                                    header: (
+                                        <Tooltip content="Clicks">
+                                            <span className="cursor-help border-b border-white/20 border-dotted hover:text-brand-primary transition-colors uppercase">
+                                                CLK
+                                            </span>
+                                        </Tooltip>
+                                    ),
                                     key: 'clicks',
                                     render: (row) => <span className="text-blue-400">{row.clicks || 0}</span>
                                 },
                                 {
-                                    header: 'Orders',
+                                    header: (
+                                        <Tooltip content="Orders">
+                                            <span className="cursor-help border-b border-white/20 border-dotted hover:text-brand-primary transition-colors uppercase">
+                                                ORD
+                                            </span>
+                                        </Tooltip>
+                                    ),
                                     key: 'orders',
                                     render: (row) => <span className="text-green-400 font-bold">{row.orders || 0}</span>
                                 },
                                 {
-                                    header: 'Cancelled',
+                                    header: (
+                                        <Tooltip content="Cancelled Orders">
+                                            <span className="cursor-help border-b border-white/20 border-dotted hover:text-brand-primary transition-colors uppercase">
+                                                CNL
+                                            </span>
+                                        </Tooltip>
+                                    ),
                                     key: 'cancelled_orders',
                                     render: (row) => <span className="text-red-400 font-bold">{row.cancelled_orders || 0}</span>
+                                },
+                                {
+                                    header: (
+                                        <Tooltip content="On-Time Delivery">
+                                            <span className="cursor-help border-b border-white/20 border-dotted hover:text-brand-primary transition-colors uppercase">
+                                                OTD
+                                            </span>
+                                        </Tooltip>
+                                    ),
+                                    key: 'on_time_delivery',
+                                    render: (row) => <span className="text-white font-bold">{row.on_time_delivery ? `${row.on_time_delivery}%` : '-'}</span>
+                                },
+                                {
+                                    header: (
+                                        <Tooltip content="Average Selling Price">
+                                            <span className="cursor-help border-b border-white/20 border-dotted hover:text-brand-primary transition-colors uppercase">
+                                                ASP
+                                            </span>
+                                        </Tooltip>
+                                    ),
+                                    key: 'avg_selling_price',
+                                    render: (row) => <span className="text-white">{row.avg_selling_price ? `$${row.avg_selling_price}` : '-'}</span>
+                                },
+                                {
+                                    header: (
+                                        <Tooltip content="Response Rate">
+                                            <span className="cursor-help border-b border-white/20 border-dotted hover:text-brand-primary transition-colors uppercase">
+                                                RR
+                                            </span>
+                                        </Tooltip>
+                                    ),
+                                    key: 'response_rate',
+                                    render: (row) => <span className="text-white">{row.response_rate ? `${row.response_rate}%` : '-'}</span>
+                                },
+                                {
+                                    header: (
+                                        <Tooltip content="Repeat Business Score">
+                                            <span className="cursor-help border-b border-white/20 border-dotted hover:text-brand-primary transition-colors uppercase">
+                                                RBS
+                                            </span>
+                                        </Tooltip>
+                                    ),
+                                    key: 'repeat_business_score',
+                                    render: (row) => <span className="text-white">{row.repeat_business_score ? `${row.repeat_business_score}%` : '-'}</span>
+                                },
+                                {
+                                    header: (
+                                        <Tooltip content="Fake Orders">
+                                            <span className="cursor-help border-b border-white/20 border-dotted hover:text-brand-primary transition-colors uppercase">
+                                                FOs
+                                            </span>
+                                        </Tooltip>
+                                    ),
+                                    key: 'fos',
+                                    render: (row) => <span className="text-pink-400 font-bold">{row.fos || 0}</span>
+                                },
+                                {
+                                    header: (
+                                        <Tooltip content="Cancellation Rate">
+                                            <span className="cursor-help border-b border-white/20 border-dotted hover:text-brand-primary transition-colors uppercase">
+                                                CNR
+                                            </span>
+                                        </Tooltip>
+                                    ),
+                                    key: 'cancellation_rate',
+                                    render: (row) => <span className="text-red-400 font-bold">{row.cancellation_rate ? `${row.cancellation_rate}%` : '-'}</span>
                                 },
                                 {
                                     header: 'Filled By',
@@ -1153,7 +1282,7 @@ const Analytics: React.FC = () => {
                 onClose={() => setIsPerformanceModalOpen(false)}
                 title="Performance Tracking"
                 size="md"
-                variant="metallic"
+
                 footer={
                     <div className="flex items-center justify-end gap-3 w-full">
                         <Button
@@ -1168,7 +1297,7 @@ const Analytics: React.FC = () => {
                             onClick={() => {
                                 document.getElementById('perf-form-submit')?.click();
                             }}
-                            loading={isSubmittingPerformance}
+                            isLoading={isSubmittingPerformance}
                         >
                             Submit
                         </Button>

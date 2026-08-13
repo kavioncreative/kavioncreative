@@ -24,7 +24,13 @@ export const PerformanceForm: React.FC<PerformanceFormProps> = ({ onComplete, on
         impressions: '',
         clicks: '',
         orders: '',
-        cancelledOrders: ''
+        cancelledOrders: '',
+        onTimeDelivery: '',
+        avgSellingPrice: '',
+        responseRate: '',
+        repeatBusinessScore: '',
+        fos: '',
+        cancellationRate: ''
     });
 
     const { accounts } = useAccounts();
@@ -52,7 +58,13 @@ export const PerformanceForm: React.FC<PerformanceFormProps> = ({ onComplete, on
                     impressions: parseInt(formData.impressions) || 0,
                     clicks: parseInt(formData.clicks) || 0,
                     orders: parseInt(formData.orders) || 0,
-                    cancelled_orders: parseInt(formData.cancelledOrders) || 0
+                    cancelled_orders: parseInt(formData.cancelledOrders) || 0,
+                    on_time_delivery: parseFloat(formData.onTimeDelivery) || 0,
+                    avg_selling_price: parseFloat(formData.avgSellingPrice) || 0,
+                    response_rate: parseFloat(formData.responseRate) || 0,
+                    repeat_business_score: parseFloat(formData.repeatBusinessScore) || 0,
+                    fos: parseInt(formData.fos) || 0,
+                    cancellation_rate: parseFloat(formData.cancellationRate) || 0
                 });
 
             if (error) throw error;
@@ -183,6 +195,74 @@ export const PerformanceForm: React.FC<PerformanceFormProps> = ({ onComplete, on
                     type="number"
                     value={formData.cancelledOrders}
                     onChange={(e) => setFormData({ ...formData, cancelledOrders: e.target.value })}
+                    size="md"
+                />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+                <Input
+                    variant="metallic"
+                    label="On-Time Delivery (%)"
+                    placeholder="0.00"
+                    type="number"
+                    step="0.01"
+                    value={formData.onTimeDelivery}
+                    onChange={(e) => setFormData({ ...formData, onTimeDelivery: e.target.value })}
+                    size="md"
+                />
+                <Input
+                    variant="metallic"
+                    label="Avg Selling Price ($)"
+                    placeholder="0.00"
+                    type="number"
+                    step="0.01"
+                    value={formData.avgSellingPrice}
+                    onChange={(e) => setFormData({ ...formData, avgSellingPrice: e.target.value })}
+                    size="md"
+                />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+                <Input
+                    variant="metallic"
+                    label="Response Rate (%)"
+                    placeholder="0.00"
+                    type="number"
+                    step="0.01"
+                    value={formData.responseRate}
+                    onChange={(e) => setFormData({ ...formData, responseRate: e.target.value })}
+                    size="md"
+                />
+                <Input
+                    variant="metallic"
+                    label="Repeat Business Score (%)"
+                    placeholder="0.00"
+                    type="number"
+                    step="0.01"
+                    value={formData.repeatBusinessScore}
+                    onChange={(e) => setFormData({ ...formData, repeatBusinessScore: e.target.value })}
+                    size="md"
+                />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+                <Input
+                    variant="metallic"
+                    label="FOs"
+                    placeholder="0"
+                    type="number"
+                    value={formData.fos}
+                    onChange={(e) => setFormData({ ...formData, fos: e.target.value })}
+                    size="md"
+                />
+                <Input
+                    variant="metallic"
+                    label="Cancellation Rate (%)"
+                    placeholder="0.00"
+                    type="number"
+                    step="0.01"
+                    value={formData.cancellationRate}
+                    onChange={(e) => setFormData({ ...formData, cancellationRate: e.target.value })}
                     size="md"
                 />
             </div>
