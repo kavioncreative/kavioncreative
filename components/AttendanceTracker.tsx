@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useUser } from '../contexts/UserContext';
 import { addToast } from '../components/Toast';
+import Button from './Button';
 
 // Inline Custom SVG Icons for UI
 const IconClock = ({ className = 'w-4 h-4' }: { className?: string }) => (
@@ -536,12 +537,14 @@ export const AttendanceTracker: React.FC = () => {
                                 {lockError && <p className="text-xs text-red-500 font-bold mt-1 px-1">{lockError}</p>}
                             </div>
 
-                            <button
+                            <Button
+                                variant="metallic"
+                                size="md"
+                                className="w-full font-bold text-sm"
                                 onClick={handleUnlock}
-                                className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-brand-primary to-brand-secondary text-white hover:opacity-90 active:scale-[0.98] transition-all shadow-[0_4px_12px_rgba(255,77,45,0.25)]"
                             >
                                 Resume Session
-                            </button>
+                            </Button>
 
                             <div className="pt-2">
                                 <button
@@ -581,12 +584,14 @@ export const AttendanceTracker: React.FC = () => {
                             </p>
                         </div>
 
-                        <button
+                        <Button
+                            variant="metallic"
+                            size="md"
+                            className="w-full font-black text-sm uppercase tracking-wider py-4"
                             onClick={handleRandomCheckConfirm}
-                            className="w-full py-4 rounded-xl font-black text-sm uppercase tracking-wider bg-gradient-to-r from-brand-primary to-brand-secondary text-white hover:opacity-95 active:scale-[0.98] transition-all shadow-[0_8px_24px_rgba(255,77,45,0.3)]"
                         >
                             I am Active
-                        </button>
+                        </Button>
                     </div>
                 </div>
             )}
