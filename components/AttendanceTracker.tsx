@@ -89,7 +89,7 @@ export const AttendanceTracker: React.FC = () => {
 
     // Fetch shift config & active attendance record on load or user change
     useEffect(() => {
-        if (!profile) {
+        if (!profile || profile.role === 'Super Admin') {
             setAttendanceRecord(null);
             setStatus('PunchedOut');
             setShowLockScreen(false);
@@ -481,6 +481,10 @@ export const AttendanceTracker: React.FC = () => {
         const s = secs % 60;
         return `${m}:${String(s).padStart(2, '0')}`;
     };
+
+    if (!profile || profile.role === 'Super Admin') {
+        return null;
+    }
 
     return (
         <>

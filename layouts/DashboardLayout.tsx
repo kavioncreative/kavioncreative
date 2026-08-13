@@ -911,7 +911,7 @@ export const DashboardLayout: React.FC<{
           </div>
 
           <div className="flex-1 flex items-center gap-2 lg:gap-5 lg:min-w-[200px] justify-end">
-            {!isGuideMode && (
+            {!isGuideMode && effectiveRole !== 'Super Admin' && (
               <div className="flex items-center gap-3 mr-2 sm:mr-4 border-r border-white/5 pr-4">
                 {attendanceStatus === 'PunchedOut' ? (
                   <Button
