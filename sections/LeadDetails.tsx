@@ -38,6 +38,15 @@ import { triggerWebhooks } from '../utils/webhookTrigger';
 import { Tabs } from '../components/Navigation';
 
 
+const IconPin = ({ className = 'w-4 h-4' }: { className?: string }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="12" y1="17" x2="12" y2="22" />
+        <path d="M5 17h14v-1.5c0-1.4-1.2-2.5-2.6-2.5H7.6C6.2 13 5 14.1 5 15.5V17z" />
+        <path d="M12 2v11" />
+        <path d="M8 5h8" />
+    </svg>
+);
+
 interface LeadDetailsProps {
     lead: any;
     onBack: () => void;
@@ -272,6 +281,35 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
         }
     };
 
+    const togglePinComment = async (commentId: string, currentPinned: boolean) => {
+        try {
+            const nextPinned = !currentPinned;
+            
+            // Optimistic local update
+            setComments(prev => prev.map(c => c.id === commentId ? { ...c, is_pinned: nextPinned } : c));
+
+            const { error } = await supabase
+                .from('lead_comments')
+                .update({ is_pinned: nextPinned })
+                .eq('id', commentId);
+
+            if (error) {
+                // Revert on error
+                setComments(prev => prev.map(c => c.id === commentId ? { ...c, is_pinned: currentPinned } : c));
+                console.error('Error pinning comment:', error);
+                addToast({ type: 'error', title: 'Error', message: 'Failed to update requirement pin.' });
+            } else {
+                addToast({ 
+                    type: 'success', 
+                    title: nextPinned ? 'Requirement Pinned' : 'Requirement Unpinned', 
+                    message: nextPinned ? 'Message will be summarized for the next project initiation.' : 'Requirement removed.' 
+                });
+            }
+        } catch (err) {
+            console.error('Error toggling pin:', err);
+        }
+    };
+
     const scrollToBottom = () => {
         setTimeout(() => {
             if (commentEndRef.current) {
@@ -283,9 +321,6 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
 
     const isInitiateRef = useRef(false);
 
-    // REPLACE THIS URL with your actual n8n AI Webhook URL once ready
-    const N8N_AI_BRIEF_WEBHOOK_URL = 'https://kashifn8n.app.n8n.cloud/webhook/ai-brief-assistant';
-
     useEffect(() => {
         if (isInitiateModalOpen && initiateStep === 'summary' && !isInitiateRef.current) {
             isInitiateRef.current = true;
@@ -293,36 +328,77 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
 
             const fetchSummary = async () => {
                 try {
-                    // Combine chat history
-                    const chatHistory = comments.map(c => `${c.author_name} (${c.author_role}): ${c.content}`).join('\n\n');
+                    // 1. Find the timestamp of the last project initiation system log
+                    let lastInitiationTime: number | null = null;
+                    
+                    // Comments are ordered by created_at ascending. Let's scan backwards
+                    for (let i = comments.length - 1; i >= 0; i--) {
+                        const c = comments[i];
+                        if (c.author_role === 'system_log' && 
+                            (c.content?.startsWith('Lead successfully converted to Project:') || 
+                             c.content?.startsWith('Project Initiated:'))) {
+                            lastInitiationTime = new Date(c.created_at).getTime();
+                            break;
+                        }
+                    }
 
-                    const response = await fetch(N8N_AI_BRIEF_WEBHOOK_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                    // 2. Filter pinned comments after that timestamp
+                    const pinnedComments = comments.filter(c => {
+                        if (!c.is_pinned) return false;
+                        if (lastInitiationTime !== null) {
+                            return new Date(c.created_at).getTime() > lastInitiationTime;
+                        }
+                        return true;
+                    });
+
+                    // 3. If there are no pinned comments in the segment, show a fallback message
+                    if (pinnedComments.length === 0) {
+                        setAiSummary('No pinned requirements found since the last project initiation. Please close this modal, pin the relevant client messages in the timeline, and try again; or write the project brief manually here.');
+                        setIsAiLoading(false);
+                        return;
+                    }
+
+                    // 4. Combine the segmented pinned chat history
+                    const chatHistory = pinnedComments.map(c => `${c.author_name} (${c.author_role}): ${c.content}`).join('\n\n');
+
+                    // 5. OpenRouter API direct call
+                    const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
+                    if (!apiKey) {
+                        setAiSummary('Error: OpenRouter API Key (VITE_OPENROUTER_API_KEY) is missing. Please configure it in your environment variables.');
+                        setIsAiLoading(false);
+                        return;
+                    }
+
+                    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                        method: "POST",
+                        headers: {
+                            "Authorization": `Bearer ${apiKey}`,
+                            "Content-Type": "application/json",
+                            "HTTP-Referer": window.location.origin,
+                            "X-Title": "CodesLogic"
+                        },
                         body: JSON.stringify({
-                            action: 'summarize',
-                            project_title: lead.project_title || 'Unknown',
-                            chat_history: chatHistory || 'No history provided.'
+                            model: "openai/gpt-4o-mini",
+                            messages: [
+                                {
+                                    role: "system",
+                                    content: "You are a professional project brief assistant. Summarize the following pinned client requirements and discussion into a clear, structured markdown project brief with headings like Project Overview, Scope & Requirements, and Deliverables. Focus only on the actual requirements."
+                                },
+                                {
+                                    role: "user",
+                                    content: `Pinned Requirements:\n${chatHistory}`
+                                }
+                            ]
                         })
                     });
 
                     if (response.ok) {
-                        const summaryText = await response.text();
-                        try {
-                            let parsed = JSON.parse(summaryText);
-                            if (typeof parsed === 'string') {
-                                parsed = JSON.parse(parsed);
-                            }
-                            const aiData = Array.isArray(parsed) ? parsed[0] : parsed;
-                            let extracted = aiData.markdown || aiData.output || aiData.text || aiData.message || summaryText;
-                            if (typeof extracted === 'string') {
-                                extracted = extracted.replace(/\\n/g, '\n');
-                            }
-                            setAiSummary(extracted);
-                        } catch (e) {
-                            setAiSummary(summaryText);
-                        }
+                        const data = await response.json();
+                        const summaryText = data.choices?.[0]?.message?.content || 'Failed to generate summary.';
+                        setAiSummary(summaryText);
                     } else {
+                        const errorText = await response.text();
+                        console.error('OpenRouter Error:', errorText);
                         setAiSummary('Failed to generate AI Summary. Please write manually.');
                     }
                 } catch (error) {
@@ -345,34 +421,44 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
 
         setIsRefining(true);
         try {
-            const response = await fetch(N8N_AI_BRIEF_WEBHOOK_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+            const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
+            if (!apiKey) {
+                addToast({ type: 'error', title: 'Config Error', message: 'OpenRouter API Key is missing.' });
+                setIsRefining(false);
+                return;
+            }
+
+            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${apiKey}`,
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": window.location.origin,
+                    "X-Title": "CodesLogic"
+                },
                 body: JSON.stringify({
-                    action: 'refine',
-                    current_brief: aiSummary,
-                    refine_prompt: refinePrompt
+                    model: "openai/gpt-4o-mini",
+                    messages: [
+                        {
+                            role: "system",
+                            content: "You are a professional project brief assistant. Your job is to revise and refine the existing project brief based on the user's instructions. Keep the output formatted as clean markdown."
+                        },
+                        {
+                            role: "user",
+                            content: `Current Brief:\n${aiSummary}\n\nInstructions to refine:\n${refinePrompt}`
+                        }
+                    ]
                 })
             });
 
             if (response.ok) {
-                const refinedText = await response.text();
-                try {
-                    let parsed = JSON.parse(refinedText);
-                    if (typeof parsed === 'string') {
-                        parsed = JSON.parse(parsed);
-                    }
-                    const aiData = Array.isArray(parsed) ? parsed[0] : parsed;
-                    let extracted = aiData.markdown || aiData.output || aiData.text || aiData.message || refinedText;
-                    if (typeof extracted === 'string') {
-                        extracted = extracted.replace(/\\n/g, '\n');
-                    }
-                    setAiSummary(extracted);
-                } catch (e) {
-                    setAiSummary(refinedText);
-                }
+                const data = await response.json();
+                const refinedText = data.choices?.[0]?.message?.content || aiSummary;
+                setAiSummary(refinedText);
                 setRefinePrompt('');
             } else {
+                const errorText = await response.text();
+                console.error('OpenRouter Refine Error:', errorText);
                 addToast({ type: 'error', title: 'AI Error', message: 'Failed to refine the brief.' });
             }
         } catch (error) {
@@ -812,6 +898,40 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
                                     {comments.map((comment, idx) => {
                                         const isClient = comment.author_role === 'client';
 
+                                        // Handle Project Initiated Card (Milestone Card)
+                                        if (comment.author_role === 'system_log' && 
+                                            (comment.content?.startsWith("Project Initiated:") || 
+                                             comment.content?.startsWith("Lead successfully converted to Project:"))) {
+                                            const projectTitle = comment.content.replace("Project Initiated:", "").replace("Lead successfully converted to Project:", "").trim();
+
+                                            return (
+                                                <div
+                                                    key={comment.id}
+                                                    className={`space-y-8 mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500`}
+                                                    style={{ animationDelay: `${idx * 50}ms` }}
+                                                >
+                                                    <div className="bg-gradient-to-r from-brand-primary/10 to-brand-secondary/10 border-2 border-brand-primary/30 rounded-3xl overflow-hidden shadow-[0_0_30px_rgba(255,77,45,0.15)] relative">
+                                                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,77,45,0.08)_0%,transparent_70%)] pointer-events-none" />
+                                                        <div className="px-6 py-4 border-b border-white/5 bg-white/[0.03] relative z-20 flex justify-between items-center">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-[10px] font-black uppercase tracking-widest text-brand-primary bg-brand-primary/10 px-2 py-0.5 rounded-md border border-brand-primary/20">
+                                                                    Milestone Card
+                                                                </span>
+                                                                <span className="text-xs font-bold text-white uppercase tracking-wider">PROJECT INITIATED</span>
+                                                            </div>
+                                                            <span className="text-[10px] font-bold text-gray-400">
+                                                                {new Date(comment.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                                                            </span>
+                                                        </div>
+                                                        <div className="p-6 text-center space-y-2">
+                                                            <p className="text-gray-400 text-xs uppercase tracking-wider font-bold">New Project Scope Activated</p>
+                                                            <h4 className="text-xl font-black text-white tracking-wide uppercase">{projectTitle}</h4>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        }
+
                                         // Handle Status Change Card
                                         if (comment.content?.startsWith("STATUS_CHANGED:")) {
                                             const parts = comment.content.split(":");
@@ -884,13 +1004,31 @@ export default function LeadDetails({ lead, onBack, onUpdate }: LeadDetailsProps
                                                     </span>
                                                 </div>
                                                 <div className={`
-                                                    p-6 rounded-2xl border text-[13px] font-medium leading-relaxed shadow-inner transition-all duration-300
-                                                    ${isClient
-                                                        ? 'bg-brand-primary/[0.02] border-brand-primary/10 text-gray-300 hover:border-brand-primary/20'
-                                                        : 'bg-white/[0.02] border-white/5 text-gray-300 hover:border-white/10'
+                                                    p-6 rounded-2xl border text-[13px] font-medium leading-relaxed shadow-inner transition-all duration-300 relative group/comment
+                                                    ${comment.is_pinned
+                                                        ? 'bg-brand-primary/[0.05] border-brand-primary/40 text-white shadow-[0_0_15px_rgba(255,77,45,0.08)]'
+                                                        : isClient
+                                                            ? 'bg-brand-primary/[0.02] border-brand-primary/10 text-gray-300 hover:border-brand-primary/20'
+                                                            : 'bg-white/[0.02] border-white/5 text-gray-300 hover:border-white/10'
                                                     }
                                                 `}>
-                                                    <div className="prose prose-invert prose-sm max-w-none">
+                                                    {/* Pin Button */}
+                                                    {!comment.content?.startsWith("STATUS_CHANGED:") && !comment.content?.startsWith("Lead successfully converted to Project:") && !comment.content?.startsWith("Project Initiated:") && comment.author_role !== 'system_log' && (
+                                                        <button
+                                                            onClick={() => togglePinComment(comment.id, comment.is_pinned)}
+                                                            className={`absolute top-4 right-4 p-1.5 rounded-lg border transition-all duration-200 z-20
+                                                                ${comment.is_pinned
+                                                                    ? 'text-brand-primary border-brand-primary/30 bg-brand-primary/10 opacity-100'
+                                                                    : 'text-gray-500 border-transparent hover:border-white/10 hover:text-white hover:bg-white/5 opacity-0 group-hover/comment:opacity-100'
+                                                                }
+                                                            `}
+                                                            title={comment.is_pinned ? "Unpin requirement" : "Pin requirement"}
+                                                        >
+                                                            <IconPin className={`w-3.5 h-3.5 ${comment.is_pinned ? 'scale-110' : ''}`} />
+                                                        </button>
+                                                    )}
+
+                                                    <div className="prose prose-invert prose-sm max-w-none pr-8">
                                                         <ReactMarkdown
                                                             remarkPlugins={markdownPlugins}
                                                             components={markdownComponents}
