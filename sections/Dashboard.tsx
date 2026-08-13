@@ -12,6 +12,7 @@ import { DatePicker, formatDate as systemFormatDate } from '../components/DatePi
 import { TimeSelect } from '../components/TimeSelect';
 import { Dropdown } from '../components/Dropdown';
 import { useAccounts } from '../contexts/AccountContext';
+import { BonusMilestonesWidget } from '../components/BonusMilestonesWidget';
 
 interface Task {
     id: string;
@@ -466,6 +467,8 @@ const TaskWidget = memo(({ profile, role, onTaskClick, onMarkComplete }: { profi
         </ElevatedMetallicCard>
     );
 });
+
+
 
 const EarningsBreakdownWidget = memo(({ profile, role }: { profile: any, role: string | null }) => {
     const { accounts, loading: accountsLoading } = useAccounts();
@@ -1624,7 +1627,8 @@ const Dashboard: React.FC = () => {
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 fill-mode-both">
             {/* Delivery Performance and Capacity Section */}
             {['freelancer', 'team lead', 'team designer', 'presentation designer'].includes(effectiveRole?.toLowerCase().trim() || '') && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {/* Capacity Management - Only for Freelancer, Team Lead, and Team Designer */}
                     {['freelancer', 'team lead', 'team designer'].includes(effectiveRole?.toLowerCase().trim() || '') && (
                         <div className="lg:col-span-1">
@@ -1832,6 +1836,10 @@ const Dashboard: React.FC = () => {
                         </ElevatedMetallicCard>
                     </div>
                 </div>
+                <div className="mt-6">
+                    <BonusMilestonesWidget profile={profile} role={effectiveRole} />
+                </div>
+                </div>
             )}
 
             {/* Main Dashboard Widgets for Management Roles */}
@@ -1839,6 +1847,10 @@ const Dashboard: React.FC = () => {
                 <div className="space-y-6">
                     {/* Earnings Breakdown Widget */}
                     <EarningsBreakdownWidget profile={profile} role={effectiveRole} />
+
+                    <div className="my-6">
+                        <BonusMilestonesWidget profile={profile} role={effectiveRole} />
+                    </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         <div className="lg:col-span-2">

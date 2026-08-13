@@ -1090,6 +1090,300 @@ const SellerCommission: React.FC = () => {
     );
 };
 
+const BonusStructureManager: React.FC = () => {
+    const [structures, setStructures] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [selectedStructure, setSelectedStructure] = useState<any>(null);
+
+    // Form states
+    const [name, setName] = useState('');
+    const [role, setRole] = useState('Project Manager');
+    const [calcType, setCalcType] = useState('Volume');
+    const [target, setTarget] = useState('');
+    const [amount, setAmount] = useState('');
+    const [currency, setCurrency] = useState('PKR');
+    const [isSaving, setIsSaving] = useState(false);
+
+    useEffect(() => {
+        fetchStructures();
+    }, []);
+
+    const fetchStructures = async () => {
+        setIsLoading(true);
+        try {
+            const { data } = await supabase
+                .from('bonus_structures')
+                .select('*')
+                .order('created_at', { ascending: false });
+            setStructures(data || []);
+        } catch (e) {
+            console.error('Error fetching bonuses:', e);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleOpenCreate = () => {
+        setSelectedStructure(null);
+        setName('');
+        setRole('Project Manager');
+        setCalcType('Volume');
+        setTarget('');
+        setAmount('');
+        setCurrency('PKR');
+        setIsModalOpen(true);
+    };
+
+    const handleOpenEdit = (struct: any) => {
+        setSelectedStructure(struct);
+        setName(struct.name);
+        setRole(struct.role);
+        setCalcType(struct.calc_type);
+        setTarget(struct.target.toString());
+        setAmount(struct.amount.toString());
+        setCurrency(struct.currency);
+        setIsModalOpen(true);
+    };
+
+    const handleSave = async () => {
+        if (!name || !target || !amount) {
+            addToast({ type: 'error', title: 'Missing fields', message: 'Please fill in all target configurations.' });
+            return;
+        }
+        setIsSaving(true);
+        try {
+            const payload = {
+                name,
+                role,
+                calc_type: calcType,
+                target: parseFloat(target),
+                amount: parseFloat(amount),
+                currency
+            };
+
+            if (selectedStructure) {
+                const { error } = await supabase
+                    .from('bonus_structures')
+                    .update(payload)
+                    .eq('id', selectedStructure.id);
+                if (error) throw error;
+                addToast({ type: 'success', title: 'Rule Updated', message: 'Bonus structure updated successfully.' });
+            } else {
+                const { error } = await supabase
+                    .from('bonus_structures')
+                    .insert([payload]);
+                if (error) throw error;
+                addToast({ type: 'success', title: 'Rule Created', message: 'New bonus structure rule created.' });
+            }
+            setIsModalOpen(false);
+            fetchStructures();
+        } catch (e) {
+            console.error(e);
+            addToast({ type: 'error', title: 'Error', message: 'Failed to save bonus structure.' });
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleDelete = async (id: string) => {
+        if (!window.confirm('Are you sure you want to delete this bonus structure rule?')) return;
+        try {
+            const { error } = await supabase
+                .from('bonus_structures')
+                .delete()
+                .eq('id', id);
+            if (error) throw error;
+            addToast({ type: 'success', title: 'Rule Deleted', message: 'Bonus structure deleted successfully.' });
+            fetchStructures();
+        } catch (e) {
+            console.error(e);
+            addToast({ type: 'error', title: 'Error', message: 'Failed to delete rule.' });
+        }
+    };
+
+    const rolesList = [
+        { label: 'Project Manager', value: 'Project Manager' },
+        { label: 'Team Designer', value: 'Team Designer' },
+        { label: 'Team Lead', value: 'Team Lead' },
+        { label: 'Freelancer', value: 'Freelancer' },
+        { label: 'Presentation Designer', value: 'Presentation Designer' },
+        { label: 'Finance Manager', value: 'Finance Manager' },
+        { label: 'ORM Manager', value: 'ORM Manager' },
+        { label: 'Project Operations Manager', value: 'Project Operations Manager' },
+        { label: 'Admin', value: 'Admin' },
+        { label: 'Super Admin', value: 'Super Admin' }
+    ];
+
+    const calcTypes = [
+        { label: 'Volume (Completed count)', value: 'Volume' },
+        { label: 'Percentage (Conversion rate)', value: 'Percentage' },
+        { label: 'Rating (Average review score)', value: 'Rating' },
+        { label: 'Punctuality (On-time shifts)', value: 'Punctuality' }
+    ];
+
+    return (
+        <div className="space-y-6">
+            <Card className="overflow-hidden bg-surface-card border border-surface-border rounded-3xl animate-in fade-in duration-500">
+                <div className="p-6 md:p-8 border-b border-surface-border flex items-center justify-between">
+                    <div>
+                        <h3 className="text-xl font-bold text-white uppercase tracking-wider">Bonus Structures Configuration</h3>
+                        <p className="text-sm text-gray-500 mt-1">Setup dynamic role-based milestones, calculations, targets and currencies.</p>
+                    </div>
+                    <Button variant="metallic" size="sm" onClick={handleOpenCreate}>
+                        Create Bonus Rule
+                    </Button>
+                </div>
+                
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left text-[13px] text-gray-300">
+                        <thead className="bg-white/[0.02] text-gray-400 font-bold uppercase tracking-widest text-[10px] border-b border-surface-border">
+                            <tr>
+                                <th className="px-6 py-4">Bonus Name</th>
+                                <th className="px-6 py-4">Role</th>
+                                <th className="px-6 py-4">Calculation Type</th>
+                                <th className="px-6 py-4">Target Goal</th>
+                                <th className="px-6 py-4">Reward Amount</th>
+                                <th className="px-6 py-4 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-surface-border">
+                            {isLoading ? (
+                                <tr>
+                                    <td colSpan={6} className="px-6 py-10 text-center text-gray-500">
+                                        Loading configured rules...
+                                    </td>
+                                </tr>
+                            ) : structures.length === 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="px-6 py-10 text-center text-gray-500">
+                                        No bonus rules configured yet.
+                                    </td>
+                                </tr>
+                            ) : (
+                                structures.map((struct) => (
+                                    <tr key={struct.id} className="hover:bg-white/[0.01] transition-colors">
+                                        <td className="px-6 py-4 font-bold text-white">{struct.name}</td>
+                                        <td className="px-6 py-4">
+                                            <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                                                {struct.role}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 font-semibold text-gray-400">
+                                            {struct.calc_type}
+                                        </td>
+                                        <td className="px-6 py-4 font-bold text-brand-primary">
+                                            {struct.target} {struct.calc_type === 'Percentage' ? '%' : struct.calc_type === 'Rating' ? '★' : 'units'}
+                                        </td>
+                                        <td className="px-6 py-4 font-black text-emerald-400">
+                                            {struct.currency} {struct.amount.toLocaleString()}
+                                        </td>
+                                        <td className="px-6 py-4 text-right space-x-2">
+                                            <Button variant="recessed" size="xs" onClick={() => handleOpenEdit(struct)}>
+                                                Edit
+                                            </Button>
+                                            <button
+                                                onClick={() => handleDelete(struct.id)}
+                                                className="px-2 py-1 rounded-lg border border-red-500/20 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300 text-[10px] font-bold uppercase tracking-wider transition-all"
+                                            >
+                                                Delete
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </Card>
+
+            {/* Config modal */}
+            <Modal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                title={selectedStructure ? 'Edit Bonus Structure' : 'Create Bonus Structure'}
+                size="md"
+                footer={
+                    <div className="flex justify-end gap-3 w-full">
+                        <Button variant="recessed" size="sm" onClick={() => setIsModalOpen(false)}>Cancel</Button>
+                        <Button variant="metallic" size="sm" onClick={handleSave} isLoading={isSaving}>Save Rule</Button>
+                    </div>
+                }
+            >
+                <div className="space-y-4 p-6">
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">Bonus Name</label>
+                        <input
+                            type="text"
+                            placeholder="e.g. Volume Target Completed"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            className="w-full px-4 py-3 rounded-xl border border-white/5 bg-black/40 text-sm text-white focus:outline-none focus:border-brand-primary/40"
+                        />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">Target Role</label>
+                            <Dropdown
+                                variant="metallic"
+                                label="Select Role"
+                                options={rolesList}
+                                value={role}
+                                onChange={(val) => setRole(val as string)}
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">Calculation Type</label>
+                            <Dropdown
+                                variant="metallic"
+                                label="Select Type"
+                                options={calcTypes}
+                                value={calcType}
+                                onChange={(val) => setCalcType(val as string)}
+                            />
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4 col-span-2">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">Target Goal</label>
+                            <input
+                                type="number"
+                                placeholder="e.g. 20"
+                                value={target}
+                                onChange={(e) => setTarget(e.target.value)}
+                                className="w-full px-4 py-3 rounded-xl border border-white/5 bg-black/40 text-sm text-white focus:outline-none focus:border-brand-primary/40"
+                            />
+                        </div>
+                        <div className="space-y-1 col-span-1">
+                            <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">Amount</label>
+                            <input
+                                type="number"
+                                placeholder="e.g. 15000"
+                                value={amount}
+                                onChange={(e) => setAmount(e.target.value)}
+                                className="w-full px-4 py-3 rounded-xl border border-white/5 bg-black/40 text-sm text-white focus:outline-none focus:border-brand-primary/40"
+                            />
+                        </div>
+                        <div className="space-y-1 col-span-1">
+                            <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">Currency</label>
+                            <Dropdown
+                                variant="metallic"
+                                label="Currency"
+                                options={[
+                                    { label: 'PKR', value: 'PKR' },
+                                    { label: 'USD', value: 'USD' }
+                                ]}
+                                value={currency}
+                                onChange={(val) => setCurrency(val as string)}
+                            />
+                        </div>
+                    </div>
+                </div>
+            </Modal>
+        </div>
+    );
+};
+
 const PricingSlabs: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -3974,7 +4268,7 @@ const Finances: React.FC = () => {
 
     const allTabs = [
         { id: 'commission', label: 'Platform Commission', icon: <IconSettings className="w-4 h-4" />, permission: 'manage_finance_config' },
-        { id: 'seller', label: 'Seller Commission', icon: <IconTrendingUp className="w-4 h-4" />, permission: 'manage_finance_config' },
+        { id: 'seller', label: 'Bonus Structures', icon: <IconTrendingUp className="w-4 h-4" />, permission: 'manage_finance_config' },
         { id: 'company', label: 'Company Earnings', icon: <IconCreditCard className="w-4 h-4" />, permission: 'view_company_earnings' },
         { id: 'freelancer', label: 'Freelancer Earnings', icon: <IconUser className="w-4 h-4" />, permission: 'view_freelancer_earnings' },
     ];
@@ -4080,7 +4374,7 @@ const Finances: React.FC = () => {
                             <PlatformCommission />
                         </div>
                         <div hidden={activeTab !== 'seller'}>
-                            <SellerCommission />
+                            <BonusStructureManager />
                         </div>
                         <div hidden={activeTab !== 'company'}>
                             <CompanyEarnings />

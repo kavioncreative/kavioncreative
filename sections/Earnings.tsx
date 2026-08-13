@@ -26,6 +26,7 @@ import { useUser } from '../contexts/UserContext';
 import { useAccounts } from '../contexts/AccountContext';
 import { addToast } from '../components/Toast';
 import { getInitialTab, updateRoute } from '../utils/routing';
+import { BonusMilestonesWidget } from '../components/BonusMilestonesWidget';
 
 // Module-level cache — survives component unmount/remount within the same browser session.
 // Cleared automatically when the page is refreshed or the tab is closed.
@@ -480,6 +481,10 @@ const Earnings: React.FC = () => {
                             <p className={`text-[10px] mt-1 ${activeSummaryFilter === 'available' ? 'text-white/70' : 'text-gray-500'}`}>Ready for payout</p>
                         </div>
                     </Card>
+                </div>
+
+                <div className="mb-8">
+                    <BonusMilestonesWidget profile={profile} role={effectiveRole} />
                 </div>
 
                 {/* Sub Tabs for Available Filter */}
