@@ -1273,7 +1273,9 @@ const BonusStructureManager: React.FC = () => {
                                             {struct.calc_type}
                                         </td>
                                         <td className="px-6 py-4 font-bold text-brand-primary">
-                                            {struct.target} {struct.calc_type === 'Percentage' ? '%' : struct.calc_type === 'Rating' ? '★' : 'units'}
+                                            {struct.calc_type === 'Punctuality' && struct.target === 0
+                                                ? 'Every Day of Month'
+                                                : `${struct.target} ${struct.calc_type === 'Percentage' ? '%' : struct.calc_type === 'Rating' ? '★' : 'units'}`}
                                         </td>
                                         <td className="px-6 py-4 font-black text-emerald-400">
                                             {struct.currency} {struct.amount.toLocaleString()}
@@ -1353,6 +1355,11 @@ const BonusStructureManager: React.FC = () => {
                                 onChange={(e) => setTarget(e.target.value)}
                                 className="w-full px-4 py-3 rounded-xl border border-white/5 bg-black/40 text-sm text-white focus:outline-none focus:border-brand-primary/40"
                             />
+                            {calcType === 'Punctuality' && (
+                                <p className="text-[9px] text-gray-500 mt-1 px-1 leading-normal">
+                                    *Enter 0 to dynamically target all calendar days of the month.
+                                </p>
+                            )}
                         </div>
                         <div className="space-y-1 col-span-1">
                             <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">Amount</label>

@@ -179,7 +179,16 @@ export const BonusMilestonesWidget: React.FC<BonusMilestonesWidgetProps> = ({ pr
             <div className="space-y-6 relative z-10">
                 {milestones.map((milestone) => {
                     const currentVal = progressStats[milestone.id] || 0;
-                    const percent = Math.min((currentVal / milestone.target) * 100, 100);
+                    
+                    let resolvedTarget = milestone.target;
+                    if (milestone.calc_type === 'Punctuality' && milestone.target === 0) {
+                        const startOfMonth = new Date();
+                        const year = startOfMonth.getFullYear();
+                        const month = startOfMonth.getMonth();
+                        resolvedTarget = new Date(year, month + 1, 0).getDate();
+                    }
+
+                    const percent = resolvedTarget > 0 ? Math.min((currentVal / resolvedTarget) * 100, 100) : 0;
                     
                     return (
                         <div key={milestone.id} className="space-y-3 p-4 rounded-2xl bg-black/30 border border-white/5 hover:border-white/10 transition-colors">
@@ -187,7 +196,7 @@ export const BonusMilestonesWidget: React.FC<BonusMilestonesWidgetProps> = ({ pr
                                 <div className="space-y-1">
                                     <h4 className="text-sm font-bold text-white uppercase tracking-wide">{milestone.name}</h4>
                                     <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
-                                        Type: {milestone.calc_type} • Current: {currentVal} / {milestone.target}
+                                        Type: {milestone.calc_type} • Current: {currentVal} / {resolvedTarget}
                                     </span>
                                 </div>
                                 <div className="text-right">
@@ -212,7 +221,7 @@ export const BonusMilestonesWidget: React.FC<BonusMilestonesWidgetProps> = ({ pr
                                 <div className="flex justify-between items-center text-[10px] font-bold">
                                     <span className="text-white font-mono">{Math.round(percent)}%</span>
                                     <span className={`uppercase tracking-wider ${percent >= 100 ? 'text-emerald-400' : 'text-gray-500'}`}>
-                                        {percent >= 100 ? 'Target Achieved' : getMotivationalCopy(currentVal, milestone.target, milestone.calc_type)}
+                                        {percent >= 100 ? 'Target Achieved' : getMotivationalCopy(currentVal, resolvedTarget, milestone.calc_type)}
                                     </span>
                                 </div>
                             </div>
