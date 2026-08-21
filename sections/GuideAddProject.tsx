@@ -20,13 +20,15 @@ FORMATTING GUIDELINES:
 - Place the client’s exact text under each relevant heading.
 - Do NOT rewrite sentences — only organize them properly.
 - If the following fields are present, use them EXACTLY as headings:
-  - Industry (If you’re ordering for a business, what’s your industry?)
-  - Logo Title
-  - Slogan
-  - Preferred Colors
-  - Logo Brief
-  - Reference Logos / Images
-  - Target Audience
+  - What is your business/brand name?
+  - Do you have a tagline or slogan?
+  - Do you have any colour preferences?
+  - Tell me about your business, products/services, and what makes your brand unique?
+  - Who is your target audience or ideal customer? Example: Small business owners, young professionals, fitness enthusiasts, etc
+  - What message or feeling should your logo communicate? Example: Trust, luxury, creativity, simplicity, innovation, professionalism, or reliability.
+  - Do you have any specific ideas, symbols, or concepts you want included in the logo?(Optional)
+  - What style do you prefer for your logo? Example: Minimalist, Vintage, Abstract
+  - Are there any logos that you like and would like to attach? If Yes, Please attach.(Optional)
 - If some fields are missing, organize the content using standard logo design brief structure WITHOUT modifying wording.
 
 OUTPUT RULES:
