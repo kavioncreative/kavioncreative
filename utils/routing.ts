@@ -87,6 +87,9 @@ export const getInitialView = (): { view: DashboardView; projectId: string | nul
 
     const saved = localStorage.getItem('lastDashboardView') as DashboardView;
     if (saved && Object.values(VIEW_MAP).includes(saved)) {
+        if (saved.startsWith('Guide') && !firstSegment) {
+            return { view: 'Dashboard', projectId: null, userId: null, leadId: null };
+        }
         return { view: saved, projectId: null, userId: null, leadId: null };
     }
 
