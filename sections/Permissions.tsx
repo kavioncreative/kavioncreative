@@ -95,7 +95,6 @@ export const Permissions: React.FC<PermissionsProps> = ({ onSimulate, hideTabs, 
         { code: 'edit_projects', name: 'Edit Projects', category: 'Projects', description: 'Edit existing project properties and details' },
         { code: 'view_analytics', name: 'Analytics Page', category: 'Analytics', description: 'Main access to the Analytics module' },
         { code: 'view_gig_stats', name: 'Gig Statistics', category: 'Analytics', description: 'View detailed performance metrics for platform gigs' },
-        { code: 'view_sales_analytics', name: 'Sales Analytics', category: 'Analytics', description: 'View revenue trends and sales volume data' },
         { code: 'view_finances', name: 'Finances Page', category: 'Finances', description: 'Main access to the financial records' },
         { code: 'manage_finance_config', name: 'Manage Finance Config', category: 'Finances', description: 'Configure platform/seller commissions and pricing slabs' },
         { code: 'view_company_earnings', name: 'Company Earnings', category: 'Finances', description: 'View company revenue and profit logs' },
@@ -112,6 +111,7 @@ export const Permissions: React.FC<PermissionsProps> = ({ onSimulate, hideTabs, 
         { code: 'edit_users', name: 'Edit Users', category: 'Users', description: 'Modify existing user profiles' },
         { code: 'delete_users', name: 'Delete Users', category: 'Users', description: 'Remove users from the system' },
         { code: 'manage_teams', name: 'Manage Teams', category: 'Users', description: 'Create and organize team structures' },
+        { code: 'manage_penalties', name: 'Manage Penalties', category: 'Users', description: 'Full control to issue or waive staff penalties' },
 
         { code: 'view_channels', name: 'Channels', category: 'Channels', description: 'Access to communication channels' },
         { code: 'access_integrations', name: 'Integrations', category: 'System', description: 'Manage external platform links' },
@@ -455,9 +455,9 @@ export const Permissions: React.FC<PermissionsProps> = ({ onSimulate, hideTabs, 
     const getPermLevel = (code: string) => {
         const c = code.toLowerCase();
         // Level 1: Sidebar/Page entry
-        if (c === 'view_accounts' || (c.startsWith('view_') && !['view_gig_stats', 'view_sales_analytics', 'view_company_earnings', 'view_freelancer_earnings'].includes(c)) || c.startsWith('access_') || c.startsWith('manage_team_')) return 1;
+        if (c === 'view_accounts' || (c.startsWith('view_') && !['view_gig_stats', 'view_company_earnings', 'view_freelancer_earnings'].includes(c)) || c.startsWith('access_') || c.startsWith('manage_team_')) return 1;
         // Level 2: Specific Dashboards/Tabs
-        if (['view_gig_stats', 'view_sales_analytics', 'view_company_earnings', 'view_freelancer_earnings'].includes(c)) return 2;
+        if (['view_gig_stats', 'view_company_earnings', 'view_freelancer_earnings'].includes(c)) return 2;
         // Level 3: CRUD/Sensitive Actions
         return 3;
     };

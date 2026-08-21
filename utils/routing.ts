@@ -16,7 +16,7 @@ const VIEW_MAP: Record<string, DashboardView> = {
     'workload': 'Workload',
     'tickets': 'Tickets',
     'channels': 'Channels',
-    'forms': 'Forms',
+    'forms': 'Forms' as any,
     'integrations': 'Integrations',
     'settings': 'Settings',
     'reminders': 'Reminders',
@@ -64,7 +64,7 @@ export const getInitialView = (): { view: DashboardView; projectId: string | nul
             ];
             if (view === 'Projects' && !projectTabs.includes(secondSegment.toLowerCase())) {
                 const decodedProjectId = decodeURIComponent(secondSegment);
-                return { view: 'Projects', projectId: decodedProjectId, userId: null };
+                return { view: 'Projects', projectId: decodedProjectId, userId: null, leadId: null };
             }
 
             // Handle Users detail

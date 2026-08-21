@@ -17,7 +17,6 @@ import { IconSettings } from './components/Icons';
 import Earnings from './sections/Earnings';
 import ProjectDetails from './sections/ProjectDetails';
 import UserDetails from './sections/UserDetails';
-import UserDetailsV2 from './sections/UserDetailsV2';
 import CompleteProfile from './sections/CompleteProfile';
 import PendingApproval from './sections/PendingApproval';
 import Reminders from './sections/Reminders';
@@ -94,6 +93,7 @@ const App: React.FC = () => {
     });
     
     const [dashboardView, setDashboardView] = useState<DashboardView>(initial.view);
+    const [visitedViews, setVisitedViews] = useState<Set<string>>(() => new Set([initial.view]));
     const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initial.projectId);
     const [selectedProjectData, setSelectedProjectData] = useState<any>(null);
     const [selectedUserId, setSelectedUserId] = useState<string | null>(initial.userId);
@@ -115,6 +115,23 @@ const App: React.FC = () => {
     const [isSettingsDirty, setIsSettingsDirty] = useState(false);
     const [pendingView, setPendingView] = useState<DashboardView | null>(null);
     const [pendingProjectId, setPendingProjectId] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (dashboardView) {
+            setVisitedViews(prev => {
+                if (prev.has(dashboardView)) return prev;
+                const next = new Set(prev);
+                next.add(dashboardView);
+                return next;
+            });
+        }
+    }, [dashboardView]);
+
+    useEffect(() => {
+        if (!session) {
+            setVisitedViews(new Set(['Dashboard']));
+        }
+    }, [session]);
     const settingsRef = React.useRef<SettingsHandle>(null);
     const projectsRef = React.useRef<ProjectsHandle>(null);
     const usersRef = React.useRef<UsersHandle>(null);
@@ -181,6 +198,18 @@ const App: React.FC = () => {
               if (targetView !== view) {
                 setView(targetView);
               }
+              
+              // Restore URL-based dashboardView so hard refreshes on any sub-page don't produce a blank page
+              if (targetView === 'dashboard') {
+                const urlParsed = getInitialView();
+                setDashboardView(urlParsed.view);
+                setVisitedViews(prev => {
+                  const next = new Set(prev);
+                  next.add(urlParsed.view);
+                  return next;
+                });
+              }
+              
               localStorage.setItem('user_profile_cache', JSON.stringify(profile));
             } else {
               console.warn('⚠️ Profile not found in DB. ProfileError:', profileError);
@@ -297,6 +326,19 @@ const App: React.FC = () => {
               if (targetView !== view || view !== 'dashboard') {
                 setView(targetView);
               }
+              
+              // When landing on dashboard view, restore the URL-based dashboardView
+              // so hard refreshes on sub-pages (e.g. /finances) don't produce a blank page
+              if (targetView === 'dashboard') {
+                const urlParsed = getInitialView();
+                setDashboardView(urlParsed.view);
+                setVisitedViews(prev => {
+                  const next = new Set(prev);
+                  next.add(urlParsed.view);
+                  return next;
+                });
+              }
+              
               localStorage.setItem('user_profile_cache', JSON.stringify(profile));
             } else if (session.user.user_metadata?.role) {
               // SAFEGUARD: Don't bounce to setup if we're already established
@@ -517,190 +559,344 @@ const App: React.FC = () => {
 
   const renderDashboardContent = () => {
     try {
-      if (dashboardView === 'Projects') {
-        return (
-          <>
-            <div className={(selectedProjectId || selectedLead) ? 'hidden' : 'block h-full'}>
-              <Projects
-                ref={projectsRef}
-                onProjectOpen={(id, data) => {
-                  setSelectedProjectId(id);
-                  setSelectedProjectData(data);
-                }}
-                onLeadOpen={setSelectedLead}
-                isProjectOpen={!!selectedProjectId}
-                isLeadOpen={!!selectedLead}
-              />
-            </div>
-            {selectedProjectId && (
-              <ProjectDetails
-                projectId={selectedProjectId}
-                initialData={selectedProjectData}
-                onBack={() => {
-                  setSelectedProjectId(null);
-                  setSelectedProjectData(null);
-                }}
-                onStatusChange={(newStatus) => {
-                  projectsRef.current?.refresh();
-                  if (newStatus) projectsRef.current?.switchToStatusTab(newStatus);
-                }}
-                onIdChange={(oldId, newId) => {
-                  setSelectedProjectId(newId);
-                  projectsRef.current?.refresh();
-                }}
-                onUpdate={() => {
-                  projectsRef.current?.refresh();
-                }}
-              />
-            )}
-            {selectedLead && (
-              <LeadDetails 
-                lead={selectedLead}
-                onBack={() => {
-                  setSelectedLead(null);
-                  updateRoute('Projects');
-                }}
-                onUpdate={(newStatus) => {
-                  projectsRef.current?.refresh();
-                  if (newStatus) {
-                    projectsRef.current?.switchToLeadTab(newStatus);
-                    setSelectedLead((prev: any) => ({ ...prev, status: newStatus }));
-                  }
-                }}
-              />
-            )}
-          </>
-        );
+      if (dashboardView.startsWith('Guide')) {
+        switch (dashboardView) {
+          case 'Guide':
+          case 'GuideVideoIntro':
+          case 'GuideSystemWorks':
+          case 'GuideWorkflowSummary':
+          case 'GuidePaymentOverview':
+              return <Guide />;
+          case 'GuideAddProject': return <GuideAddProject />;
+          case 'GuideRemoveProject': return <GuideRemoveProject />;
+          case 'GuideMarkCancelled': return <GuideMarkCancelled />;
+          case 'GuideMarkApproved': return <GuideMarkApproved />;
+          case 'GuideTriggerDispute': return <GuideTriggerDispute />;
+          case 'GuideTriggerArtHelp': return <GuideTriggerArtHelp />;
+          case 'GuidePostComments': return <GuidePostComments />;
+          case 'GuideSendFiles': return <GuideSendFiles />;
+          default: return <Guide />;
+        }
       }
 
-      switch (dashboardView) {
-        case 'Dashboard': return <Dashboard />;
-        case 'Tasks': return <Tasks />;
-        case 'Analytics': return <Analytics />;
-        case 'Leads': return (
-          <>
-            <div className={selectedLead ? 'hidden' : 'block h-full'}>
-              <Leads 
-                ref={leadsRef}
-                onLeadOpen={setSelectedLead}
-                isLeadOpen={!!selectedLead}
-              />
+      return (
+        <>
+          {/* Dashboard */}
+          {visitedViews.has('Dashboard') && (
+            <div className={dashboardView === 'Dashboard' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-dashboard">
+              <Dashboard />
             </div>
-            {selectedLead && (
-              <LeadDetails 
-                lead={selectedLead}
-                onBack={() => {
-                  setSelectedLead(null);
-                  updateRoute('Leads');
-                }}
-                onUpdate={(newStatus) => {
-                  leadsRef.current?.refresh();
-                  if (newStatus) {
-                    leadsRef.current?.switchToStatusTab(newStatus);
-                    setSelectedLead((prev: any) => ({ ...prev, status: newStatus }));
-                  }
-                }}
-              />
-            )}
-          </>
-        );
-        case 'Finances': return <Finances />;
-        case 'Earnings': return <Earnings />;
-        case 'Accounts': return <Accounts />;
-        case 'ActivityLogs': return <ActivityLogs />;
-        case 'Assets': return <Assets />;
-        case 'Chats': return <Chats />;
-        case 'Users': return (
-          <>
-            <div className={selectedUserId ? 'hidden' : 'block h-full'}>
-              <Users
-                ref={usersRef}
-                onUserOpen={setSelectedUserId}
-                isUserOpen={!!selectedUserId}
-              />
+          )}
+
+          {/* Tasks */}
+          {visitedViews.has('Tasks') && (
+            <div className={dashboardView === 'Tasks' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-tasks">
+              <Tasks />
             </div>
-            {selectedUserId && (
+          )}
+
+          {/* Projects */}
+          {visitedViews.has('Projects') && (
+            <div className={dashboardView === 'Projects' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-projects">
+              <div className={(selectedProjectId || selectedLead) ? 'hidden' : 'block h-full'}>
+                <Projects
+                  ref={projectsRef}
+                  onProjectOpen={(id, data) => {
+                    setSelectedProjectId(id);
+                    setSelectedProjectData(data);
+                  }}
+                  onLeadOpen={setSelectedLead}
+                  isProjectOpen={!!selectedProjectId}
+                  isLeadOpen={!!selectedLead}
+                />
+              </div>
+              {selectedProjectId && (
+                <ProjectDetails
+                  projectId={selectedProjectId}
+                  initialData={selectedProjectData}
+                  onBack={() => {
+                    setSelectedProjectId(null);
+                    setSelectedProjectData(null);
+                  }}
+                  onStatusChange={(newStatus) => {
+                    projectsRef.current?.refresh();
+                    if (newStatus) projectsRef.current?.switchToStatusTab(newStatus);
+                  }}
+                  onIdChange={(oldId, newId) => {
+                    setSelectedProjectId(newId);
+                    projectsRef.current?.refresh();
+                  }}
+                  onUpdate={() => {
+                    projectsRef.current?.refresh();
+                  }}
+                />
+              )}
+              {selectedLead && (
+                <LeadDetails 
+                  lead={selectedLead}
+                  onBack={() => {
+                    setSelectedLead(null);
+                    updateRoute('Projects');
+                  }}
+                  onUpdate={(newStatus) => {
+                    projectsRef.current?.refresh();
+                    if (newStatus) {
+                      projectsRef.current?.switchToLeadTab(newStatus);
+                      setSelectedLead((prev: any) => ({ ...prev, status: newStatus }));
+                    }
+                  }}
+                />
+              )}
+            </div>
+          )}
+
+          {/* Leads */}
+          {visitedViews.has('Leads') && (
+            <div className={dashboardView === 'Leads' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-leads">
+              <div className={selectedLead ? 'hidden' : 'block h-full'}>
+                <Leads 
+                  ref={leadsRef}
+                  onLeadOpen={setSelectedLead}
+                  isLeadOpen={!!selectedLead}
+                />
+              </div>
+              {selectedLead && (
+                <LeadDetails 
+                  lead={selectedLead}
+                  onBack={() => {
+                    setSelectedLead(null);
+                    updateRoute('Leads');
+                  }}
+                  onUpdate={(newStatus) => {
+                    leadsRef.current?.refresh();
+                    if (newStatus) {
+                      leadsRef.current?.switchToStatusTab(newStatus);
+                      setSelectedLead((prev: any) => ({ ...prev, status: newStatus }));
+                    }
+                  }}
+                />
+              )}
+            </div>
+          )}
+
+          {/* Analytics */}
+          {visitedViews.has('Analytics') && (
+            <div className={dashboardView === 'Analytics' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-analytics">
+              <Analytics />
+            </div>
+          )}
+
+          {/* Finances */}
+          {visitedViews.has('Finances') && (
+            <div className={dashboardView === 'Finances' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-finances">
+              <Finances />
+            </div>
+          )}
+
+          {/* Earnings */}
+          {visitedViews.has('Earnings') && (
+            <div className={dashboardView === 'Earnings' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-earnings">
+              <Earnings />
+            </div>
+          )}
+
+          {/* Accounts */}
+          {visitedViews.has('Accounts') && (
+            <div className={dashboardView === 'Accounts' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-accounts">
+              <Accounts />
+            </div>
+          )}
+
+          {/* ActivityLogs */}
+          {visitedViews.has('ActivityLogs') && (
+            <div className={dashboardView === 'ActivityLogs' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-activitylogs">
+              <ActivityLogs />
+            </div>
+          )}
+
+          {/* Assets */}
+          {visitedViews.has('Assets') && (
+            <div className={dashboardView === 'Assets' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-assets">
+              <Assets />
+            </div>
+          )}
+
+          {/* Chats */}
+          {visitedViews.has('Chats') && (
+            <div className={dashboardView === 'Chats' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-chats">
+              <Chats />
+            </div>
+          )}
+
+          {/* Users */}
+          {visitedViews.has('Users') && (
+            <div className={dashboardView === 'Users' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-users">
+              <div className={selectedUserId ? 'hidden' : 'block h-full'}>
+                <Users
+                  ref={usersRef}
+                  onUserOpen={setSelectedUserId}
+                  isUserOpen={!!selectedUserId}
+                />
+              </div>
+              {selectedUserId && (
+                <UserDetails
+                  userId={selectedUserId}
+                  onBack={() => setSelectedUserId(null)}
+                  onStatusChange={() => usersRef.current?.refresh()}
+                />
+              )}
+            </div>
+          )}
+
+          {/* Team */}
+          {visitedViews.has('Team') && (
+            <div className={dashboardView === 'Team' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-team">
+              <div className={selectedUserId ? 'hidden' : 'block h-full'}>
+                <Team
+                  onUserOpen={setSelectedUserId}
+                />
+              </div>
+              {selectedUserId && (
+                <UserDetails
+                  userId={selectedUserId}
+                  onBack={() => setSelectedUserId(null)}
+                  onStatusChange={() => {}}
+                />
+              )}
+            </div>
+          )}
+
+          {/* UserDetailsV2 */}
+          {visitedViews.has('UserDetailsV2') && (
+            <div className={dashboardView === 'UserDetailsV2' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-userdetailsv2">
               <UserDetails
-                userId={selectedUserId}
-                onBack={() => setSelectedUserId(null)}
+                userId={selectedUserId || ''}
+                onBack={() => setDashboardView('Users')}
                 onStatusChange={() => usersRef.current?.refresh()}
-                onPreviewV2={() => setDashboardView('UserDetailsV2')}
-              />
-            )}
-          </>
-        );
-        case 'Team': return (
-          <>
-            <div className={selectedUserId ? 'hidden' : 'block h-full'}>
-              <Team
-                onUserOpen={setSelectedUserId}
               />
             </div>
-            {selectedUserId && (
-              <UserDetails
-                userId={selectedUserId}
-                onBack={() => setSelectedUserId(null)}
-                // We don't have a ref for Team yet but it's fine for now
-                onStatusChange={() => {}} 
-                onPreviewV2={() => setDashboardView('UserDetailsV2')}
+          )}
+
+          {/* Workload */}
+          {visitedViews.has('Workload') && (
+            <div className={dashboardView === 'Workload' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-workload">
+              <Workload />
+            </div>
+          )}
+
+          {/* Tickets */}
+          {visitedViews.has('Tickets') && (
+            <div className={dashboardView === 'Tickets' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-tickets">
+              <CapacityTickets />
+            </div>
+          )}
+
+          {/* Channels */}
+          {visitedViews.has('Channels') && (
+            <div className={dashboardView === 'Channels' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-channels">
+              <Channels />
+            </div>
+          )}
+
+          {/* Integrations */}
+          {visitedViews.has('Integrations') && (
+            <div className={dashboardView === 'Integrations' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-integrations">
+              <Integrations />
+            </div>
+          )}
+
+          {/* Settings */}
+          {visitedViews.has('Settings') && (
+            <div className={dashboardView === 'Settings' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-settings">
+              <Settings
+                ref={settingsRef}
+                onBack={() => handleItemSelect('Dashboard')}
+                onDirtyChange={setIsSettingsDirty}
               />
-            )}
-          </>
-        );
-        case 'UserDetailsV2': return (
-          <UserDetailsV2
-            userId={selectedUserId || ''}
-            onBack={() => setDashboardView('Users')}
-            onStatusChange={() => usersRef.current?.refresh()}
-          />
-        );
-        case 'Workload': return <Workload />;
-        case 'Tickets': return <CapacityTickets />;
-        case 'Channels': return <Channels />;
+            </div>
+          )}
 
-        case 'Integrations': return <Integrations />;
-        case 'Settings': return (
-          <Settings
-            ref={settingsRef}
-            onBack={() => handleItemSelect('Dashboard')}
-            onDirtyChange={setIsSettingsDirty}
-          />
-        );
-        case 'Profile': return (
-          <Settings
-            ref={settingsRef}
-            onBack={() => handleItemSelect('Dashboard')}
-            onDirtyChange={setIsSettingsDirty}
-            profileOnly
-          />
-        );
-        case 'Reminders': return <Reminders />;
-        case 'Training': return <Training />;
-        case 'MyNotes': return <MyNotes />;
-        case 'Notifications': return <Notifications />;
-        case 'AlgorithmStudio': return <AlgorithmStudio />;
-        case 'LevelsGuide': return <FreelancerLevelsGuide />;
-        case 'Applicants': return <Applicants />;
-        case 'Guide':
-        case 'GuideVideoIntro':
-        case 'GuideSystemWorks':
-        case 'GuideWorkflowSummary':
-        case 'GuidePaymentOverview':
-            return <Guide />;
-        case 'GuideAddProject': return <GuideAddProject />;
-        case 'GuideRemoveProject': return <GuideRemoveProject />;
-        case 'GuideMarkCancelled': return <GuideMarkCancelled />;
-        case 'GuideMarkApproved': return <GuideMarkApproved />;
-        case 'GuideTriggerDispute': return <GuideTriggerDispute />;
-        case 'GuideTriggerArtHelp': return <GuideTriggerArtHelp />;
-        case 'GuidePostComments': return <GuidePostComments />;
-        case 'GuideSendFiles': return <GuideSendFiles />;
-        case 'TeamSlabs': return <TeamSlabs />;
-        case 'TeamEarnings': return <TeamEarnings />;
-        case 'TeamDesignerEarnings': return <TeamDesignerEarnings />;
+          {/* Profile */}
+          {visitedViews.has('Profile') && (
+            <div className={dashboardView === 'Profile' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-profile">
+              <UserDetails
+                userId={session?.user?.id || ''}
+                isOwnProfile
+              />
+            </div>
+          )}
 
-        default: return <Dashboard />;
-      }
+          {/* Reminders */}
+          {visitedViews.has('Reminders') && (
+            <div className={dashboardView === 'Reminders' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-reminders">
+              <Reminders />
+            </div>
+          )}
+
+          {/* Training */}
+          {visitedViews.has('Training') && (
+            <div className={dashboardView === 'Training' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-training">
+              <Training />
+            </div>
+          )}
+
+          {/* MyNotes */}
+          {visitedViews.has('MyNotes') && (
+            <div className={dashboardView === 'MyNotes' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-mynotes">
+              <MyNotes />
+            </div>
+          )}
+
+          {/* Notifications */}
+          {visitedViews.has('Notifications') && (
+            <div className={dashboardView === 'Notifications' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-notifications">
+              <Notifications />
+            </div>
+          )}
+
+          {/* AlgorithmStudio */}
+          {visitedViews.has('AlgorithmStudio') && (
+            <div className={dashboardView === 'AlgorithmStudio' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-algorithmstudio">
+              <AlgorithmStudio />
+            </div>
+          )}
+
+          {/* LevelsGuide */}
+          {visitedViews.has('LevelsGuide') && (
+            <div className={dashboardView === 'LevelsGuide' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-levelsguide">
+              <FreelancerLevelsGuide />
+            </div>
+          )}
+
+          {/* Applicants */}
+          {visitedViews.has('Applicants') && (
+            <div className={dashboardView === 'Applicants' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-applicants">
+              <Applicants />
+            </div>
+          )}
+
+          {/* TeamSlabs */}
+          {visitedViews.has('TeamSlabs') && (
+            <div className={dashboardView === 'TeamSlabs' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-teamslabs">
+              <TeamSlabs />
+            </div>
+          )}
+
+          {/* TeamEarnings */}
+          {visitedViews.has('TeamEarnings') && (
+            <div className={dashboardView === 'TeamEarnings' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-teamearnings">
+              <TeamEarnings />
+            </div>
+          )}
+
+          {/* TeamDesignerEarnings */}
+          {visitedViews.has('TeamDesignerEarnings') && (
+            <div className={dashboardView === 'TeamDesignerEarnings' ? 'block h-full animate-in fade-in duration-300' : 'hidden'} key="view-teamdesignerearnings">
+              <TeamDesignerEarnings />
+            </div>
+          )}
+        </>
+      );
     } catch (err) {
       console.error("Dashboard content render error:", err);
       return <div className="p-20 text-center"><h2 className="text-white">Something went wrong</h2><p className="text-gray-500">Please try refreshing the page.</p></div>;

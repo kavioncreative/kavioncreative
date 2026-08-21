@@ -5,7 +5,7 @@ import Button from '../components/Button';
 import { Input } from '../components/Input';
 import { supabase } from '../lib/supabase';
 import { addToast } from '../components/Toast';
-import { IconClock, IconZap, IconTrendingUp, IconCalendar, IconTicket, IconPlay, IconList, IconChevronRight, IconAlertTriangle, IconCheckCircle, IconX, IconSend, IconMoreVertical, IconUser, IconDollar, IconXCircle, IconChartBar, IconAward, IconStar } from '../components/Icons';
+import { IconClock, IconZap, IconTrendingUp, IconCalendar, IconTicket, IconPlay, IconList, IconChevronRight, IconAlertTriangle, IconCheckCircle, IconX, IconSend, IconMoreVertical, IconUser, IconDollar, IconXCircle, IconChartBar, IconAward, IconStar, IconBell } from '../components/Icons';
 import { getStatusCapsuleClasses } from '../components/Badge';
 import { formatDeadlineDate, getTimeLeft, formatTime } from '../utils/formatter';
 import { DatePicker, formatDate as systemFormatDate } from '../components/DatePicker';
@@ -185,7 +185,7 @@ const ProjectStatsWidget = memo(({ profile, role }: { profile: any, role: string
                 <div className="flex items-center justify-between w-full">
                     <div className="flex items-center gap-2">
                         <IconZap className="w-4 h-4 text-brand-primary" />
-                        <span className="text-sm font-bold text-brand-primary uppercase tracking-wider">Project Velocity (All-Time)</span>
+                        <span className="text-sm font-bold text-white uppercase tracking-wider">Project Velocity (All-Time)</span>
                     </div>
                     <a href="/projects/all" className="text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-white transition-colors flex items-center gap-1">
                         View All <IconChevronRight className="w-3 h-3" />
@@ -293,22 +293,13 @@ const TaskWidget = memo(({ profile, role, onTaskClick, onMarkComplete }: { profi
         };
     }, [profile?.id, role]);
 
-    const headerRef = useRef<HTMLDivElement>(null);
-    const bodyRef = useRef<HTMLDivElement>(null);
-
-    const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-        if (headerRef.current) {
-            headerRef.current.scrollLeft = e.currentTarget.scrollLeft;
-        }
-    }, []);
-
     return (
         <ElevatedMetallicCard
             title={
                 <div className="flex items-center justify-between w-full">
                     <div className="flex items-center gap-2">
                         <IconList className="w-4 h-4 text-brand-primary" />
-                        <span className="text-sm font-bold text-brand-primary uppercase tracking-wider">Urgent Tasks</span>
+                        <span className="text-sm font-bold text-white uppercase tracking-wider">Urgent Tasks</span>
                     </div>
                     <a href="/tasks/all" className="text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-white transition-colors flex items-center gap-1">
                         View All <IconChevronRight className="w-3 h-3" />
@@ -334,135 +325,121 @@ const TaskWidget = memo(({ profile, role, onTaskClick, onMarkComplete }: { profi
                     </div>
                 </div>
             ) : (
-                <>
-                    {/* Synchronized Header - Only Horizontal Sync */}
-                    <div
-                        ref={headerRef}
-                        className="flex-none overflow-hidden border-b border-surface-border relative z-30"
-                        style={{
-                            backgroundImage: 'radial-gradient(circle at 50% 0%, rgba(255,255,255,0.05) 0%, transparent 70%), linear-gradient(115deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.05) 40%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.05) 60%, rgba(255,255,255,0.02) 100%)',
-                            backgroundSize: '100% 100%',
-                            backgroundColor: '#1A1A1A'
-                        }}
-                    >
-                        <div className="min-w-[1200px]">
-                            <table className="w-full text-left border-collapse table-fixed">
-                                <thead>
-                                    <tr>
-                                        <th className="px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white w-20 whitespace-nowrap text-center">S. NO.</th>
-                                        <th className="px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white text-left">TASK</th>
-                                        <th className="px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white w-32 whitespace-nowrap text-center">CREATED BY</th>
-                                        <th className="px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white w-32 whitespace-nowrap text-center">ASSIGNEE</th>
-                                        <th className="px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white w-32 whitespace-nowrap text-center">STATUS</th>
-                                        <th className="px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white w-40 whitespace-nowrap text-center">DEADLINE</th>
-                                        <th className="px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white w-40 whitespace-nowrap text-center">TIME LEFT</th>
-                                        <th className="px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white w-28 whitespace-nowrap text-center">ACTIONS</th>
-                                    </tr>
-                                </thead>
-                            </table>
-                        </div>
-                    </div>
+                <div
+                    className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent hover:scrollbar-thumb-white/30 transition-colors min-h-0 relative overscroll-behavior-contain"
+                >
+                    <div className="min-w-[1200px] h-full">
+                        <table className="w-full text-left border-collapse table-fixed">
+                            <thead
+                                className="sticky top-0 z-30 border-b border-surface-border relative"
+                                style={{
+                                    backgroundImage: 'radial-gradient(circle at 50% 0%, rgba(255,255,255,0.05) 0%, transparent 70%), linear-gradient(115deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.05) 40%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.05) 60%, rgba(255,255,255,0.02) 100%)',
+                                    backgroundSize: '100% 100%',
+                                    backgroundColor: '#1A1A1A'
+                                }}
+                            >
+                                <tr>
+                                    <th className="px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white w-20 whitespace-nowrap text-center">S. NO.</th>
+                                    <th className="px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white text-left">TASK</th>
+                                    <th className="px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white w-32 whitespace-nowrap text-center">CREATED BY</th>
+                                    <th className="px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white w-32 whitespace-nowrap text-center">ASSIGNEE</th>
+                                    <th className="px-2 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white w-40 whitespace-nowrap text-center">STATUS</th>
+                                    <th className="px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white w-40 whitespace-nowrap text-center">DEADLINE</th>
+                                    <th className="px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white w-40 whitespace-nowrap text-center">TIME LEFT</th>
+                                    <th className="px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white w-28 whitespace-nowrap text-center">ACTIONS</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-surface-border/40">
+                                {tasks.map((task, index) => {
+                                    const deadlineStr = task.deadline_date ? `${task.deadline_date}T${task.deadline_time || '00:00:00'}` : null;
+                                    const timeLeft = getTimeLeft(deadlineStr, task.status);
 
-                    {/* Scrollable Body - Vertical Scrollbar starts HERE */}
-                    <div
-                        ref={bodyRef}
-                        onScroll={handleScroll}
-                        className="flex-1 overflow-y-auto overflow-x-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent hover:scrollbar-thumb-white/30 transition-colors min-h-0 relative overscroll-behavior-contain"
-                    >
-                        <div className="min-w-[1200px]">
-                            <table className="w-full text-left border-collapse table-fixed">
-                                <tbody className="divide-y divide-surface-border/40">
-                                    {tasks.map((task, index) => {
-                                        const deadlineStr = task.deadline_date ? `${task.deadline_date}T${task.deadline_time || '00:00:00'}` : null;
-                                        const timeLeft = getTimeLeft(deadlineStr, task.status);
-
-                                        return (
-                                            <tr
-                                                key={task.id}
-                                                className="hover:bg-white/[0.06] transition-all group cursor-pointer border-b border-surface-border/40"
-                                                style={{ height: '48px' }}
-                                                onClick={() => onTaskClick(task)}
-                                            >
-                                                <td className="px-3.5 py-1.5 text-xs font-bold text-gray-500 w-20 text-center">
-                                                    {index + 1}
-                                                </td>
-                                                <td className="px-3.5 py-1.5 bg-white/[0.02] text-left">
-                                                    <p className="text-xs font-bold text-white truncate max-w-full group-hover:text-brand-primary transition-colors text-left">
-                                                        {task.task}
-                                                    </p>
-                                                </td>
-                                                <td className="px-3.5 py-1.5 text-xs text-gray-400 w-32 text-center whitespace-nowrap overflow-hidden text-ellipsis">
-                                                    {task.creator_profile?.name || 'System'}
-                                                </td>
-                                                <td className="px-3.5 py-1.5 text-xs text-gray-400 bg-white/[0.02] w-32 text-center whitespace-nowrap overflow-hidden text-ellipsis">
-                                                    {task.assignee_profile?.name || 'Unassigned'}
-                                                </td>
-                                                <td className="px-3.5 py-1.5 text-center w-32">
-                                                    <span className={`${getStatusCapsuleClasses(task.status)} whitespace-nowrap text-[10px]`}>
-                                                        {task.status}
-                                                    </span>
-                                                </td>
-                                                <td className="px-3.5 py-1.5 bg-white/[0.02] w-40 text-center">
-                                                    <div className="flex flex-col items-center whitespace-nowrap">
-                                                        <span className="text-xs text-white font-bold">{formatDeadlineDate(task.deadline_date)}</span>
-                                                        <span className="text-[9px] text-brand-primary font-black uppercase tracking-widest">
-                                                            {task.deadline_time ? formatTime(task.deadline_time) : '12:00 AM'}
-                                                        </span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-3.5 py-1.5 text-center w-40">
-                                                    <span className={`text-xs font-bold uppercase tracking-wider ${timeLeft.color} whitespace-nowrap`}>
-                                                        {timeLeft.label || (task.status === 'Completed' ? 'Completed' : '')}
-                                                    </span>
-                                                </td>
-                                                <td className="px-3.5 py-1.5 text-center bg-white/[0.02] w-28">
-                                                    <div className="flex justify-center gap-2 pr-2">
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                onMarkComplete(task.id);
-                                                            }}
-                                                            className="p-1 hover:bg-brand-success/10 rounded-lg text-gray-700 hover:text-brand-success transition-all group/btn"
-                                                            title="Mark as Complete"
-                                                        >
-                                                            <IconCheckCircle className="w-4 h-4 transition-transform duration-200 group-hover/btn:scale-110" />
-                                                        </button>
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                onTaskClick(task);
-                                                            }}
-                                                            className="p-1 hover:bg-white/5 rounded-lg text-gray-700 hover:text-white transition-all group/btn"
-                                                            title="View Details"
-                                                        >
-                                                            <IconChevronRight className="w-4 h-4 transition-transform duration-200 group-hover/btn:translate-x-0.5" />
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                    {tasks.length > 0 && tasks.length < 5 && Array.from({ length: 5 - tasks.length }).map((_, i) => (
+                                    return (
                                         <tr
-                                            key={`empty-${i}`}
-                                            className="border-b border-surface-border/20 opacity-[0.12] pointer-events-none"
+                                            key={task.id}
+                                            className="hover:bg-white/[0.06] transition-all group cursor-pointer border-b border-surface-border/40"
                                             style={{ height: '48px' }}
+                                            onClick={() => onTaskClick(task)}
                                         >
-                                            <td className="px-3.5 py-1.5 text-center text-xs font-bold text-gray-700 w-20">-</td>
-                                            <td className="px-3.5 py-1.5 text-left text-xs text-gray-600">-</td>
-                                            <td className="px-3.5 py-1.5 text-center text-xs text-gray-600 w-32">-</td>
-                                            <td className="px-3.5 py-1.5 text-center text-xs text-gray-600 w-32">-</td>
-                                            <td className="px-3.5 py-1.5 text-center w-32">-</td>
-                                            <td className="px-3.5 py-1.5 text-center w-40">-</td>
-                                            <td className="px-3.5 py-1.5 text-center w-40">-</td>
-                                            <td className="px-3.5 py-1.5 text-center w-28">-</td>
+                                            <td className="px-3.5 py-1.5 text-xs font-bold text-gray-500 w-20 text-center">
+                                                {index + 1}
+                                            </td>
+                                            <td className="px-3.5 py-1.5 bg-white/[0.02] text-left">
+                                                <p className="text-xs font-bold text-white truncate max-w-full group-hover:text-brand-primary transition-colors text-left">
+                                                    {task.task}
+                                                </p>
+                                            </td>
+                                            <td className="px-3.5 py-1.5 text-xs text-gray-400 w-32 text-center whitespace-nowrap overflow-hidden text-ellipsis">
+                                                {task.creator_profile?.name || 'System'}
+                                            </td>
+                                            <td className="px-3.5 py-1.5 text-xs text-gray-400 bg-white/[0.02] w-32 text-center whitespace-nowrap overflow-hidden text-ellipsis">
+                                                {task.assignee_profile?.name || 'Unassigned'}
+                                            </td>
+                                            <td className="px-2 py-1.5 text-center w-40">
+                                                <span className={`${getStatusCapsuleClasses(task.status)} whitespace-nowrap text-[10px]`}>
+                                                    {task.status}
+                                                </span>
+                                            </td>
+                                            <td className="px-3.5 py-1.5 bg-white/[0.02] w-40 text-center">
+                                                <div className="flex flex-col items-center whitespace-nowrap">
+                                                    <span className="text-xs text-white font-bold">{formatDeadlineDate(task.deadline_date)}</span>
+                                                    <span className="text-[9px] text-brand-primary font-black uppercase tracking-widest">
+                                                        {task.deadline_time ? formatTime(task.deadline_time) : '12:00 AM'}
+                                                    </span>
+                                                </div>
+                                            </td>
+                                            <td className="px-3.5 py-1.5 text-center w-40">
+                                                <span className={`text-xs font-bold uppercase tracking-wider ${timeLeft.color} whitespace-nowrap`}>
+                                                    {timeLeft.label || (task.status === 'Completed' ? 'Completed' : '')}
+                                                </span>
+                                            </td>
+                                            <td className="px-3.5 py-1.5 text-center bg-white/[0.02] w-28">
+                                                <div className="flex justify-center gap-2 pr-2">
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            onMarkComplete(task.id);
+                                                        }}
+                                                        className="p-1 hover:bg-brand-success/10 rounded-lg text-gray-700 hover:text-brand-success transition-all group/btn"
+                                                        title="Mark as Complete"
+                                                    >
+                                                        <IconCheckCircle className="w-4 h-4 transition-transform duration-200 group-hover/btn:scale-110" />
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            onTaskClick(task);
+                                                        }}
+                                                        className="p-1 hover:bg-white/5 rounded-lg text-gray-700 hover:text-white transition-all group/btn"
+                                                        title="View Details"
+                                                    >
+                                                        <IconChevronRight className="w-4 h-4 transition-transform duration-200 group-hover/btn:translate-x-0.5" />
+                                                    </button>
+                                                </div>
+                                            </td>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
+                                    );
+                                })}
+                                {tasks.length > 0 && tasks.length < 5 && Array.from({ length: 5 - tasks.length }).map((_, i) => (
+                                    <tr
+                                        key={`empty-${i}`}
+                                        className="border-b border-surface-border/20 opacity-[0.12] pointer-events-none"
+                                        style={{ height: '48px' }}
+                                    >
+                                        <td className="px-3.5 py-1.5 text-center text-xs font-bold text-gray-700 w-20">-</td>
+                                        <td className="px-3.5 py-1.5 text-left text-xs text-gray-600">-</td>
+                                        <td className="px-3.5 py-1.5 text-center text-xs text-gray-600 w-32">-</td>
+                                        <td className="px-3.5 py-1.5 text-center text-xs text-gray-600 w-32">-</td>
+                                        <td className="px-2 py-1.5 text-center w-40">-</td>
+                                        <td className="px-3.5 py-1.5 text-center w-40">-</td>
+                                        <td className="px-3.5 py-1.5 text-center w-40">-</td>
+                                        <td className="px-3.5 py-1.5 text-center w-28">-</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
-                </>
+                </div>
             )}
         </ElevatedMetallicCard>
     );
@@ -631,13 +608,16 @@ const EarningsBreakdownWidget = memo(({ profile, role }: { profile: any, role: s
         }
     };
 
+    const isFirstLoad = useRef(true);
+
     useEffect(() => {
         if (!role || !profile?.id || accountsLoading) return;
 
         const loadInitialData = async () => {
             const loadedCommissions = await fetchPlatformCommissions();
             const loadedSlabs = await fetchPricingSlabs();
-            await fetchProjects(true, loadedCommissions, accounts, loadedSlabs);
+            await fetchProjects(isFirstLoad.current, loadedCommissions, accounts, loadedSlabs);
+            isFirstLoad.current = false;
         };
         loadInitialData();
 
@@ -1232,7 +1212,7 @@ const LeaderboardWidget = memo(() => {
             title={
                 <div className="flex items-center gap-2">
                     <IconAward className="w-4 h-4 text-brand-primary" />
-                    <span className="text-sm font-bold text-brand-primary uppercase tracking-wider">On-Time Delivery Leaderboard</span>
+                    <span className="text-sm font-bold text-white uppercase tracking-wider">On-Time Delivery Leaderboard</span>
                 </div>
             }
             bodyClassName="p-0 flex flex-col overflow-hidden"
@@ -1362,6 +1342,30 @@ const Dashboard: React.FC = () => {
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
     const [loadingTasks, setLoadingTasks] = useState(false);
 
+    // Penalties alerts states
+    const [myPenalties, setMyPenalties] = useState<any[]>([]);
+    const [loadingPenalties, setLoadingPenalties] = useState(false);
+
+    const fetchMyPenalties = async () => {
+        if (!profile?.id) return;
+        setLoadingPenalties(true);
+        try {
+            const { data, error } = await supabase
+                .from('user_penalties')
+                .select('*')
+                .eq('user_id', profile.id)
+                .eq('status', 'Valid')
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+            setMyPenalties(data || []);
+        } catch (err) {
+            console.error('Error fetching my penalties:', err);
+        } finally {
+            setLoadingPenalties(false);
+        }
+    };
+
     // OTD Scorecard states for delivery roles
     const [otdScore, setOtdScore] = useState<number | null>(null);
     const [totalDeliveries, setTotalDeliveries] = useState(0);
@@ -1408,7 +1412,8 @@ const Dashboard: React.FC = () => {
             setTotalDeliveries(total);
             setLateCount(late);
             setTimelyCount(timely);
-            setOtdScore(total > 0 ? Math.round((timely / total) * 100) : 100);
+            // Score only unlocks after 5 deliveries — calculated silently until then
+            setOtdScore(total >= 5 ? Math.round((timely / total) * 100) : null);
         } catch (err) {
             console.error('Error fetching OTD stats:', err);
         } finally {
@@ -1434,6 +1439,33 @@ const Dashboard: React.FC = () => {
             supabase.removeChannel(channel);
         };
     }, [profile?.id, effectiveRole]);
+
+    useEffect(() => {
+        if (!profile?.id) return;
+        
+        fetchMyPenalties();
+
+        // Realtime subscription for penalties
+        const penaltyChannel = supabase
+            .channel(`my_penalties_realtime_${profile.id}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'user_penalties',
+                    filter: `user_id=eq.${profile.id}`
+                },
+                () => {
+                    fetchMyPenalties();
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(penaltyChannel);
+        };
+    }, [profile?.id]);
 
     const fetchInitialTicket = async () => {
         const roleLower = effectiveRole?.toLowerCase().trim();
@@ -1468,9 +1500,8 @@ const Dashboard: React.FC = () => {
     }, [profile?.id, effectiveRole, profile?.daily_capacity]);
 
     useEffect(() => {
-        const roleLower = effectiveRole?.toLowerCase().trim();
-        // Popup for TLs and independent Freelancers ONLY. Team Designers are managed by TLs.
-        const shouldShowCapacityPopup = (roleLower === 'freelancer' || roleLower === 'team lead') && !roleLower.includes('team designer');
+        // Disabled since capacity widget is removed for freelancers and team leads
+        const shouldShowCapacityPopup = false;
 
         if (shouldShowCapacityPopup && profile && profile.daily_capacity === null) {
             setIsModalOpen(true);
@@ -1621,16 +1652,104 @@ const Dashboard: React.FC = () => {
         setIsPreviewOpen(true);
     }, []);
 
-
+    const roleLower = effectiveRole?.toLowerCase().trim() || '';
+    const isEarningVisible = ['super admin', 'admin', 'finance manager'].includes(roleLower);
+    const isDeliveryRole = ['freelancer', 'team lead', 'team designer', 'presentation designer'].includes(roleLower);
+    const showTasks = !['freelancer', 'team lead', 'team designer'].includes(roleLower);
 
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 fill-mode-both">
+            {/* Earnings Breakdown Widget (At the absolute top for Super Admin, Admin, and Finance Manager) */}
+            {profile?.id && isEarningVisible && (
+                <EarningsBreakdownWidget profile={profile} role={effectiveRole} />
+            )}
+
+            {/* Staff Bulletin & Alerts for Delivery Roles (Rendered at the top) */}
+            {isDeliveryRole && (
+                <div className="animate-in fade-in duration-500">
+                    <ElevatedMetallicCard
+                        title={
+                            <div className="flex items-center justify-between w-full">
+                                <div className="flex items-center gap-2">
+                                    <IconBell className="w-4 h-4 text-brand-primary" />
+                                    <span className="text-sm font-bold text-white uppercase tracking-wider">Staff Bulletin & Alerts</span>
+                                </div>
+                                {!loadingPenalties && myPenalties.length > 0 && (
+                                    <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-brand-error/15 text-brand-error border border-brand-error/30 animate-pulse">
+                                        {myPenalties.length} Active Alert{myPenalties.length > 1 ? 's' : ''}
+                                    </span>
+                                )}
+                            </div>
+                        }
+                        bodyClassName="p-5"
+                    >
+                        {loadingPenalties ? (
+                            <div className="py-8 flex justify-center">
+                                <div className="w-6 h-6 border-2 border-brand-primary/20 border-t-brand-primary rounded-full animate-spin" />
+                            </div>
+                        ) : myPenalties.length > 0 ? (
+                            <div className="max-h-[220px] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent pr-2 space-y-3">
+                                {myPenalties.map((penalty) => (
+                                    <div key={penalty.id} className="relative overflow-hidden rounded-xl border border-white/[0.05] bg-white/[0.02] hover:bg-white/[0.04] transition-all p-4 pl-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                                        {/* Accent Strip on Left */}
+                                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-brand-error shadow-[0_0_8px_rgba(239,68,68,0.4)]" />
+                                        
+                                        <div className="flex items-start gap-3">
+                                            <div className="shrink-0 w-8 h-8 rounded-lg bg-brand-error/10 border border-brand-error/20 flex items-center justify-center text-brand-error mt-0.5">
+                                                <IconAlertTriangle size={16} />
+                                            </div>
+                                            <div className="space-y-0.5">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[9px] font-black text-brand-error uppercase tracking-wider">Disciplinary Penalty</span>
+                                                    <span className="text-gray-600 font-mono text-[9px]">•</span>
+                                                    <span className="text-gray-500 text-[9px] font-bold">
+                                                        Issued on: {new Date(penalty.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                    </span>
+                                                </div>
+                                                <h4 className="text-sm font-bold text-white leading-snug">{penalty.reason}</h4>
+                                                {penalty.details && (
+                                                    <p className="text-xs text-gray-400 font-medium leading-relaxed max-w-[90%]">{penalty.details}</p>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="shrink-0 self-stretch sm:self-auto flex items-center justify-end">
+                                            <span className="px-2.5 py-1 rounded-lg bg-brand-error/15 border border-brand-error/30 text-brand-error text-[9px] font-black tracking-wider uppercase whitespace-nowrap animate-pulse">
+                                                Bonus Blocked
+                                            </span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center text-center p-6 text-gray-500">
+                                <div className="w-10 h-10 rounded-full bg-white/[0.02] border border-white/5 flex items-center justify-center mb-3">
+                                    <IconBell size={18} className="text-gray-600" />
+                                </div>
+                                <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Notice Board Empty</p>
+                                <p className="text-[10px] text-gray-600 mt-1 max-w-[80%]">No active alerts, penalties, or announcements at this time.</p>
+                            </div>
+                        )}
+                    </ElevatedMetallicCard>
+                </div>
+            )}
+
+            {/* Urgent Tasks (TaskWidget) - Hide for freelancer, team lead, and team designer */}
+            {profile?.id && showTasks && (
+                <TaskWidget
+                    profile={profile}
+                    role={effectiveRole}
+                    onTaskClick={handleTaskClick}
+                    onMarkComplete={handleMarkComplete}
+                />
+            )}
+
             {/* Delivery Performance and Capacity Section */}
-            {['freelancer', 'team lead', 'team designer', 'presentation designer'].includes(effectiveRole?.toLowerCase().trim() || '') && (
+            {isDeliveryRole && (
                 <div className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {/* Capacity Management - Only for Freelancer, Team Lead, and Team Designer */}
-                    {['freelancer', 'team lead', 'team designer'].includes(effectiveRole?.toLowerCase().trim() || '') && (
+                    {/* Capacity Management - Only for Team Designer */}
+                    {roleLower === 'team designer' && (
                         <div className="lg:col-span-1">
                             <ElevatedMetallicCard
                                 title={
@@ -1697,140 +1816,159 @@ const Dashboard: React.FC = () => {
                     )}
 
                     {/* My On-Time Delivery Performance Scorecard */}
-                    <div className={['freelancer', 'team lead', 'team designer'].includes(effectiveRole?.toLowerCase().trim() || '') ? 'lg:col-span-2' : 'lg:col-span-3'}>
+                    <div className={roleLower === 'team designer' ? 'lg:col-span-2' : 'lg:col-span-3'}>
                         <ElevatedMetallicCard
                             title={
                                 <div className="flex items-center gap-2">
                                     <IconAward className="w-4 h-4 text-brand-primary" />
-                                    <span className="text-sm font-bold text-brand-primary uppercase tracking-wider">My On-Time Delivery Scorecard</span>
+                                    <span className="text-sm font-bold text-white uppercase tracking-wider">My On-Time Delivery Scorecard</span>
                                 </div>
                             }
                             className="h-full animate-in fade-in duration-500"
-                            bodyClassName="p-6 h-full flex flex-col justify-between"
+                            bodyClassName="p-0 h-full"
                         >
                             {isOtdLoading ? (
-                                <div className="h-full flex items-center justify-center py-8">
+                                <div className="h-full flex items-center justify-center py-12">
                                     <div className="w-6 h-6 border-2 border-brand-primary/20 border-t-brand-primary rounded-full animate-spin" />
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch h-full">
-                                    {/* Left Column: Circular OTD Indicator */}
-                                    <div className="flex flex-col items-center justify-center p-6 bg-black/40 border border-white/5 rounded-2xl shadow-[inset_0_2px_8px_rgba(0,0,0,0.5)] relative overflow-hidden group h-full min-h-[170px]">
-                                        {/* Active Backdrop Glow Overlay */}
-                                        <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-28 h-28 rounded-full blur-[30px] opacity-15 pointer-events-none transition-all duration-700 ${otdScore === null ? 'bg-transparent' : otdScore >= 90 ? 'bg-emerald-500' : otdScore >= 75 ? 'bg-amber-500' : 'bg-red-500'
-                                            }`} />
+                                <div className="flex flex-col sm:flex-row items-stretch w-full gap-0">
 
-                                        <div className="relative w-24 h-24 flex items-center justify-center z-10">
-                                            <svg className="w-full h-full transform -rotate-90">
-                                                <circle
-                                                    cx="48"
-                                                    cy="48"
-                                                    r="40"
-                                                    className="stroke-white/[0.04]"
-                                                    strokeWidth="6"
-                                                    fill="transparent"
-                                                />
-                                                <circle
-                                                    cx="48"
-                                                    cy="48"
-                                                    r="40"
-                                                    className={`transition-all duration-1000 ease-out ${otdScore === null ? 'stroke-transparent' : otdScore >= 90 ? 'stroke-brand-success' : otdScore >= 75 ? 'stroke-brand-warning' : 'stroke-brand-error'
-                                                        }`}
-                                                    strokeWidth="6"
-                                                    fill="transparent"
-                                                    strokeDasharray={2 * Math.PI * 40}
-                                                    strokeDashoffset={2 * Math.PI * 40 * (1 - (otdScore || 100) / 100)}
-                                                    strokeLinecap="round"
-                                                />
-                                            </svg>
-                                            <div className="absolute flex flex-col items-center justify-center z-20">
-                                                <span className="text-base font-black text-white tracking-tight">{otdScore}%</span>
-                                                <span className="text-[6.5px] font-bold text-gray-500 uppercase tracking-widest mt-0.5">OTD SCORE</span>
-                                            </div>
-                                        </div>
+                                    {/* Left Panel: Circular Score */}
+                                    <div className="relative flex flex-col items-center justify-center p-6 sm:p-8 sm:border-r border-white/[0.06] w-full sm:w-[200px] shrink-0 overflow-hidden rounded-xl">
+                                        <div className={`absolute inset-0 opacity-[0.06] pointer-events-none ${otdScore === null ? '' : otdScore >= 90 ? 'bg-emerald-500' : otdScore >= 75 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ filter: 'blur(40px)' }} />
 
-                                        <div className="text-center w-full z-10 mt-3">
-                                            <div className="flex justify-center mb-1">
-                                                {totalDeliveries === 0 ? (
-                                                    <span className="px-2.5 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-wider bg-white/5 text-gray-400 border border-white/10 shadow-inner">
-                                                        New Deliverer
-                                                    </span>
-                                                ) : otdScore === 100 && totalDeliveries >= 5 ? (
-                                                    <span className="px-2.5 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-wider bg-brand-success/15 text-brand-success border border-brand-success/30 shadow-[0_0_10px_rgba(34,197,94,0.2)]">
-                                                        Flawless
-                                                    </span>
-                                                ) : otdScore >= 90 ? (
-                                                    <span className="px-2.5 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-wider bg-brand-success/10 text-brand-success border border-brand-success/20">
-                                                        Reliable
-                                                    </span>
-                                                ) : otdScore >= 75 ? (
-                                                    <span className="px-2.5 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-wider bg-brand-warning/10 text-brand-warning border border-brand-warning/20">
-                                                        Satisfactory
-                                                    </span>
-                                                ) : (
-                                                    <span className="px-2.5 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-wider bg-brand-error/15 text-brand-error border border-brand-error/30 animate-pulse flex items-center gap-0.5 justify-center">
-                                                        <IconAlertTriangle size={8} className="stroke-[3px]" />
-                                                        Late Deliverer
-                                                    </span>
-                                                )}
+                                        {totalDeliveries < 5 ? (
+                                            /* LOCKED STATE — under 5 deliveries */
+                                            <div className="flex flex-col items-center gap-3 z-10 relative">
+                                                <div className="w-20 h-20 rounded-full bg-white/[0.03] border border-white/[0.08] flex items-center justify-center">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                                                    </svg>
+                                                </div>
+                                                <div className="text-center">
+                                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-tight">
+                                                        {totalDeliveries}/5
+                                                    </p>
+                                                    <p className="text-[8px] text-gray-600 font-bold uppercase tracking-widest mt-0.5">Deliveries</p>
+                                                </div>
+                                                {/* Mini progress dots */}
+                                                <div className="flex gap-1.5">
+                                                    {[0,1,2,3,4].map(i => (
+                                                        <div key={i} className={`w-2 h-2 rounded-full ${
+                                                            i < totalDeliveries ? 'bg-brand-primary' : 'bg-white/10'
+                                                        }`} />
+                                                    ))}
+                                                </div>
                                             </div>
-                                            <p className="text-[8px] text-gray-500 font-bold uppercase tracking-wider">
-                                                Last 30 Rolling Days
-                                            </p>
-                                        </div>
+                                        ) : (
+                                            /* UNLOCKED STATE — 5+ deliveries */
+                                            <>
+                                                <div className="relative w-28 h-28 flex items-center justify-center">
+                                                    <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                                                        <circle cx="50" cy="50" r="42" className="stroke-white/[0.05]" strokeWidth="7" fill="transparent" />
+                                                        <circle
+                                                            cx="50" cy="50" r="42"
+                                                            className={`transition-all duration-1000 ease-out ${otdScore >= 90 ? 'stroke-brand-success' : otdScore >= 75 ? 'stroke-brand-warning' : 'stroke-brand-error'}`}
+                                                            strokeWidth="7" fill="transparent"
+                                                            strokeDasharray={2 * Math.PI * 42}
+                                                            strokeDashoffset={2 * Math.PI * 42 * (1 - (otdScore || 0) / 100)}
+                                                            strokeLinecap="round"
+                                                        />
+                                                    </svg>
+                                                    <div className="absolute flex flex-col items-center justify-center">
+                                                        <span className="text-xl font-black text-white tracking-tight leading-none">{otdScore}%</span>
+                                                        <span className="text-[7px] font-bold text-gray-500 uppercase tracking-widest mt-1">OTD Score</span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="mt-4 flex flex-col items-center gap-1.5 z-10 relative">
+                                                    {otdScore === 100 && totalDeliveries >= 5 ? (
+                                                        <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-brand-success/15 text-brand-success border border-brand-success/30">✦ Flawless</span>
+                                                    ) : otdScore >= 90 ? (
+                                                        <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-brand-success/10 text-brand-success border border-brand-success/20">Reliable</span>
+                                                    ) : otdScore >= 75 ? (
+                                                        <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-brand-warning/10 text-brand-warning border border-brand-warning/20">Satisfactory</span>
+                                                    ) : (
+                                                        <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-brand-error/15 text-brand-error border border-brand-error/30">⚠ At Risk</span>
+                                                    )}
+                                                    <p className="text-[8px] text-gray-600 font-bold uppercase tracking-widest">Last 30 Rolling Days</p>
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
 
-                                    {/* Right Column: Rating Details & Stats Grid */}
-                                    <div className="lg:col-span-2 flex flex-col justify-between h-full py-1">
-                                        <div className="space-y-1">
-                                            <h3 className="text-sm font-black text-white tracking-tight">On-Time Performance</h3>
+                                    {/* Right Panel: Stats */}
+                                    <div className="flex-1 flex flex-col justify-between p-6 sm:p-8 min-w-0">
+                                        <div>
+                                            <h3 className="text-sm font-black text-white tracking-tight mb-1">On-Time Performance</h3>
                                             <p className="text-[11px] text-gray-400 leading-relaxed">
                                                 Your delivery rating is calculated over a rolling 30-day window. Staying above 90% OTD maintains high eligibility for priority project allocations.
                                             </p>
                                         </div>
 
-                                        <div className="grid grid-cols-3 gap-3 mt-4">
-                                            {/* Total Deliveries Card */}
-                                            <div className="bg-white/[0.02] border border-white/5 p-4 rounded-xl flex flex-col justify-between hover:border-white/10 hover:bg-white/[0.03] transition-all group relative overflow-hidden min-h-[90px]">
-                                                <div className="absolute top-2 right-2 text-gray-500/20 group-hover:text-gray-500/40 transition-colors">
-                                                    <IconZap size={14} />
+                                        {/* Progress Bar — only when score unlocked */}
+                                        {otdScore !== null ? (
+                                        <div className="my-5">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">OTD Progress</span>
+                                                <span className={`text-[9px] font-black uppercase tracking-wider ${(otdScore || 0) >= 90 ? 'text-brand-success' : (otdScore || 0) >= 75 ? 'text-brand-warning' : 'text-brand-error'}`}>{otdScore}%</span>
+                                            </div>
+                                            <div className="h-1.5 w-full bg-white/[0.05] rounded-full overflow-hidden">
+                                                <div
+                                                    className={`h-full rounded-full transition-all duration-1000 ease-out ${ (otdScore || 0) >= 90 ? 'bg-brand-success shadow-[0_0_8px_rgba(34,197,94,0.5)]' : (otdScore || 0) >= 75 ? 'bg-brand-warning shadow-[0_0_8px_rgba(245,158,11,0.5)]' : 'bg-brand-error shadow-[0_0_8px_rgba(239,68,68,0.5)]'}`}
+                                                    style={{ width: `${otdScore || 0}%` }}
+                                                />
+                                            </div>
+                                            <div className="relative mt-1 h-4">
+                                                <div className="absolute flex flex-col items-center" style={{ left: '75%', transform: 'translateX(-50%)' }}>
+                                                    <div className="w-px h-1.5 bg-white/20" />
+                                                    <span className="text-[7px] text-gray-600 font-bold">75%</span>
                                                 </div>
-                                                <span className="text-[8px] font-bold text-gray-500 uppercase tracking-wider">Total</span>
-                                                <div className="flex items-baseline gap-1 mt-2">
-                                                    <span className="text-2xl font-black text-white tracking-tight group-hover:scale-105 transition-transform origin-left duration-300">{totalDeliveries}</span>
-                                                    <span className="text-[8px] text-gray-600 font-bold uppercase">Tasks</span>
+                                                <div className="absolute flex flex-col items-center" style={{ left: '90%', transform: 'translateX(-50%)' }}>
+                                                    <div className="w-px h-1.5 bg-white/20" />
+                                                    <span className="text-[7px] text-gray-600 font-bold">90%</span>
                                                 </div>
                                             </div>
+                                        </div>
+                                        ) : (
+                                        /* Locked progress bar placeholder */
+                                        <div className="my-5 p-3.5 rounded-xl border border-white/[0.05] bg-white/[0.02] flex items-center gap-3">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-gray-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                                            </svg>
+                                            <p className="text-[10px] text-gray-500 leading-snug">
+                                                Complete <span className="text-white font-black">5 deliveries</span> to unlock your OTD score
+                                            </p>
+                                        </div>
+                                        )}
 
-                                            {/* On-Time / Early Card */}
-                                            <div className="bg-brand-success/[0.02] border border-brand-success/5 p-4 rounded-xl flex flex-col justify-between hover:border-brand-success/15 hover:bg-brand-success/[0.04] transition-all group relative overflow-hidden min-h-[90px]">
-                                                <div className="absolute top-2 right-2 text-brand-success/20 group-hover:text-brand-success/40 transition-colors">
-                                                    <IconCheckCircle size={14} />
-                                                </div>
-                                                <span className="text-[8px] font-bold text-brand-success/70 uppercase tracking-wider">On-Time</span>
-                                                <div className="flex items-baseline gap-1 mt-2">
-                                                    <span className="text-2xl font-black text-brand-success tracking-tight group-hover:scale-105 transition-transform origin-left duration-300">{timelyCount}</span>
-                                                    <span className="text-[8px] text-brand-success/50 font-bold uppercase">Timely</span>
+                                        {/* Stats Row */}
+                                        <div className="grid grid-cols-3 gap-3">
+                                            <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-3.5 flex flex-col gap-1 hover:bg-white/[0.04] hover:border-white/10 transition-all">
+                                                <span className="text-[8px] font-bold text-gray-500 uppercase tracking-widest">Total</span>
+                                                <div className="flex items-baseline gap-1">
+                                                    <span className="text-xl font-black text-white leading-none">{totalDeliveries}</span>
+                                                    <span className="text-[8px] text-gray-600 font-bold">tasks</span>
                                                 </div>
                                             </div>
-
-                                            {/* Late Deliveries Card */}
-                                            <div className={`border p-4 rounded-xl flex flex-col justify-between transition-all group relative overflow-hidden min-h-[90px] ${lateCount > 0
-                                                ? 'bg-brand-error/[0.02] border-brand-error/15 hover:border-brand-error/30 hover:bg-brand-error/[0.04]'
-                                                : 'bg-white/[0.02] border-white/5 hover:border-white/10 hover:bg-white/[0.03]'
-                                                }`}>
-                                                <div className={`absolute top-2 right-2 transition-colors ${lateCount > 0 ? 'text-brand-error/30 group-hover:text-brand-error/50' : 'text-gray-500/20 group-hover:text-gray-500/40'
-                                                    }`}>
-                                                    <IconAlertTriangle size={14} />
+                                            <div className="bg-brand-success/[0.03] border border-brand-success/[0.08] rounded-xl p-3.5 flex flex-col gap-1 hover:bg-brand-success/[0.06] hover:border-brand-success/20 transition-all">
+                                                <span className="text-[8px] font-bold text-brand-success/60 uppercase tracking-widest">On-Time</span>
+                                                <div className="flex items-baseline gap-1">
+                                                    <span className="text-xl font-black text-brand-success leading-none">{timelyCount}</span>
+                                                    <span className="text-[8px] text-brand-success/40 font-bold">timely</span>
                                                 </div>
-                                                <span className={`text-[8px] font-bold uppercase tracking-wider ${lateCount > 0 ? 'text-brand-error/80' : 'text-gray-500'}`}>Late</span>
-                                                <div className="flex items-baseline gap-1 mt-2">
-                                                    <span className={`text-2xl font-black tracking-tight group-hover:scale-105 transition-transform origin-left duration-300 ${lateCount > 0 ? 'text-brand-error' : 'text-gray-500'}`}>{lateCount}</span>
-                                                    <span className={`text-[8px] font-bold uppercase ${lateCount > 0 ? 'text-brand-error/50' : 'text-gray-500'}`}>Delay</span>
+                                            </div>
+                                            <div className={`rounded-xl p-3.5 flex flex-col gap-1 transition-all border ${lateCount > 0 ? 'bg-brand-error/[0.03] border-brand-error/[0.12] hover:bg-brand-error/[0.06] hover:border-brand-error/25' : 'bg-white/[0.02] border-white/[0.06] hover:bg-white/[0.04] hover:border-white/10'}`}>
+                                                <span className={`text-[8px] font-bold uppercase tracking-widest ${lateCount > 0 ? 'text-brand-error/60' : 'text-gray-500'}`}>Late</span>
+                                                <div className="flex items-baseline gap-1">
+                                                    <span className={`text-xl font-black leading-none ${lateCount > 0 ? 'text-brand-error' : 'text-gray-500'}`}>{lateCount}</span>
+                                                    <span className={`text-[8px] font-bold ${lateCount > 0 ? 'text-brand-error/40' : 'text-gray-600'}`}>delay</span>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
+
                                 </div>
                             )}
                         </ElevatedMetallicCard>
@@ -1839,33 +1977,86 @@ const Dashboard: React.FC = () => {
                 <div className="mt-6">
                     <BonusMilestonesWidget profile={profile} role={effectiveRole} />
                 </div>
-                </div>
+            </div>
             )}
 
             {/* Main Dashboard Widgets for Management Roles */}
-            {['super admin', 'admin', 'project manager'].includes(effectiveRole?.toLowerCase().trim() || '') && (
+            {['super admin', 'admin', 'project manager', 'finance manager'].includes(effectiveRole?.toLowerCase().trim() || '') && (
                 <div className="space-y-6">
-                    {/* Earnings Breakdown Widget */}
-                    <EarningsBreakdownWidget profile={profile} role={effectiveRole} />
-
-                    <div className="my-6">
-                        <BonusMilestonesWidget profile={profile} role={effectiveRole} />
-                    </div>
-
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         <div className="lg:col-span-2">
-                            <TaskWidget
-                                profile={profile}
-                                role={effectiveRole}
-                                onTaskClick={handleTaskClick}
-                                onMarkComplete={handleMarkComplete}
-                            />
+                            {/* Staff Bulletin & Alerts Widget */}
+                            <ElevatedMetallicCard
+                                title={
+                                    <div className="flex items-center justify-between w-full">
+                                        <div className="flex items-center gap-2">
+                                            <IconBell className="w-4 h-4 text-brand-primary" />
+                                            <span className="text-sm font-bold text-white uppercase tracking-wider">Staff Bulletin & Alerts</span>
+                                        </div>
+                                        {!loadingPenalties && myPenalties.length > 0 && (
+                                            <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-brand-error/15 text-brand-error border border-brand-error/30 animate-pulse">
+                                                {myPenalties.length} Active Alert{myPenalties.length > 1 ? 's' : ''}
+                                            </span>
+                                        )}
+                                    </div>
+                                }
+                                className="h-[360px]"
+                                bodyClassName="p-5 h-full flex flex-col justify-between"
+                            >
+                                {!loadingPenalties && myPenalties.length > 0 ? (
+                                    <div className="flex-1 overflow-y-auto pr-2 space-y-3 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                                        {myPenalties.map((penalty) => (
+                                            <div key={penalty.id} className="relative overflow-hidden rounded-xl border border-white/[0.05] bg-white/[0.02] hover:bg-white/[0.04] transition-all p-4 pl-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                                                {/* Accent Strip on Left */}
+                                                <div className="absolute left-0 top-0 bottom-0 w-1 bg-brand-error shadow-[0_0_8px_rgba(239,68,68,0.4)]" />
+                                                
+                                                <div className="flex items-start gap-3">
+                                                    <div className="shrink-0 w-8 h-8 rounded-lg bg-brand-error/10 border border-brand-error/20 flex items-center justify-center text-brand-error mt-0.5">
+                                                        <IconAlertTriangle size={16} />
+                                                    </div>
+                                                    <div className="space-y-0.5">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[9px] font-black text-brand-error uppercase tracking-wider">Disciplinary Penalty</span>
+                                                            <span className="text-gray-600 font-mono text-[9px]">•</span>
+                                                            <span className="text-gray-500 text-[9px] font-bold">
+                                                                Issued on: {new Date(penalty.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                            </span>
+                                                        </div>
+                                                        <h4 className="text-sm font-bold text-white leading-snug">{penalty.reason}</h4>
+                                                        {penalty.details && (
+                                                            <p className="text-xs text-gray-400 font-medium leading-relaxed max-w-[90%]">{penalty.details}</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <div className="shrink-0 self-stretch sm:self-auto flex items-center justify-end">
+                                                    <span className="px-2.5 py-1 rounded-lg bg-brand-error/15 border border-brand-error/30 text-brand-error text-[9px] font-black tracking-wider uppercase whitespace-nowrap animate-pulse">
+                                                        Bonus Blocked
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-gray-500">
+                                        <div className="w-10 h-10 rounded-full bg-white/[0.02] border border-white/5 flex items-center justify-center mb-3">
+                                            <IconBell size={18} className="text-gray-600" />
+                                        </div>
+                                        <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Notice Board Empty</p>
+                                        <p className="text-[10px] text-gray-600 mt-1 max-w-[80%]">No active alerts, penalties, or announcements at this time.</p>
+                                    </div>
+                                )}
+                            </ElevatedMetallicCard>
                         </div>
                         <div className="lg:col-span-1">
                             <ProjectStatsWidget profile={profile} role={effectiveRole} />
                         </div>
                     </div>
                     <LeaderboardWidget />
+
+                    <div className="mt-6">
+                        <BonusMilestonesWidget profile={profile} role={effectiveRole} />
+                    </div>
                 </div>
             )}
 

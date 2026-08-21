@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Avatar } from '../components/Avatar';
+import { BonusMilestonesWidget } from '../components/BonusMilestonesWidget';
 import { Tabs } from '../components/Navigation';
 import { Calendar } from '../components/Calendar';
 import { Modal, Card, ElevatedMetallicCard, Tooltip } from '../components/Surfaces';
@@ -842,7 +843,7 @@ const SellerEarnings: React.FC = () => {
 
             const [projRes, sellRes, platRes, slabRes] = await Promise.all([
                 supabase.from('projects')
-                    .select('id, project_id, project_title, status, created_at, clearance_start_date, price, designer_fee, account_id, client_name, client_type, primary_manager_id, assignee, primary_manager:primary_manager_id(name)')
+                    .select('id, project_id, project_title, status, created_at, clearance_start_date, price, designer_fee, account_id, client_name, client_type, primary_manager_id, assignee, converted_by, order_type, primary_manager:primary_manager_id(name)')
                     .in('status', ['Approved', 'Done', 'Completed', 'Sent For Approval']),
                 supabase.from('seller_commissions')
                     .select('id, seller_id, commission_percentage, clearance_days, seller_commission_accounts(account_id), profiles(name)'),
@@ -1095,15 +1096,23 @@ const BonusStructureManager: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedStructure, setSelectedStructure] = useState<any>(null);
+    const [activeSubTab, setActiveSubTab] = useState<'bonuses' | 'penalties'>('bonuses');
 
     // Form states
     const [name, setName] = useState('');
-    const [role, setRole] = useState('Project Manager');
+    const [selectedRoles, setSelectedRoles] = useState<string[]>(['Project Manager']);
     const [calcType, setCalcType] = useState('Volume');
     const [target, setTarget] = useState('');
     const [amount, setAmount] = useState('');
     const [currency, setCurrency] = useState('PKR');
     const [isSaving, setIsSaving] = useState(false);
+    const [description, setDescription] = useState('');
+    const [penaltyEffect, setPenaltyEffect] = useState<'deduction' | 'waive_all' | 'waive_specific'>('deduction');
+    const [waivedBonusId, setWaivedBonusId] = useState<string>('');
+    const [recordType, setRecordType] = useState<'bonus' | 'penalty'>('bonus');
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [structureToDelete, setStructureToDelete] = useState<string | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     useEffect(() => {
         fetchStructures();
@@ -1127,39 +1136,62 @@ const BonusStructureManager: React.FC = () => {
     const handleOpenCreate = () => {
         setSelectedStructure(null);
         setName('');
-        setRole('Project Manager');
+        setSelectedRoles(['Project Manager']);
         setCalcType('Volume');
         setTarget('');
         setAmount('');
         setCurrency('PKR');
+        setDescription('');
+        setPenaltyEffect('deduction');
+        setWaivedBonusId('');
+        setRecordType(activeSubTab === 'penalties' ? 'penalty' : 'bonus');
         setIsModalOpen(true);
     };
 
     const handleOpenEdit = (struct: any) => {
         setSelectedStructure(struct);
         setName(struct.name);
-        setRole(struct.role);
+        setSelectedRoles(struct.role ? struct.role.split(',').map((r: string) => r.trim()) : ['Project Manager']);
         setCalcType(struct.calc_type);
         setTarget(struct.target.toString());
-        setAmount(struct.amount.toString());
-        setCurrency(struct.currency);
+        setAmount(struct.amount?.toString() || '');
+        setCurrency(struct.currency || 'PKR');
+        setDescription(struct.description || '');
+        setPenaltyEffect(struct.penalty_effect || 'deduction');
+        setWaivedBonusId(struct.waived_bonus_id || '');
+        setRecordType(struct.record_type || 'bonus');
         setIsModalOpen(true);
     };
 
     const handleSave = async () => {
-        if (!name || !target || !amount) {
-            addToast({ type: 'error', title: 'Missing fields', message: 'Please fill in all target configurations.' });
+        const needsAmount = penaltyEffect === 'deduction';
+        const needsWaivedBonus = penaltyEffect === 'waive_specific';
+
+        if (!name || !target) {
+            addToast({ type: 'error', title: 'Missing fields', message: 'Please fill in Bonus Name and Target Goal.' });
+            return;
+        }
+        if (needsAmount && !amount) {
+            addToast({ type: 'error', title: 'Missing fields', message: 'Please enter the deduction amount.' });
+            return;
+        }
+        if (needsWaivedBonus && !waivedBonusId) {
+            addToast({ type: 'error', title: 'Missing fields', message: 'Please select which bonus to waive.' });
             return;
         }
         setIsSaving(true);
         try {
-            const payload = {
+            const payload: any = {
                 name,
-                role,
+                role: selectedRoles.join(', '),
                 calc_type: calcType,
                 target: parseFloat(target),
-                amount: parseFloat(amount),
-                currency
+                amount: needsAmount ? parseFloat(amount) : 0,
+                currency: needsAmount ? currency : 'PKR',
+                description,
+                record_type: recordType,
+                penalty_effect: recordType === 'penalty' ? penaltyEffect : 'deduction',
+                waived_bonus_id: (recordType === 'penalty' && needsWaivedBonus) ? waivedBonusId : null
             };
 
             if (selectedStructure) {
@@ -1186,19 +1218,29 @@ const BonusStructureManager: React.FC = () => {
         }
     };
 
-    const handleDelete = async (id: string) => {
-        if (!window.confirm('Are you sure you want to delete this bonus structure rule?')) return;
+    const handleDelete = (id: string) => {
+        setStructureToDelete(id);
+        setIsDeleteModalOpen(true);
+    };
+
+    const confirmDelete = async () => {
+        if (!structureToDelete) return;
+        setIsDeleting(true);
         try {
             const { error } = await supabase
                 .from('bonus_structures')
                 .delete()
-                .eq('id', id);
+                .eq('id', structureToDelete);
             if (error) throw error;
             addToast({ type: 'success', title: 'Rule Deleted', message: 'Bonus structure deleted successfully.' });
             fetchStructures();
         } catch (e) {
             console.error(e);
             addToast({ type: 'error', title: 'Error', message: 'Failed to delete rule.' });
+        } finally {
+            setIsDeleting(false);
+            setIsDeleteModalOpen(false);
+            setStructureToDelete(null);
         }
     };
 
@@ -1219,77 +1261,130 @@ const BonusStructureManager: React.FC = () => {
         { label: 'Volume (Completed count)', value: 'Volume' },
         { label: 'Percentage (Conversion rate)', value: 'Percentage' },
         { label: 'Rating (Average review score)', value: 'Rating' },
-        { label: 'Punctuality (On-time shifts)', value: 'Punctuality' }
+        { label: 'Punctuality (On-time shifts)', value: 'Punctuality' },
+        { label: 'Penalties (Zero valid warnings)', value: 'Penalties' },
+        { label: 'OTD Score (On-time delivery rate)', value: 'OTD Score' }
     ];
+
+    const bonusRecords = structures.filter(s => !s.record_type || s.record_type === 'bonus');
+    const penaltyRecords = structures.filter(s => s.record_type === 'penalty');
+    const activeRecords = activeSubTab === 'penalties' ? penaltyRecords : bonusRecords;
 
     return (
         <div className="space-y-6">
             <Card className="overflow-hidden bg-surface-card border border-surface-border rounded-3xl animate-in fade-in duration-500">
                 <div className="p-6 md:p-8 border-b border-surface-border flex items-center justify-between">
                     <div>
-                        <h3 className="text-xl font-bold text-white uppercase tracking-wider">Bonus Structures Configuration</h3>
-                        <p className="text-sm text-gray-500 mt-1">Setup dynamic role-based milestones, calculations, targets and currencies.</p>
+                        <h3 className="text-xl font-bold text-white uppercase tracking-wider">Bonus &amp; Penalty Rules</h3>
+                        <p className="text-sm text-gray-500 mt-1">Setup dynamic role-based bonus structures and penalty rules.</p>
                     </div>
                     <Button variant="metallic" size="sm" onClick={handleOpenCreate}>
-                        Create Bonus Rule
+                        {activeSubTab === 'penalties' ? 'Create Penalty Rule' : 'Create Bonus Rule'}
                     </Button>
+                </div>
+
+                {/* Sub Tabs */}
+                <div className="flex border-b border-surface-border">
+                    {(['bonuses', 'penalties'] as const).map(tab => (
+                        <button
+                            key={tab}
+                            onClick={() => setActiveSubTab(tab)}
+                            className={`px-6 py-3.5 text-[11px] font-black uppercase tracking-widest transition-all relative ${
+                                activeSubTab === tab
+                                    ? 'text-brand-primary'
+                                    : 'text-gray-500 hover:text-gray-300'
+                            }`}
+                        >
+                            {tab === 'bonuses' ? `Bonus Structures (${bonusRecords.length})` : `Penalty Rules (${penaltyRecords.length})`}
+                            {activeSubTab === tab && (
+                                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-primary rounded-full" />
+                            )}
+                        </button>
+                    ))}
                 </div>
                 
                 <div className="overflow-x-auto">
                     <table className="w-full text-left text-[13px] text-gray-300">
                         <thead className="bg-white/[0.02] text-gray-400 font-bold uppercase tracking-widest text-[10px] border-b border-surface-border">
                             <tr>
-                                <th className="px-6 py-4">Bonus Name</th>
+                                <th className="px-6 py-4">{activeSubTab === 'penalties' ? 'Penalty Name' : 'Bonus Name'}</th>
                                 <th className="px-6 py-4">Role</th>
                                 <th className="px-6 py-4">Calculation Type</th>
-                                <th className="px-6 py-4">Target Goal</th>
-                                <th className="px-6 py-4">Reward Amount</th>
+                                <th className="px-6 py-4">Target</th>
+                                {activeSubTab === 'penalties' && <th className="px-6 py-4">Effect</th>}
+                                <th className="px-6 py-4">{activeSubTab === 'penalties' ? 'Deduction' : 'Reward Amount'}</th>
                                 <th className="px-6 py-4 text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-surface-border">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-10 text-center text-gray-500">
+                                    <td colSpan={7} className="px-6 py-10 text-center text-gray-500">
                                         Loading configured rules...
                                     </td>
                                 </tr>
-                            ) : structures.length === 0 ? (
+                            ) : activeRecords.length === 0 ? (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-10 text-center text-gray-500">
-                                        No bonus rules configured yet.
+                                    <td colSpan={7} className="px-6 py-10 text-center text-gray-500">
+                                        {activeSubTab === 'penalties' ? 'No penalty rules configured yet.' : 'No bonus rules configured yet.'}
                                     </td>
                                 </tr>
                             ) : (
-                                structures.map((struct) => (
-                                    <tr key={struct.id} className="hover:bg-white/[0.01] transition-colors">
+                                activeRecords.map((struct) => (
+                                    <tr key={struct.id} className="hover:bg-white/[0.02] transition-colors border-b border-surface-border/40">
                                         <td className="px-6 py-4 font-bold text-white">{struct.name}</td>
                                         <td className="px-6 py-4">
-                                            <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                                                {struct.role}
-                                            </span>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {(struct.role || '').split(',').map((r: string) => {
+                                                    const trimmed = r.trim();
+                                                    if (!trimmed) return null;
+                                                    return (
+                                                        <span key={trimmed} className={getRoleCapsuleClasses(trimmed)}>
+                                                             {trimmed}
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
                                         </td>
-                                        <td className="px-6 py-4 font-semibold text-gray-400">
+                                        <td className="px-6 py-4 font-semibold text-gray-300">
                                             {struct.calc_type}
                                         </td>
                                         <td className="px-6 py-4 font-bold text-brand-primary">
                                             {struct.calc_type === 'Punctuality' && struct.target === 0
                                                 ? 'Every Day of Month'
-                                                : `${struct.target} ${struct.calc_type === 'Percentage' ? '%' : struct.calc_type === 'Rating' ? '★' : 'units'}`}
+                                                : struct.calc_type === 'Penalties' && struct.target === 0
+                                                ? 'Zero Penalties'
+                                                : struct.calc_type === 'OTD Score'
+                                                ? `Below ${struct.target}% OTD`
+                                                : `${struct.target} ${struct.calc_type === 'Percentage' ? '%' : struct.calc_type === 'Rating' ? '★' : struct.calc_type === 'Penalties' ? 'penalties' : 'units'}`}
                                         </td>
+                                        {activeSubTab === 'penalties' && (
+                                            <td className="px-6 py-4">
+                                                {struct.penalty_effect === 'waive_all' ? (
+                                                    <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider bg-orange-500/15 text-orange-400 border border-orange-500/20">Waive All Bonuses</span>
+                                                ) : struct.penalty_effect === 'waive_specific' ? (
+                                                    <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider bg-yellow-500/15 text-yellow-400 border border-yellow-500/20">Waive Specific</span>
+                                                ) : (
+                                                    <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider bg-red-500/15 text-red-400 border border-red-500/20">Salary Deduction</span>
+                                                )}
+                                            </td>
+                                        )}
                                         <td className="px-6 py-4 font-black text-emerald-400">
-                                            {struct.currency} {struct.amount.toLocaleString()}
+                                            {activeSubTab === 'penalties'
+                                                ? (struct.penalty_effect === 'waive_all' || struct.penalty_effect === 'waive_specific')
+                                                    ? <span className="text-gray-500 font-normal text-xs">No deduction</span>
+                                                    : <span className="text-red-400">{struct.currency} -{(struct.amount || 0).toLocaleString()}</span>
+                                                : <>{struct.currency} {(struct.amount || 0).toLocaleString()}</>}
                                         </td>
-                                        <td className="px-6 py-4 text-right space-x-2">
-                                            <Button variant="recessed" size="xs" onClick={() => handleOpenEdit(struct)}>
-                                                Edit
-                                            </Button>
-                                            <button
-                                                onClick={() => handleDelete(struct.id)}
-                                                className="px-2 py-1 rounded-lg border border-red-500/20 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300 text-[10px] font-bold uppercase tracking-wider transition-all"
-                                            >
-                                                Delete
-                                            </button>
+                                        <td className="px-6 py-4 text-right">
+                                            <div className="inline-flex justify-end w-full pr-2">
+                                                <KebabMenu
+                                                    options={[
+                                                        { label: 'Edit', icon: <IconEdit className="w-4 h-4" />, onClick: () => handleOpenEdit(struct) },
+                                                        { label: 'Delete', icon: <IconTrash className="w-4 h-4" />, variant: 'danger', onClick: () => handleDelete(struct.id) }
+                                                    ]}
+                                                />
+                                            </div>
                                         </td>
                                     </tr>
                                 ))
@@ -1303,8 +1398,12 @@ const BonusStructureManager: React.FC = () => {
             <Modal
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
-                title={selectedStructure ? 'Edit Bonus Structure' : 'Create Bonus Structure'}
+                title={selectedStructure
+                    ? (recordType === 'penalty' ? 'Edit Penalty Rule' : 'Edit Bonus Structure')
+                    : (recordType === 'penalty' ? 'Create Penalty Rule' : 'Create Bonus Structure')}
                 size="md"
+                isElevatedHeader={true}
+                isElevatedFooter={true}
                 footer={
                     <div className="flex justify-end gap-3 w-full">
                         <Button variant="recessed" size="sm" onClick={() => setIsModalOpen(false)}>Cancel</Button>
@@ -1314,77 +1413,173 @@ const BonusStructureManager: React.FC = () => {
             >
                 <div className="space-y-4 p-6">
                     <div className="space-y-1">
-                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">Bonus Name</label>
-                        <input
+                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">{recordType === 'penalty' ? 'Penalty Name' : 'Bonus Name'}</label>
+                        <Input
                             type="text"
+                            variant="recessed"
                             placeholder="e.g. Volume Target Completed"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
-                            className="w-full px-4 py-3 rounded-xl border border-white/5 bg-black/40 text-sm text-white focus:outline-none focus:border-brand-primary/40"
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">{recordType === 'penalty' ? 'Penalty Description / Trigger Rules' : 'Bonus Description / Target Rules'}</label>
+                        <TextArea
+                            variant="recessed"
+                            placeholder="e.g. Be on time for every scheduled shift throughout the month. No weekends off."
+                            value={description}
+                            onChange={(e) => setDescription(e.target.value)}
+                            rows={3}
+                            inputClassName="min-h-[90px]"
                         />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1">
-                            <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">Target Role</label>
+                            <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">Target Role(s)</label>
                             <Dropdown
                                 variant="metallic"
-                                label="Select Role"
+                                placeholder="Select Role(s)"
                                 options={rolesList}
-                                value={role}
-                                onChange={(val) => setRole(val as string)}
+                                value={selectedRoles}
+                                onChange={(val) => setSelectedRoles(Array.isArray(val) ? val : [val as string])}
+                                isMulti={true}
                             />
                         </div>
                         <div className="space-y-1">
                             <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">Calculation Type</label>
                             <Dropdown
                                 variant="metallic"
-                                label="Select Type"
+                                placeholder="Select Type"
                                 options={calcTypes}
                                 value={calcType}
                                 onChange={(val) => setCalcType(val as string)}
                             />
                         </div>
                     </div>
+                    {recordType === 'penalty' && (
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">Penalty Effect</label>
+                            <Dropdown
+                                variant="metallic"
+                                placeholder="Select Effect"
+                                options={[
+                                    { label: 'Salary Deduction (amount deducted from salary)', value: 'deduction' },
+                                    { label: 'Waive All Bonuses (blocks all bonuses this month)', value: 'waive_all' },
+                                    { label: 'Waive Specific Bonus (blocks one selected bonus)', value: 'waive_specific' },
+                                ]}
+                                value={penaltyEffect}
+                                onChange={(val) => setPenaltyEffect(val as 'deduction' | 'waive_all' | 'waive_specific')}
+                            />
+                        </div>
+                    )}
+
+                    {recordType === 'penalty' && penaltyEffect === 'waive_specific' && (
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">Bonus to Waive</label>
+                            <Dropdown
+                                variant="metallic"
+                                placeholder="Select bonus rule to block..."
+                                options={structures
+                                    .filter(s => s.id !== selectedStructure?.id && s.penalty_effect === 'deduction')
+                                    .map(s => ({ label: s.name, value: s.id }))}
+                                value={waivedBonusId}
+                                onChange={(val) => setWaivedBonusId(val as string)}
+                            />
+                            <p className="text-[9px] text-gray-500 mt-1 px-1 leading-normal">
+                                *Select the bonus rule that will be blocked when this penalty is triggered.
+                            </p>
+                        </div>
+                    )}
+
                     <div className="grid grid-cols-3 gap-4 col-span-2">
                         <div className="space-y-1">
                             <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">Target Goal</label>
-                            <input
+                            <Input
                                 type="number"
+                                variant="recessed"
                                 placeholder="e.g. 20"
                                 value={target}
                                 onChange={(e) => setTarget(e.target.value)}
-                                className="w-full px-4 py-3 rounded-xl border border-white/5 bg-black/40 text-sm text-white focus:outline-none focus:border-brand-primary/40"
                             />
                             {calcType === 'Punctuality' && (
                                 <p className="text-[9px] text-gray-500 mt-1 px-1 leading-normal">
                                     *Enter 0 to dynamically target all calendar days of the month.
                                 </p>
                             )}
+                            {calcType === 'OTD Score' && (
+                                <p className="text-[9px] text-gray-500 mt-1 px-1 leading-normal">
+                                    *Enter minimum OTD% required (e.g. 75). Penalty triggers if score drops below this.
+                                </p>
+                            )}
                         </div>
-                        <div className="space-y-1 col-span-1">
-                            <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">Amount</label>
-                            <input
-                                type="number"
-                                placeholder="e.g. 15000"
-                                value={amount}
-                                onChange={(e) => setAmount(e.target.value)}
-                                className="w-full px-4 py-3 rounded-xl border border-white/5 bg-black/40 text-sm text-white focus:outline-none focus:border-brand-primary/40"
-                            />
-                        </div>
-                        <div className="space-y-1 col-span-1">
-                            <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">Currency</label>
-                            <Dropdown
-                                variant="metallic"
-                                label="Currency"
-                                options={[
-                                    { label: 'PKR', value: 'PKR' },
-                                    { label: 'USD', value: 'USD' }
-                                ]}
-                                value={currency}
-                                onChange={(val) => setCurrency(val as string)}
-                            />
-                        </div>
+                        {penaltyEffect === 'deduction' && (
+                            <>
+                                <div className="space-y-1 col-span-1">
+                                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">Deduction Amount</label>
+                                    <Input
+                                        type="number"
+                                        variant="recessed"
+                                        placeholder="e.g. 1000"
+                                        value={amount}
+                                        onChange={(e) => setAmount(e.target.value)}
+                                    />
+                                </div>
+                                <div className="space-y-1 col-span-1">
+                                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">Currency</label>
+                                    <Dropdown
+                                        variant="metallic"
+                                        placeholder="Currency"
+                                        options={[
+                                            { label: 'PKR', value: 'PKR' },
+                                            { label: 'USD', value: 'USD' }
+                                        ]}
+                                        value={currency}
+                                        onChange={(val) => setCurrency(val as string)}
+                                    />
+                                </div>
+                            </>
+                        )}
                     </div>
+                </div>
+            </Modal>
+
+            {/* Delete Confirmation Modal */}
+            <Modal
+                isOpen={isDeleteModalOpen}
+                onClose={() => { setIsDeleteModalOpen(false); setStructureToDelete(null); }}
+                title="Delete Bonus Rule"
+                size="sm"
+                isElevatedHeader={true}
+                isElevatedFooter={true}
+                footer={
+                    <div className="flex justify-end gap-3 w-full">
+                        <Button
+                            variant="recessed"
+                            size="sm"
+                            onClick={() => { setIsDeleteModalOpen(false); setStructureToDelete(null); }}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="metallic"
+                            size="sm"
+                            onClick={confirmDelete}
+                            isLoading={isDeleting}
+                            className="!bg-gradient-to-b !from-red-500 !to-red-700 !border-red-500/50 !shadow-[0_4px_15px_rgba(239,68,68,0.3)]"
+                        >
+                            Delete Rule
+                        </Button>
+                    </div>
+                }
+            >
+                <div className="flex flex-col items-center text-center py-4 px-2">
+                    <div className="w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mb-4">
+                        <IconTrash className="w-6 h-6 text-red-400" />
+                    </div>
+                    <h3 className="text-base font-black text-white uppercase tracking-tight mb-2">Are you sure?</h3>
+                    <p className="text-sm text-gray-400 leading-relaxed max-w-[260px]">
+                        This bonus structure rule will be permanently deleted. This action cannot be undone.
+                    </p>
                 </div>
             </Modal>
         </div>
@@ -2422,12 +2617,11 @@ const CompanyEarnings: React.FC = () => {
                                     </span>
                                 </div>
                             ))}
-                            <Button
+                             <Button
                                 variant="metallic"
-                                size="sm"
-                                leftIcon={<IconChartBar className="w-4 h-4 block" />}
-                                className="whitespace-nowrap h-10 min-h-[40px] px-4 inline-flex items-center justify-center box-border"
                                 onClick={handleExportCSV}
+                                leftIcon={<IconChartBar className="w-4 h-4 text-white" />}
+                                className="pl-3 pr-3.5 py-2 text-xs font-bold uppercase tracking-wider h-10 min-w-max"
                             >
                                 Export CSV
                             </Button>
@@ -2813,6 +3007,31 @@ const CompanyEarnings: React.FC = () => {
     );
 };
 
+const formatPKRAmount = (amount: number) => {
+    return `PKR ${Math.round(amount).toLocaleString('en-US')}`;
+};
+
+const currentYear = new Date().getFullYear();
+const yearOptions = Array.from({ length: currentYear - 2026 + 1 }, (_, i) => {
+    const y = currentYear - i;
+    return { value: String(y), label: String(y) };
+});
+
+const monthOptions = [
+    { value: '0', label: 'January' },
+    { value: '1', label: 'February' },
+    { value: '2', label: 'March' },
+    { value: '3', label: 'April' },
+    { value: '4', label: 'May' },
+    { value: '5', label: 'June' },
+    { value: '6', label: 'July' },
+    { value: '7', label: 'August' },
+    { value: '8', label: 'September' },
+    { value: '9', label: 'October' },
+    { value: '10', label: 'November' },
+    { value: '11', label: 'December' }
+];
+
 const FreelancerEarnings: React.FC = () => {
     const [selectedFreelancer, setSelectedFreelancer] = useState<string>('');
     const [selectedTeamLead, setSelectedTeamLead] = useState<string>('');
@@ -2827,6 +3046,7 @@ const FreelancerEarnings: React.FC = () => {
     const [isReleaseModalOpen, setIsReleaseModalOpen] = useState(false);
     const [isReleaseSuccess, setIsReleaseSuccess] = useState(false);
     const [isReleasing, setIsReleasing] = useState(false);
+    const [customReleaseAmount, setCustomReleaseAmount] = useState<string>('');
     const [releaseFormData, setReleaseFormData] = useState({
         paymentMethod: 'Bank Transfer',
         notes: ''
@@ -2840,6 +3060,37 @@ const FreelancerEarnings: React.FC = () => {
     const [dateTo, setDateTo] = useState<Date | null>(null);
     const [selectedAccount, setSelectedAccount] = useState<string[]>(['all']);
 
+    // Payout Period selectors
+    const [selectedYear, setSelectedYear] = useState<string>(String(new Date().getFullYear()));
+    const [selectedMonth, setSelectedMonth] = useState<string>(String(new Date().getMonth()));
+
+    // Detailed breakdown states
+    const [penaltiesList, setPenaltiesList] = useState<any[]>([]);
+    const [monthlyBonuses, setMonthlyBonuses] = useState<any[]>([]);
+    const [penaltyStructures, setPenaltyStructures] = useState<any[]>([]);
+    const [breakdownLoading, setBreakdownLoading] = useState(false);
+
+    const adminNetPayout = (() => {
+        const subjectUser = freelancers?.find(f => f.email === selectedFreelancer);
+        const baseSalary = subjectUser?.payout_strategy === 'basicplusbonus' ? Number(subjectUser?.fixed_payout_rate || 0) : 0;
+        const bonusesTotal = monthlyBonuses.reduce((sum, b) => sum + Number(b.amount || 0), 0);
+        const penaltiesTotal = penaltiesList.reduce((sum, penalty) => {
+            const rule = penaltyStructures.find(
+                p => (p.name || '').toLowerCase() === (penalty.reason || '').toLowerCase()
+            );
+            return sum + Number(rule?.amount ?? 50);
+        }, 0);
+        return baseSalary + bonusesTotal - penaltiesTotal;
+    })();
+
+    const alreadyPaid = (() => {
+        return (releaseLogs || [])
+            .filter(log => Number(log.payout_month) === Number(selectedMonth) && Number(log.payout_year) === Number(selectedYear))
+            .reduce((sum, log) => sum + Number(log.amount || 0), 0);
+    })();
+
+    const remainingPending = Math.max(0, adminNetPayout - alreadyPaid);
+
     const handleAccountChange = (ids: string | string[]) => {
         let nextIds = Array.isArray(ids) ? ids : [ids];
         if (nextIds.length > 1) {
@@ -2851,9 +3102,9 @@ const FreelancerEarnings: React.FC = () => {
         if (nextIds.length === 0) nextIds = ['all'];
         setSelectedAccount(nextIds);
     };
-    const [activeFilter, setActiveFilter] = useState<string | null>(null);
-    const [activeSummaryFilter, setActiveSummaryFilter] = useState<'lifetime' | 'pending' | 'available'>('lifetime');
-    const [activeSubTab, setActiveSubTab] = useState<'available' | 'history'>('available');
+
+    const [activeSummaryFilter, setActiveSummaryFilter] = useState<'lifetime' | 'pending'>('lifetime');
+    const [activeSubTab, setActiveSubTab] = useState<'pending' | 'history'>('pending');
 
     useEffect(() => {
         if (!effectiveRole || !profile?.id) return;
@@ -2862,13 +3113,35 @@ const FreelancerEarnings: React.FC = () => {
 
     useEffect(() => {
         if (selectedFreelancer) {
+            const yr = Number(selectedYear);
+            const mo = Number(selectedMonth);
+            const start = new Date(yr, mo, 1, 0, 0, 0, 0);
+            const end = new Date(yr, mo + 1, 0, 23, 59, 59, 999);
+
+            setDateFrom(start);
+            setDateTo(end);
+
             fetchEarnings(selectedFreelancer, true);
             fetchReleaseLogs(selectedFreelancer, true);
+
+            const subjectUser = freelancers?.find(f => f.email === selectedFreelancer);
+            if (subjectUser) {
+                fetchDetailedBreakdown(start, end, subjectUser);
+            }
         } else {
             setEarningsData([]);
             setReleaseLogs([]);
+            setPenaltiesList([]);
+            setMonthlyBonuses([]);
         }
-    }, [selectedFreelancer]);
+    }, [selectedFreelancer, selectedYear, selectedMonth, freelancers]);
+
+    useEffect(() => {
+        if (isReleaseModalOpen) {
+            fetchFreelancers(true);
+            setCustomReleaseAmount(String(remainingPending));
+        }
+    }, [isReleaseModalOpen, remainingPending]);
 
     // Auto-refresh earnings every hour to keep days_left current
     useEffect(() => {
@@ -2876,10 +3149,18 @@ const FreelancerEarnings: React.FC = () => {
 
         const refreshInterval = setInterval(() => {
             fetchEarnings(selectedFreelancer);
+            const yr = Number(selectedYear);
+            const mo = Number(selectedMonth);
+            const start = new Date(yr, mo, 1, 0, 0, 0, 0);
+            const end = new Date(yr, mo + 1, 0, 23, 59, 59, 999);
+            const subjectUser = freelancers?.find(f => f.email === selectedFreelancer);
+            if (subjectUser) {
+                fetchDetailedBreakdown(start, end, subjectUser);
+            }
         }, 3600000); // Refresh every hour
 
         return () => clearInterval(refreshInterval);
-    }, [selectedFreelancer]);
+    }, [selectedFreelancer, selectedYear, selectedMonth, freelancers]);
 
     useEffect(() => {
         applyFilters();
@@ -2920,46 +3201,183 @@ const FreelancerEarnings: React.FC = () => {
             filtered = filtered.filter(item => item.funds_status === 'Paid');
         } else if (activeSummaryFilter === 'pending') {
             filtered = filtered.filter(item => item.funds_status === 'Pending');
-        } else if (activeSummaryFilter === 'available') {
-            filtered = filtered.filter(item => item.funds_status === 'Cleared');
         }
 
         setFilteredData(filtered);
     };
 
-    const handleQuickFilter = (type: 'today' | 'week' | 'month') => {
-        const now = new Date();
+    const fetchDetailedBreakdown = async (startOfMonth: Date, endOfMonth: Date, targetUser: any) => {
+        if (!targetUser?.id || !targetUser?.role) return;
+        setBreakdownLoading(true);
+        try {
+            // 1. Fetch valid user penalties for the selected month
+            const { data: penalties, error: pError } = await supabase
+                .from('user_penalties')
+                .select('*')
+                .eq('user_id', targetUser.id)
+                .eq('status', 'Valid')
+                .gte('created_at', startOfMonth.toISOString())
+                .lte('created_at', endOfMonth.toISOString());
 
-        // Toggle off if already active
-        if (activeFilter === type) {
-            setDateFrom(null);
-            setDateTo(null);
-            setActiveFilter(null);
-            return;
+            if (!pError && penalties) {
+                setPenaltiesList(penalties);
+            }
+
+            // 2. Fetch bonus structures for user's role
+            const { data: structures, error: bError } = await supabase
+                .from('bonus_structures')
+                .select('*');
+
+            if (!bError && structures) {
+                const matched = (structures || []).filter(b => {
+                    const roles = (b.role || '').split(',').map((r: string) => r.trim().toLowerCase());
+                    return roles.includes((targetUser.role || '').toLowerCase());
+                });
+
+                const matchedBonuses = matched.filter(b => b.record_type === 'bonus' || !b.record_type);
+                const matchedPenalties = matched.filter(b => b.record_type === 'penalty');
+                setPenaltyStructures(matchedPenalties);
+                
+                // Calculate progress for each structure to see if user qualifies
+                const qualifying: any[] = [];
+                for (const bonus of matchedBonuses) {
+                    let currentVal = 0;
+                    let qualifies = false;
+
+                    if (bonus.calc_type === 'Volume') {
+                        const isPm = targetUser.role.toLowerCase().includes('manager') || targetUser.role.toLowerCase().includes('admin');
+                        let query = supabase
+                            .from('projects')
+                            .select('id', { count: 'exact', head: true })
+                            .eq('status', 'Approved')
+                            .gte('created_at', startOfMonth.toISOString())
+                            .lte('created_at', endOfMonth.toISOString());
+                        
+                        if (isPm) {
+                            query = query.eq('primary_manager_id', targetUser.id);
+                        } else {
+                            query = query.eq('assignee', targetUser.id);
+                        }
+                        const { count } = await query;
+                        currentVal = count || 0;
+                        qualifies = currentVal >= bonus.target;
+
+                    } else if (bonus.calc_type === 'Percentage') {
+                        const { data: leads } = await supabase
+                            .from('leads')
+                            .select('status')
+                            .eq('assigned_to', targetUser.id)
+                            .gte('created_at', startOfMonth.toISOString())
+                            .lte('created_at', endOfMonth.toISOString());
+
+                        if (leads && leads.length > 0) {
+                            const converted = leads.filter(l => l.status === 'Converted').length;
+                            currentVal = Math.round((converted / leads.length) * 100);
+                        }
+                        qualifies = currentVal >= bonus.target;
+
+                    } else if (bonus.calc_type === 'Rating') {
+                        const { data: reviews } = await supabase
+                            .from('reviews')
+                            .select('rating')
+                            .eq('user_id', targetUser.id)
+                            .gte('created_at', startOfMonth.toISOString())
+                            .lte('created_at', endOfMonth.toISOString());
+
+                        if (reviews && reviews.length > 0) {
+                            const sum = reviews.reduce((acc, r) => acc + (r.rating || 0), 0);
+                            currentVal = Math.round((sum / reviews.length) * 10) / 10;
+                        }
+                        qualifies = currentVal >= bonus.target;
+
+                    } else if (bonus.calc_type === 'Punctuality') {
+                        const { data: attendance } = await supabase
+                            .from('attendance_records')
+                            .select('punch_in_at')
+                            .eq('user_id', targetUser.id)
+                            .gte('punch_in_at', startOfMonth.toISOString())
+                            .lte('punch_in_at', endOfMonth.toISOString());
+
+                        let onTimeCount = 0;
+                        if (attendance && attendance.length > 0) {
+                            const { data: shift } = await supabase
+                                .from('user_shifts')
+                                .select('start_time')
+                                .eq('user_id', targetUser.id)
+                                .single();
+
+                            const shiftStartStr = shift?.start_time || '09:00:00';
+                            const [sH, sM] = shiftStartStr.split(':').map(Number);
+
+                            attendance.forEach(rec => {
+                                const pIn = new Date(rec.punch_in_at);
+                                const checkTime = pIn.getHours() * 60 + pIn.getMinutes();
+                                const limitTime = sH * 60 + sM + 15;
+                                if (checkTime <= limitTime) {
+                                    onTimeCount++;
+                                }
+                            });
+                        }
+                        currentVal = onTimeCount;
+                        let resolvedTarget = bonus.target;
+                        if (bonus.target === 0) {
+                            resolvedTarget = new Date(startOfMonth.getFullYear(), startOfMonth.getMonth() + 1, 0).getDate();
+                        }
+                        qualifies = currentVal >= resolvedTarget;
+
+                    } else if (bonus.calc_type === 'OTD Score') {
+                        const { data: comments, error: cErr } = await supabase
+                            .from('project_comments')
+                            .select('content')
+                            .eq('author_id', targetUser.id)
+                            .like('content', 'STATUS_CHANGED:%')
+                            .gte('created_at', startOfMonth.toISOString())
+                            .lte('created_at', endOfMonth.toISOString());
+
+                        if (!cErr && comments) {
+                            let total = 0;
+                            let timely = 0;
+                            comments.forEach(item => {
+                                total++;
+                                const parts = item.content.split(':');
+                                if (parts[3] !== 'LATE') {
+                                    timely++;
+                                }
+                            });
+                            const otdVal = total >= 5 ? Math.round((timely / total) * 100) : null;
+                            if (otdVal !== null) {
+                                currentVal = otdVal;
+                                qualifies = otdVal >= bonus.target;
+                            }
+                        }
+                    } else if (bonus.calc_type === 'Penalties') {
+                        const { count } = await supabase
+                            .from('user_penalties')
+                            .select('id', { count: 'exact', head: true })
+                            .eq('user_id', targetUser.id)
+                            .eq('status', 'Valid')
+                            .gte('created_at', startOfMonth.toISOString())
+                            .lte('created_at', endOfMonth.toISOString());
+
+                        currentVal = count || 0;
+                        qualifies = currentVal === 0;
+                    }
+
+                    if (qualifies) {
+                        qualifying.push({
+                            ...bonus,
+                            currentVal
+                        });
+                    }
+                }
+                setMonthlyBonuses(qualifying);
+                (window as any)._allRoleStructures = matched;
+            }
+        } catch (e) {
+            console.error('Error fetching detailed breakdown details:', e);
+        } finally {
+            setBreakdownLoading(false);
         }
-
-        const end = new Date(now);
-        end.setHours(23, 59, 59, 999);
-        let start = new Date(now);
-        start.setHours(0, 0, 0, 0);
-
-        if (type === 'today') {
-            // Start is already today 00:00
-        } else if (type === 'week') {
-            const day = now.getDay();
-            const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-            start.setDate(diff);
-            end.setTime(start.getTime());
-            end.setDate(start.getDate() + 6);
-            end.setHours(23, 59, 59, 999);
-        } else if (type === 'month') {
-            start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-            end.setTime(new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).getTime());
-        }
-
-        setDateFrom(start);
-        setDateTo(end);
-        setActiveFilter(type);
     };
 
     const handleReleaseAmount = async () => {
@@ -2971,6 +3389,9 @@ const FreelancerEarnings: React.FC = () => {
             // 1. Get all cleared projects for this freelancer THAT MATCH CURRENT FILTERS
             // filteredData already contains items that match filters and status 'Cleared' if activeSummaryFilter is 'available'
             // But to be bulletproof regardless of active tab, we re-filter based on current state
+            const subjectUser = freelancers?.find(f => f.email === selectedFreelancer);
+            const isStatementLedger = subjectUser?.payout_strategy === 'basicplusbonus' || subjectUser?.payout_strategy === 'bonusonly';
+
             const autoClearedFilter = earningsData.filter(item => {
                 if (item.funds_status !== 'Cleared') return false;
                 
@@ -2999,20 +3420,28 @@ const FreelancerEarnings: React.FC = () => {
             });
 
             const totalAmount = autoClearedFilter.reduce((sum, item) => sum + (item.rawAmount || 0), 0);
+            const releaseAmount = isStatementLedger ? Number(customReleaseAmount || 0) : totalAmount;
 
-            if (totalAmount <= 0) {
-                addToast({ title: 'No cleared funds to release', type: 'error' });
+            if (releaseAmount <= 0) {
+                addToast({ title: isStatementLedger ? 'No payout to release' : 'No cleared funds to release', type: 'error' });
                 return;
             }
 
-            // 2. Update all these projects to 'Paid' status
-            const projectIds = autoClearedFilter.map(item => item.id);
-            const { error: updateError } = await supabase
-                .from('projects')
-                .update({ funds_status: 'Paid' })
-                .in('project_id', projectIds);
+            if (isStatementLedger && releaseAmount > remainingPending) {
+                addToast({ title: `Cannot release more than pending amount: ${formatPKRAmount(remainingPending)}`, type: 'error' });
+                return;
+            }
 
-            if (updateError) throw updateError;
+            // 2. Update all these projects to 'Paid' status (if any exist)
+            const projectIds = autoClearedFilter.map(item => item.id);
+            if (projectIds.length > 0) {
+                const { error: updateError } = await supabase
+                    .from('projects')
+                    .update({ funds_status: 'Paid' })
+                    .in('project_id', projectIds);
+
+                if (updateError) throw updateError;
+            }
 
             // 3. Create release log entry
             // We'll create one log entry for the total batch
@@ -3023,12 +3452,14 @@ const FreelancerEarnings: React.FC = () => {
                     project_id: projectIds.join(', '), // Storing CSV of IDs for reference
                     freelancer_email: selectedFreelancer,
                     freelancer_name: freelancer?.name || selectedFreelancer,
-                    amount: totalAmount,
-                    payment_method: releaseFormData.paymentMethod,
+                    amount: releaseAmount,
+                    payment_method: 'Bank Transfer',
                     transaction_reference: '',
                     notes: '',
                     released_by: profile?.id,
-                    released_by_name: profile?.name || 'Admin'
+                    released_by_name: profile?.name || 'Admin',
+                    payout_month: Number(selectedMonth),
+                    payout_year: Number(selectedYear)
                 });
 
             if (logError) throw logError;
@@ -3085,7 +3516,7 @@ const FreelancerEarnings: React.FC = () => {
 
             const statusValue = activeSummaryFilter === 'pending'
                 ? `${item.daysLeft || 0} Days`
-                : (activeSummaryFilter === 'available' ? 'Unpaid' : item.funds_status);
+                : item.funds_status;
 
             const cleanPayout = item.amount ? item.amount.replace(/[$,]/g, '') : '0.00';
 
@@ -3132,12 +3563,12 @@ const FreelancerEarnings: React.FC = () => {
         }
     };
 
-    const fetchFreelancers = async () => {
+    const fetchFreelancers = async (isBackground = false) => {
         try {
-            setLoading(true);
+            if (!isBackground) setLoading(true);
             const { data, error } = await supabase
                 .from('profiles')
-                .select('id, name, email, role, bank_name, account_title, iban, payment_email')
+                .select('id, name, email, role, bank_name, account_title, iban, payment_email, payout_strategy, fixed_payout_rate')
                 .in('role', ['Freelancer', 'Team Lead', 'Team Designer'])
                 .order('name', { ascending: true });
 
@@ -3147,7 +3578,7 @@ const FreelancerEarnings: React.FC = () => {
         } catch (err) {
             console.error('Error in fetchFreelancers:', err);
         } finally {
-            setLoading(false);
+            if (!isBackground) setLoading(false);
         }
     };
 
@@ -3413,75 +3844,24 @@ const FreelancerEarnings: React.FC = () => {
 
                         <div className="p-3 relative z-10 w-full h-full">
                             <div className="w-full h-full flex flex-col xl:flex-row items-center justify-between gap-4 py-1 px-2">
-                                {/* Left Side: Date Pickers & Account */}
+                                {/* Left Side: Period Selectors & Account */}
                                 <div className="flex flex-col md:flex-row items-center gap-3 w-full xl:w-auto">
-                                    <DatePicker
-                                        value={dateFrom}
-                                        onChange={(date) => {
-                                            setDateFrom(date);
-                                            setActiveFilter(null);
-                                        }}
-                                    >
-                                        <div className="relative flex items-center gap-2 bg-black/40 border border-white/[0.05] rounded-xl pl-4 pr-3 py-2.5 text-sm font-bold text-white hover:bg-black/50 transition-all cursor-pointer group shadow-[inset_0_2px_8px_rgba(0,0,0,0.6)] overflow-hidden">
-                                            {/* Inner Top Shadow for carved-in look */}
-                                            <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-b from-black/60 to-transparent pointer-events-none" />
-                                            {/* Subtle Diagonal Machined Sheen */}
-                                            <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.02)_48%,rgba(255,255,255,0.05)_50%,rgba(255,255,255,0.02)_52%,transparent_100%)] opacity-30 pointer-events-none" />
-
-                                            <IconCalendar className="w-4 h-4 text-brand-primary group-hover:scale-110 transition-transform relative z-10" />
-                                            <span className="min-w-[100px] whitespace-nowrap text-center relative z-10">{systemFormatDate(dateFrom) || 'From Date'}</span>
-                                            <div className="flex items-center gap-1.5 relative z-10">
-                                                <svg className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-                                                </svg>
-                                                {dateFrom && (
-                                                    <div
-                                                        className="p-1 rounded-md hover:bg-white/10 text-gray-500 hover:text-brand-primary transition-all pointer-events-auto"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setDateFrom(null);
-                                                        }}
-                                                    >
-                                                        <IconX className="w-3 h-3" strokeWidth={3} />
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </DatePicker>
-
-                                    <DatePicker
-                                        value={dateTo}
-                                        onChange={(date) => {
-                                            setDateTo(date);
-                                            setActiveFilter(null);
-                                        }}
-                                    >
-                                        <div className="relative flex items-center gap-2 bg-black/40 border border-white/[0.05] rounded-xl pl-4 pr-3 py-2.5 text-sm font-bold text-white hover:bg-black/50 transition-all cursor-pointer group shadow-[inset_0_2px_8px_rgba(0,0,0,0.6)] overflow-hidden">
-                                            {/* Inner Top Shadow for carved-in look */}
-                                            <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-b from-black/60 to-transparent pointer-events-none" />
-                                            {/* Subtle Diagonal Machined Sheen */}
-                                            <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.02)_48%,rgba(255,255,255,0.05)_50%,rgba(255,255,255,0.02)_52%,transparent_100%)] opacity-30 pointer-events-none" />
-
-                                            <IconCalendar className="w-4 h-4 text-brand-primary group-hover:scale-110 transition-transform relative z-10" />
-                                            <span className="min-w-[100px] whitespace-nowrap text-center relative z-10">{systemFormatDate(dateTo) || 'To Date'}</span>
-                                            <div className="flex items-center gap-1.5 relative z-10">
-                                                <svg className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-                                                </svg>
-                                                {dateTo && (
-                                                    <div
-                                                        className="p-1 rounded-md hover:bg-white/10 text-gray-500 hover:text-brand-primary transition-all pointer-events-auto"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setDateTo(null);
-                                                        }}
-                                                    >
-                                                        <IconX className="w-3 h-3" strokeWidth={3} />
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </DatePicker>
+                                    <Dropdown
+                                        variant="metallic"
+                                        placeholder="Year"
+                                        options={yearOptions}
+                                        value={selectedYear}
+                                        onChange={setSelectedYear}
+                                        className="xl:w-[120px]"
+                                    />
+                                    <Dropdown
+                                        variant="metallic"
+                                        placeholder="Month"
+                                        options={monthOptions}
+                                        value={selectedMonth}
+                                        onChange={setSelectedMonth}
+                                        className="xl:w-[180px]"
+                                    />
 
                                     <div className="h-8 w-px bg-white/10 mx-1 hidden sm:block" />
 
@@ -3523,36 +3903,11 @@ const FreelancerEarnings: React.FC = () => {
 
                                 {/* Right: Actions */}
                                 <div className="flex items-center gap-2 w-full xl:w-auto justify-center xl:justify-end overflow-visible">
-                                    {[
-                                        { id: 'today', label: 'Today' },
-                                        { id: 'week', label: 'This Week' },
-                                        { id: 'month', label: 'This Month' }
-                                    ].map((filter) => (
-                                        <div
-                                            key={filter.id}
-                                            onClick={() => handleQuickFilter(filter.id as any)}
-                                            className={`relative flex items-center justify-center bg-black/40 border border-white/[0.05] rounded-xl px-4 h-10 text-[10px] font-black uppercase tracking-[0.1em] transition-all cursor-pointer group shadow-[inset_0_2px_8px_rgba(0,0,0,0.6)] overflow-hidden min-w-[90px] ${activeFilter === filter.id
-                                                ? 'border-brand-primary/40 bg-brand-primary/5'
-                                                : 'hover:bg-black/50 hover:border-white/10'
-                                                }`}
-                                        >
-                                            {/* Inner Top Shadow for carved-in look */}
-                                            <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-b from-black/60 to-transparent pointer-events-none" />
-                                            {/* Subtle Diagonal Machined Sheen */}
-                                            <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.02)_48%,rgba(255,255,255,0.05)_50%,rgba(255,255,255,0.02)_52%,transparent_100%)] opacity-30 pointer-events-none" />
-
-                                            <span className={`relative z-10 transition-colors ${activeFilter === filter.id ? 'text-brand-primary' : 'text-gray-400 group-hover:text-white'
-                                                }`}>
-                                                {filter.label}
-                                            </span>
-                                        </div>
-                                    ))}
-                                    <Button
+                                     <Button
                                         variant="metallic"
-                                        size="sm"
-                                        leftIcon={<IconChartBar className="w-4 h-4 block" />}
-                                        className="whitespace-nowrap h-10 min-h-[40px] px-4 inline-flex items-center justify-center box-border"
                                         onClick={handleExportCSV}
+                                        leftIcon={<IconChartBar className="w-4 h-4 text-white" />}
+                                        className="pl-3 pr-3.5 py-2 text-xs font-bold uppercase tracking-wider h-10 min-w-max"
                                     >
                                         Export CSV
                                     </Button>
@@ -3562,7 +3917,7 @@ const FreelancerEarnings: React.FC = () => {
                     </Card>
 
                     {/* Summary Stats Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <Card
                             isElevated={true}
                             disableHover={activeSummaryFilter === 'lifetime'}
@@ -3643,36 +3998,7 @@ const FreelancerEarnings: React.FC = () => {
                                     <div>
                                         <p className={`text-xs font-bold uppercase tracking-widest mb-1 ${activeSummaryFilter === 'pending' ? 'text-white/80' : 'text-gray-400'}`}>Pending Clearance</p>
                                         <h4 className={`text-2xl font-black ${activeSummaryFilter === 'pending' ? 'text-white' : 'text-brand-warning'}`}>
-                                            {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
-                                                earningsData.filter(item => {
-                                                    // Check Status
-                                                    if (item.funds_status !== 'Pending') return false;
-
-                                                    // Check Dates
-                                                    const itemDate = new Date(item.rawDate);
-                                                    itemDate.setHours(0, 0, 0, 0);
-                                                    if (dateFrom) {
-                                                        const from = new Date(dateFrom); from.setHours(0, 0, 0, 0);
-                                                        if (itemDate < from) return false;
-                                                    }
-                                                    if (dateTo) {
-                                                        const to = new Date(dateTo); to.setHours(23, 59, 59, 999);
-                                                        if (itemDate > to) return false;
-                                                    }
-
-                                                    // Check Account
-                                                    if (!selectedAccount.includes('all')) {
-                                                        const isMatched = selectedAccount.includes(item.accountId) || 
-                                                            selectedAccount.some(accId => {
-                                                                const acc = accounts.find(a => a.id === accId);
-                                                                return acc?.prefix && item.id.startsWith(acc.prefix.toUpperCase());
-                                                            });
-                                                        if (!isMatched) return false;
-                                                    }
-
-                                                    return true;
-                                                }).reduce((sum, item) => sum + (item.rawAmount || 0), 0)
-                                            )}
+                                            {selectedFreelancer ? formatPKRAmount(adminNetPayout) : 'PKR 0'}
                                         </h4>
                                     </div>
                                     <div className={`p-2 rounded-lg border transition-all ${activeSummaryFilter === 'pending'
@@ -3685,91 +4011,57 @@ const FreelancerEarnings: React.FC = () => {
                                 <p className={`text-[10px] font-medium ${activeSummaryFilter === 'pending' ? 'text-white/70' : 'text-gray-500'}`}>Approved, awaiting clearance</p>
                             </div>
                         </Card>
-
-                        <Card
-                            isElevated={true}
-                            disableHover={activeSummaryFilter === 'available'}
-                            className={`h-full p-0 border-2 transition-all group cursor-pointer overflow-hidden ${activeSummaryFilter === 'available'
-                                ? 'bg-gradient-to-b from-[#FF6B4B] to-[#D9361A] border-[#FF4D2D] shadow-[inset_0_1px_0_rgba(255,255,255,0.4),inset_0_-1px_0_rgba(0,0,0,0.2)]'
-                                : 'border-white/10 bg-[#1A1A1A] hover:border-brand-primary/30'
-                                }`}
-                            bodyClassName="h-full"
-                            onClick={() => setActiveSummaryFilter('available')}
-                        >
-                            {/* Full Surface Metallic Shine */}
-                            <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.02)_0%,rgba(255,255,255,0.05)_40%,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.05)_60%,rgba(255,255,255,0.02)_100%)] pointer-events-none opacity-70" />
-                            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.05)_0%,transparent_70%)] pointer-events-none" />
-
-                            <div className="p-5 relative z-10 w-full">
-                                <div className="flex justify-between items-start mb-1">
-                                    <div>
-                                        <p className={`text-xs font-bold uppercase tracking-widest mb-1 ${activeSummaryFilter === 'available' ? 'text-white/80' : 'text-gray-400'}`}>Available Amount</p>
-                                        <h4 className={`text-2xl font-black ${activeSummaryFilter === 'available' ? 'text-white' : 'text-brand-success'}`}>
-                                            {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
-                                                earningsData.filter(item => {
-                                                    // Check Status
-                                                    if (item.funds_status !== 'Cleared') return false;
-
-                                                    // Check Dates
-                                                    const itemDate = new Date(item.rawDate);
-                                                    itemDate.setHours(0, 0, 0, 0);
-                                                    if (dateFrom) {
-                                                        const from = new Date(dateFrom); from.setHours(0, 0, 0, 0);
-                                                        if (itemDate < from) return false;
-                                                    }
-                                                    if (dateTo) {
-                                                        const to = new Date(dateTo); to.setHours(23, 59, 59, 999);
-                                                        if (itemDate > to) return false;
-                                                    }
-
-                                                    // Check Account
-                                                    if (!selectedAccount.includes('all')) {
-                                                        const isMatched = selectedAccount.includes(item.accountId) || 
-                                                            selectedAccount.some(accId => {
-                                                                const acc = accounts.find(a => a.id === accId);
-                                                                return acc?.prefix && item.id.startsWith(acc.prefix.toUpperCase());
-                                                            });
-                                                        if (!isMatched) return false;
-                                                    }
-
-                                                    return true;
-                                                }).reduce((sum, item) => sum + (item.rawAmount || 0), 0)
-                                            )}
-                                        </h4>
-                                    </div>
-                                    <div className={`p-2 rounded-lg border transition-all ${activeSummaryFilter === 'available'
-                                        ? 'bg-white/20 border-white/30 text-white'
-                                        : 'bg-white/5 border-white/10 text-gray-400 group-hover:bg-brand-primary/10 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
-                                        }`}>
-                                        <IconCheckCircle className="w-5 h-5" />
-                                    </div>
-                                </div>
-                                <p className={`text-[10px] font-medium ${activeSummaryFilter === 'available' ? 'text-white/70' : 'text-gray-500'}`}>Ready for payout</p>
-                            </div>
-                        </Card>
                     </div>
 
+                    {/* Milestone Bonuses Widget */}
+                    {(() => {
+                        const subjectUser = freelancers?.find(f => f.email === selectedFreelancer);
+                        return subjectUser ? (
+                            <div className="mb-6 mt-2">
+                                <BonusMilestonesWidget 
+                                    profile={subjectUser} 
+                                    role={subjectUser.role} 
+                                    dateFrom={dateFrom} 
+                                    dateTo={dateTo} 
+                                />
+                            </div>
+                        ) : null;
+                    })()}
+
                     {/* Sub Tabs & Actions Bar - Shared Row */}
-                    {activeSummaryFilter === 'available' && (
+                    {activeSummaryFilter === 'pending' && (
                         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-4">
                             <Tabs
                                 tabs={[
-                                    { id: 'available', label: 'Available Amount', icon: <IconCheckCircle className="w-4 h-4" /> },
-                                    { id: 'history', label: 'Transaction History', icon: <IconCreditCard className="w-4 h-4" /> }
+                                    { id: 'pending', label: 'Pending Clearance', icon: <IconClock className="w-4 h-4" /> },
+                                    { id: 'history', label: 'Payment History', icon: <IconCreditCard className="w-4 h-4" /> }
                                 ]}
                                 activeTab={activeSubTab}
-                                onTabChange={(id) => setActiveSubTab(id as 'available' | 'history')}
+                                onTabChange={(id) => setActiveSubTab(id as 'pending' | 'history')}
                                 className="!rounded-xl !p-1"
                             />
 
-                            {isAdmin && (
+                            {isAdmin && activeSubTab === 'pending' && (
                                 <Button
                                     size="md"
                                     variant="metallic"
                                     leftIcon={<IconCreditCard className="w-4 h-4" />}
                                     className="w-full sm:w-auto whitespace-nowrap font-bold uppercase tracking-wider !h-10 !px-5"
                                     onClick={() => {
-                                        const availableList = earningsData.filter(item => {
+                                        const subjectUser = freelancers?.find(f => f.email === selectedFreelancer);
+                                        const isStatementLedger = subjectUser?.payout_strategy === 'basicplusbonus' || subjectUser?.payout_strategy === 'bonusonly';
+
+                                        if (isStatementLedger) {
+                                            if (remainingPending > 0) {
+                                                setIsReleaseSuccess(false);
+                                                setIsReleaseModalOpen(true);
+                                            } else {
+                                                addToast({ title: 'No payout to release for this period', type: 'error' });
+                                            }
+                                            return;
+                                        }
+
+                                        const clearedList = earningsData.filter(item => {
                                             if (item.funds_status !== 'Cleared') return false;
                                             const itemDate = new Date(item.rawDate);
                                             itemDate.setHours(0, 0, 0, 0);
@@ -3791,23 +4083,23 @@ const FreelancerEarnings: React.FC = () => {
                                             }
                                             return true;
                                         });
-                                        const availableAmount = availableList.reduce((sum, item) => sum + (item.rawAmount || 0), 0);
-                                        if (availableAmount > 0) {
+                                        const clearedAmount = clearedList.reduce((sum, item) => sum + (item.rawAmount || 0), 0);
+                                        if (clearedAmount > 0) {
                                             setIsReleaseSuccess(false);
                                             setIsReleaseModalOpen(true);
                                         } else {
-                                            addToast({ title: 'No available funds to release', type: 'error' });
+                                            addToast({ title: 'No cleared funds to release for this period', type: 'error' });
                                         }
                                     }}
                                 >
-                                    Release Amount
+                                    Release Payout
                                 </Button>
                             )}
                         </div>
                     )}
 
-                    {/* Content Display: If not 'available' card, show projects. If 'available' card, toggle by sub-tab. */}
-                    {(activeSummaryFilter !== 'available' || activeSubTab === 'available') ? (
+                    {/* Content Display: If lifetime view, show project table. If pending view, toggle ledger vs history. */}
+                    {activeSummaryFilter === 'lifetime' ? (
                         <Table
                             columns={[
                                 {
@@ -3843,22 +4135,14 @@ const FreelancerEarnings: React.FC = () => {
                                     render: (item: any) => <span className="text-gray-400">{item.client}</span>
                                 },
                                 {
-                                    header: activeSummaryFilter === 'pending' ? 'Days Left' : 'Funds Status',
+                                    header: 'Funds Status',
                                     key: 'funds_status',
                                     render: (item: any) => {
-                                        if (activeSummaryFilter === 'pending') {
-                                            return (
-                                                <span className="bg-brand-warning/10 text-brand-warning border border-brand-warning/20 px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider">
-                                                    {item.daysLeft || 0} Days
-                                                </span>
-                                            );
-                                        }
-                                        const status = activeSummaryFilter === 'available' ? 'Unpaid' : item.funds_status;
-                                        const isSuccess = status === 'Cleared' || status === 'Paid';
+                                        const isSuccess = item.funds_status === 'Cleared' || item.funds_status === 'Paid';
                                         return (
                                             <span className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${isSuccess ? 'bg-brand-success/10 text-brand-success border border-brand-success/20' : 'bg-brand-warning/10 text-brand-warning border border-brand-warning/20'
                                                 }`}>
-                                                {status}
+                                                {item.funds_status}
                                             </span>
                                         );
                                     }
@@ -3874,6 +4158,139 @@ const FreelancerEarnings: React.FC = () => {
                             isLoading={loading}
                             isMetallicHeader={true}
                         />
+                    ) : activeSubTab === 'pending' ? (
+                        <div className="rounded-2xl border border-surface-border bg-surface-card overflow-hidden shadow-nova mb-10 relative">
+                            <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.01)_0%,rgba(255,255,255,0.03)_50%,rgba(255,255,255,0.01)_100%)] pointer-events-none" />
+                            
+                            <div className="relative z-10">
+                                {breakdownLoading || loading ? (
+                                    <div className="p-8 text-center text-gray-500">Calculating rewards statement...</div>
+                                ) : (
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left border-collapse table-auto text-sm text-gray-400">
+                                            <thead>
+                                                <tr className="bg-surface-overlay border-b border-surface-border text-[10px] uppercase tracking-widest text-gray-400 font-bold">
+                                                    <th className="px-6 py-4">Name</th>
+                                                    <th className="px-6 py-4">Description</th>
+                                                    <th className="px-6 py-4 text-right">Amount</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-surface-border/40 font-medium">
+                                                {/* Row 1: Pay Period */}
+                                                <tr className="hover:bg-white/[0.03] transition-colors">
+                                                    <td className="px-6 py-4 text-white/90 font-bold">Pay Period</td>
+                                                    <td colSpan={2} className="px-6 py-4 text-brand-primary text-right font-black uppercase tracking-widest text-[11px]">
+                                                        <div className="flex items-center justify-end gap-3">
+                                                            <span>
+                                                                {(() => {
+                                                                    const yr = Number(selectedYear);
+                                                                    const mo = Number(selectedMonth);
+                                                                    const d = new Date(yr, mo, 1);
+                                                                    return d.toLocaleString('default', { month: 'long', year: 'numeric' });
+                                                                })()}
+                                                            </span>
+                                                            {(() => {
+                                                                if (alreadyPaid >= adminNetPayout && adminNetPayout > 0) {
+                                                                    return (
+                                                                        <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-brand-success/20 text-brand-success border border-brand-success/30">
+                                                                            Paid
+                                                                        </span>
+                                                                    );
+                                                                }
+                                                                if (alreadyPaid > 0) {
+                                                                    return (
+                                                                        <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-brand-warning/20 text-brand-warning border border-brand-warning/30">
+                                                                            Partially Paid
+                                                                        </span>
+                                                                    );
+                                                                }
+                                                                return (
+                                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-red-500/20 text-red-400 border border-red-500/30">
+                                                                        Unpaid
+                                                                    </span>
+                                                                );
+                                                            })()}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+
+                                                {/* Row 2: Base Salary */}
+                                                {(() => {
+                                                    const subjectUser = freelancers?.find(f => f.email === selectedFreelancer);
+                                                    return subjectUser?.payout_strategy === 'basicplusbonus' && (
+                                                        <tr className="hover:bg-white/[0.03] transition-colors">
+                                                            <td className="px-6 py-4 text-white/90 font-bold">Base Salary</td>
+                                                            <td className="px-6 py-4 text-gray-400">Monthly Fixed Rate</td>
+                                                            <td className="px-6 py-4 text-right text-white font-bold">
+                                                                {formatPKRAmount(subjectUser?.fixed_payout_rate || 0)}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })()}
+
+                                                {/* Rows 3: Qualified Bonuses */}
+                                                {monthlyBonuses.map((bonus) => (
+                                                    <tr key={bonus.id} className="hover:bg-white/[0.03] transition-colors">
+                                                        <td className="px-6 py-4 text-white/90 font-bold">{bonus.name}</td>
+                                                        <td className="px-6 py-4 text-gray-400">
+                                                            {bonus.calc_type === 'Volume' ? `${bonus.currentVal}/${bonus.target} projects completed` :
+                                                             bonus.calc_type === 'Percentage' ? `${bonus.currentVal}% conversion target met` :
+                                                             bonus.calc_type === 'Rating' ? `Rating of ${bonus.currentVal} achieved` :
+                                                             bonus.calc_type === 'Punctuality' ? `${bonus.currentVal} days on-time attendance` :
+                                                             bonus.calc_type === 'Penalties' ? 'Zero valid penalties' :
+                                                             'Target achieved'}
+                                                        </td>
+                                                        <td className="px-6 py-4 text-right text-brand-success font-bold">
+                                                            +{formatPKRAmount(bonus.amount)}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+
+                                                {/* Rows 4: Active Penalties */}
+                                                {penaltiesList.map((penalty) => {
+                                                    const matchedRule = penaltyStructures.find(
+                                                        p => (p.name || '').toLowerCase() === (penalty.reason || '').toLowerCase()
+                                                    );
+                                                    const deductionAmt = matchedRule?.amount ?? 50;
+                                                    return (
+                                                        <tr key={penalty.id} className="hover:bg-white/[0.03] transition-colors">
+                                                            <td className="px-6 py-4 text-brand-error font-bold">Deduction: {penalty.reason}</td>
+                                                            <td className="px-6 py-4 text-gray-400">{penalty.details || 'Active disciplinary record'}</td>
+                                                            <td className="px-6 py-4 text-right text-brand-error font-bold">
+                                                                -{formatPKRAmount(deductionAmt)}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+
+                                                {/* Row 5: Total Net Amount */}
+                                                <tr className="bg-white/[0.04]">
+                                                    <td colSpan={2} className="px-6 py-4 text-white font-black uppercase tracking-widest text-xs">
+                                                        Net Estimated Payout
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right text-brand-success text-base font-black">
+                                                        {formatPKRAmount(adminNetPayout)}
+                                                    </td>
+                                                </tr>
+
+                                                {/* Row 6: Expected Release */}
+                                                <tr className="hover:bg-white/[0.03] transition-colors">
+                                                    <td className="px-6 py-4 text-white/90 font-bold">Expected Release</td>
+                                                    <td colSpan={2} className="px-6 py-4 text-right text-gray-400">
+                                                        {(() => {
+                                                            const yr = Number(selectedYear);
+                                                            const mo = Number(selectedMonth);
+                                                            const nextMonth = new Date(yr, mo + 1, 15);
+                                                            return `15th of ${nextMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}`;
+                                                        })()}
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     ) : showReleaseDetails ? (
                         <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
                             {/* Premium Header Design */}
@@ -4170,46 +4587,102 @@ const FreelancerEarnings: React.FC = () => {
                             <div className="flex flex-col items-center justify-center py-6 mb-2">
                                 <span className="text-[10px] text-gray-500 font-bold uppercase tracking-[0.2em] mb-2">Total to Release</span>
                                 <span className="text-4xl font-black text-brand-primary tracking-tight">
-                                    {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
-                                        earningsData.filter(item => {
-                                            if (item.funds_status !== 'Cleared') return false;
-                                            const itemDate = new Date(item.rawDate);
-                                            itemDate.setHours(0, 0, 0, 0);
-                                            if (dateFrom) {
-                                                const from = new Date(dateFrom); from.setHours(0, 0, 0, 0);
-                                                if (itemDate < from) return false;
-                                            }
-                                            if (dateTo) {
-                                                const to = new Date(dateTo); to.setHours(23, 59, 59, 999);
-                                                if (itemDate > to) return false;
-                                            }
-                                            if (selectedAccount.length > 0 && !selectedAccount.includes('all')) {
-                                                const accMatched = selectedAccount.includes(item.accountId);
-                                                const prefixMatched = selectedAccount.some(accId => {
-                                                    const acc = accounts?.find(a => a.id === accId);
-                                                    return acc?.prefix && item.id.startsWith(acc.prefix.toUpperCase());
-                                                });
-                                                if (!accMatched && !prefixMatched) return false;
-                                            }
-                                            return true;
-                                        }).reduce((sum, item) => sum + (item.rawAmount || 0), 0)
-                                    )}
+                                    {(() => {
+                                        const subjectUser = freelancers?.find(f => f.email === selectedFreelancer);
+                                        const isStatementLedger = subjectUser?.payout_strategy === 'basicplusbonus' || subjectUser?.payout_strategy === 'bonusonly';
+                                        
+                                        if (isStatementLedger) {
+                                            return formatPKRAmount(remainingPending);
+                                        }
+
+                                        return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
+                                            earningsData.filter(item => {
+                                                if (item.funds_status !== 'Cleared') return false;
+                                                const itemDate = new Date(item.rawDate);
+                                                itemDate.setHours(0, 0, 0, 0);
+                                                if (dateFrom) {
+                                                    const from = new Date(dateFrom); from.setHours(0, 0, 0, 0);
+                                                    if (itemDate < from) return false;
+                                                }
+                                                if (dateTo) {
+                                                    const to = new Date(dateTo); to.setHours(23, 59, 59, 999);
+                                                    if (itemDate > to) return false;
+                                                }
+                                                if (selectedAccount.length > 0 && !selectedAccount.includes('all')) {
+                                                    const accMatched = selectedAccount.includes(item.accountId);
+                                                    const prefixMatched = selectedAccount.some(accId => {
+                                                        const acc = accounts?.find(a => a.id === accId);
+                                                        return acc?.prefix && item.id.startsWith(acc.prefix.toUpperCase());
+                                                    });
+                                                    if (!accMatched && !prefixMatched) return false;
+                                                }
+                                                return true;
+                                            }).reduce((sum, item) => sum + (item.rawAmount || 0), 0)
+                                        );
+                                    })()}
                                 </span>
                             </div>
 
-                            {/* Payment Method Dropdown */}
-                            <div className="mb-6">
-                                <Dropdown
-                                    label="Select Payout Method"
-                                    options={[
-                                        { label: 'Bank Transfer', value: 'Bank Transfer' },
-                                        { label: 'Payoneer', value: 'Payoneer' }
-                                    ]}
-                                    value={releaseFormData.paymentMethod}
-                                    onChange={(val) => setReleaseFormData(prev => ({ ...prev, paymentMethod: val }))}
-                                    variant="metallic"
-                                />
+                            {/* Pay Period Dropdowns inside Modal */}
+                            <div className="grid grid-cols-2 gap-4 mb-6">
+                                <div>
+                                    <label className="block text-[10px] text-gray-400 font-bold uppercase tracking-[0.2em] mb-2">
+                                        Select Year
+                                    </label>
+                                    <Dropdown
+                                        placeholder="Year"
+                                        options={yearOptions}
+                                        value={selectedYear}
+                                        onChange={setSelectedYear}
+                                        variant="metallic"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] text-gray-400 font-bold uppercase tracking-[0.2em] mb-2">
+                                        Select Month
+                                    </label>
+                                    <Dropdown
+                                        placeholder="Month"
+                                        options={monthOptions}
+                                        value={selectedMonth}
+                                        onChange={setSelectedMonth}
+                                        variant="metallic"
+                                    />
+                                </div>
                             </div>
+
+                            {/* Static Payout Method Display */}
+                            <div className="flex justify-between items-center bg-white/[0.02] border border-white/5 rounded-2xl px-5 py-4 mb-6 text-sm">
+                                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-[0.2em]">Payout Method</span>
+                                <span className="font-bold text-white uppercase tracking-wider text-xs">Bank Transfer</span>
+                            </div>
+
+                            {/* Custom Amount to Release (Statement Payout Only) */}
+                            {(() => {
+                                const subjectUser = freelancers?.find(f => f.email === selectedFreelancer);
+                                const isStatementLedger = subjectUser?.payout_strategy === 'basicplusbonus' || subjectUser?.payout_strategy === 'bonusonly';
+                                
+                                return isStatementLedger ? (
+                                    <div className="mb-6">
+                                        <Input
+                                            type="number"
+                                            variant="recessed"
+                                            size="md"
+                                            label="Amount to Release (PKR)"
+                                            value={customReleaseAmount}
+                                            onChange={(e) => setCustomReleaseAmount(e.target.value)}
+                                            placeholder="Enter payout amount"
+                                            className="w-full font-mono font-bold tracking-wide"
+                                            inputClassName="!text-white !font-bold"
+                                            min="1"
+                                            max={remainingPending}
+                                        />
+                                        <p className="text-[10px] text-gray-500 mt-2 font-medium">
+                                            Max remaining pending: {formatPKRAmount(remainingPending)}
+                                        </p>
+                                    </div>
+                                ) : null;
+                            })()}
 
                             {/* Payment Details Sections */}
                             {(() => {
@@ -4238,21 +4711,6 @@ const FreelancerEarnings: React.FC = () => {
                                                     <span className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.2em] mb-1">IBAN / Account Number</span>
                                                     <span className="text-sm text-brand-primary font-mono font-bold tracking-wider">
                                                         {currentFreelancer?.iban || 'Not provided'}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Payoneer Details Card */}
-                                        <div className="bg-black/20 border border-white/5 rounded-2xl overflow-hidden">
-                                            <div className="bg-white/[0.03] px-5 py-3 border-b border-white/5">
-                                                <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em]">Payoneer Details</h3>
-                                            </div>
-                                            <div className="p-5">
-                                                <div className="flex flex-col">
-                                                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.2em] mb-1">Payoneer Email</span>
-                                                    <span className="text-sm text-white font-medium">
-                                                        {currentFreelancer?.payment_email || 'Not provided'}
                                                     </span>
                                                 </div>
                                             </div>

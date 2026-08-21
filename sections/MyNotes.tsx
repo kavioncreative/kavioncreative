@@ -20,8 +20,22 @@ interface Note {
 
 export default function MyNotes() {
   const { profile } = useUser();
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [notes, setNotes] = useState<Note[]>(() => {
+    try {
+      const cached = localStorage.getItem('kavion_notes_cache');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [loading, setLoading] = useState(() => {
+    try {
+      const cached = localStorage.getItem('kavion_notes_cache');
+      return !cached;
+    } catch {
+      return true;
+    }
+  });
   
   const [viewState, setViewState] = useState<'grid' | 'creating' | 'editing'>('grid');
   const [currentNote, setCurrentNote] = useState<Note | null>(null);
@@ -40,7 +54,10 @@ export default function MyNotes() {
   }, [profile?.id, viewState]); // Refresh notes when returning to grid
 
   const fetchNotes = async () => {
-    setLoading(true);
+    const hasCache = localStorage.getItem('kavion_notes_cache');
+    if (!hasCache) {
+      setLoading(true);
+    }
     try {
       const { data, error } = await supabase
         .from('user_notes')
@@ -57,6 +74,7 @@ export default function MyNotes() {
       }
       if (data) {
         setNotes(data as Note[]);
+        localStorage.setItem('kavion_notes_cache', JSON.stringify(data));
       }
     } catch (err: any) {
       console.error('Error fetching notes:', err);
@@ -249,24 +267,42 @@ export default function MyNotes() {
   // --- GRID VIEW ---
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="flex items-center justify-end">
-        <Button 
-          variant="metallic" 
-          onClick={handleCreateNew}
-          leftIcon={<IconPlus size={18} />}
-        >
-          New Note
-        </Button>
-      </div>
+      {!loading && notes.length > 0 && (
+        <div className="flex items-center justify-end">
+          <Button 
+            variant="metallic" 
+            onClick={handleCreateNew}
+            leftIcon={<IconPlus size={18} />}
+          >
+            New Note
+          </Button>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex flex-col items-center justify-center p-20 gap-4">
           <div className="w-8 h-8 border-2 border-brand-primary/20 border-t-brand-primary rounded-full animate-spin" />
         </div>
+      ) : notes.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-24 text-center animate-in fade-in duration-700">
+          <div className="w-20 h-20 rounded-3xl bg-white/[0.02] border border-white/5 flex items-center justify-center text-gray-500 mb-6 shadow-inner relative overflow-hidden group hover:border-brand-primary/20 transition-all duration-300">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.02)_0%,transparent_80%)] pointer-events-none" />
+            <IconFileText size={36} className="text-gray-500 group-hover:text-brand-primary transition-colors duration-300" />
+          </div>
+          <h3 className="text-lg font-black text-white mb-2 tracking-tight uppercase">No Notes Found</h3>
+          <p className="text-xs text-gray-500 max-w-xs mb-8 leading-relaxed">
+            Create your first personal note to start brainstorming ideas, saving copy guidelines, or drafting layout assets.
+          </p>
+          <Button 
+            variant="metallic" 
+            onClick={handleCreateNew}
+            leftIcon={<IconPlus size={18} />}
+          >
+            New Note
+          </Button>
+        </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-
-
           {/* Existing Notes */}
           {notes.map(note => (
             <ElevatedMetallicCard 

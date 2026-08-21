@@ -50,9 +50,6 @@ const Analytics: React.FC = () => {
         if (hasPermission('view_gig_stats')) {
             tabs.push({ id: 'gig-stats', label: 'Gig Stats', icon: <IconChartBar size={16} /> });
         }
-        if (hasPermission('view_sales_analytics')) {
-            tabs.push({ id: 'sales', label: 'Sales', icon: <IconDollar size={16} /> });
-        }
         return tabs;
     }, [hasPermission]);
 
@@ -631,25 +628,7 @@ const Analytics: React.FC = () => {
         <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
 
 
-            <div className="flex flex-row items-center justify-between gap-4">
-                <div>
-                    {!isProjectOpsManager && availableTabs.length > 1 && (
-                        <Tabs
-                            tabs={availableTabs}
-                            activeTab={activeTab}
-                            onTabChange={setActiveTab}
-                        />
-                    )}
-                </div>
-                <Button
-                    variant="metallic"
-                    onClick={() => setIsPerformanceModalOpen(true)}
-                    leftIcon={<IconPlus className="w-4 h-4 text-brand-primary" />}
-                    className="px-4 py-2 text-xs font-bold uppercase tracking-wider h-[38px] min-w-max"
-                >
-                    Enter Stats
-                </Button>
-            </div>
+
 
             {/* Global Filter Bar */}
             <Card
@@ -810,6 +789,14 @@ const Analytics: React.FC = () => {
                                     </span>
                                 </div>
                             ))}
+                            <Button
+                                variant="metallic"
+                                onClick={() => setIsPerformanceModalOpen(true)}
+                                leftIcon={<IconPlus className="w-4 h-4 text-white" />}
+                                className="pl-3 pr-3.5 py-2 text-xs font-bold uppercase tracking-wider h-10 min-w-max"
+                            >
+                                Enter Stats
+                            </Button>
                             {activeTab !== 'gig-stats' && (
                                 <Button
                                     variant="metallic"

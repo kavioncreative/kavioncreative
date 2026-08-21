@@ -15,7 +15,7 @@ interface CompleteProfileProps {
     onBack?: () => void;
 }
 
-const getSteps = (role: string | null, paymentMethod: string | null) => {
+const getSteps = (role: string | null) => {
     const roleLower = role?.toLowerCase().trim();
 
     // Admins only need to upload a profile picture
@@ -25,31 +25,12 @@ const getSteps = (role: string | null, paymentMethod: string | null) => {
         ];
     }
 
-    const isFreelancer = ['freelancer', 'team lead', 'designer', 'presentation', 'graphic designer', 'orm', 'project operations', 'team designer'].some(r => roleLower?.includes(r));
-    
-    const steps = [
+    return [
         { id: 'profile-pic', title: 'Profile Picture', subtitle: 'Upload a professional photo for your profile' },
         { id: 'phone', title: 'Phone Number', subtitle: 'Provide your WhatsApp or direct contact number' },
+        { id: 'bank', title: 'Bank Details', subtitle: 'Add your primary bank account for payments' },
+        { id: 'cnic', title: 'Identity Verification', subtitle: 'Upload your government issued ID card' }
     ];
-
-    if (isFreelancer) {
-        steps.push({ id: 'payment-method', title: 'Payment Method', subtitle: 'How would you like to receive your earnings?' });
-        
-        if (paymentMethod === 'Bank') {
-            steps.push({ id: 'bank', title: 'Bank Details', subtitle: 'Add your primary bank account for payments' });
-        } else if (paymentMethod === 'Payoneer') {
-            steps.push({ id: 'payoneer', title: 'Payoneer Details', subtitle: 'Provide your Payoneer associated email address' });
-        }
-    } else {
-        // Default fallback for roles not explicitly marked as freelancers but still needing bank info (e.g. PMs or others)
-        // Note: Admin/Super Admin are handled above and return early.
-        steps.push({ id: 'bank', title: 'Bank Details', subtitle: 'Add your primary bank account for payments' });
-    }
-
-    // Identity verification for everyone except Admins
-    steps.push({ id: 'cnic', title: 'Identity Verification', subtitle: 'Upload your government issued ID card' });
-
-    return steps;
 };
 
 const CompleteProfile: React.FC<CompleteProfileProps> = ({ role, initialStatus, onComplete, onBack }) => {
@@ -152,7 +133,7 @@ const CompleteProfile: React.FC<CompleteProfileProps> = ({ role, initialStatus, 
     const [activeField, setActiveField] = useState<string | null>(null);
     const [uploadingField, setUploadingField] = useState<string | null>(null);
 
-    const steps = getSteps(role, paymentMethod);
+    const steps = getSteps(role);
     const isFirstStep = currentStep === 0;
     const isLastStep = currentStep === steps.length - 1;
 
@@ -253,15 +234,9 @@ const CompleteProfile: React.FC<CompleteProfileProps> = ({ role, initialStatus, 
         } else if (stepId === 'phone' && (!phone || phone.trim().length < 7)) {
             isValid = false;
             errorMessage = 'Please enter a valid phone number.';
-        } else if (stepId === 'payment-method' && !paymentMethod) {
-            isValid = false;
-            errorMessage = 'Please select your preferred payment method.';
         } else if (stepId === 'bank' && (!bankName.trim() || !accountTitle.trim() || !iban.trim())) {
             isValid = false;
             errorMessage = 'Please fill in all bank account details.';
-        } else if (stepId === 'payoneer' && (!payoneerEmail.trim() || !payoneerEmail.includes('@'))) {
-            isValid = false;
-            errorMessage = 'Please enter a valid Payoneer email address.';
         } else if (stepId === 'cnic' && (!cnicFront || !cnicBack)) {
             isValid = false;
             errorMessage = 'Please upload both front and back sides of your ID card.';
@@ -315,7 +290,7 @@ const CompleteProfile: React.FC<CompleteProfileProps> = ({ role, initialStatus, 
                             status: finalStatus,
                             phone: phone || profile?.phone || profile?.whatsapp_number || '',
                             whatsapp_number: phone || profile?.whatsapp_number || '',
-                            payment_email: payoneerEmail || profile?.payment_email || user.email,
+                            payment_email: null,
                             avatar_url: profilePic || profile?.avatar_url,
                             bank_name: bankName,
                             account_title: accountTitle,
@@ -323,7 +298,7 @@ const CompleteProfile: React.FC<CompleteProfileProps> = ({ role, initialStatus, 
                             cnic_front_url: isAppAdmin ? null : (cnicFront || profile?.cnic_front_url),
                             cnic_back_url: isAppAdmin ? null : (cnicBack || profile?.cnic_back_url),
                             updated_at: new Date().toISOString(),
-                            preferred_payment_method: paymentMethod
+                            preferred_payment_method: 'Bank Transfer'
                         }
                     ], { onConflict: 'email' });
 
@@ -416,64 +391,6 @@ const CompleteProfile: React.FC<CompleteProfileProps> = ({ role, initialStatus, 
                         </p>
                     </div>
                 );
-            case 'payment-method':
-                return (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl mx-auto px-4">
-                        <button
-                            type="button"
-                            onClick={() => setPaymentMethod('Payoneer')}
-                            className={`flex flex-col items-center justify-center p-6 rounded-2xl border-2 transition-all duration-300 group relative overflow-hidden ${paymentMethod === 'Payoneer'
-                                ? 'bg-gradient-to-b from-[#FF6B4B] to-[#D9361A] border-[#FF4D2D] shadow-[inset_0_1px_0_rgba(255,255,255,0.4),inset_0_-1px_0_rgba(0,0,0,0.2)]'
-                                : 'border-white/10 bg-[#1A1A1A] hover:border-brand-primary/30'
-                                }`}
-                        >
-                            {/* Full Surface Metallic Shine for Active State */}
-                            <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.02)_0%,rgba(255,255,255,0.05)_40%,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.05)_60%,rgba(255,255,255,0.02)_100%)] pointer-events-none opacity-70" />
-                            
-                            <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 transition-all duration-300 overflow-hidden border ${paymentMethod === 'Payoneer' ? 'bg-white border-white/30' : 'bg-white/5 border-white/10 group-hover:bg-brand-primary/10 group-hover:border-brand-primary/20'}`}>
-                                <img src="/payoneericon.jpeg" alt="Payoneer" className="w-full h-full object-contain" />
-                            </div>
-                            
-                            <h3 className={`text-lg font-black mb-0.5 uppercase tracking-wider ${paymentMethod === 'Payoneer' ? 'text-white' : 'text-gray-400 group-hover:text-white'}`}>Payoneer</h3>
-                            <p className={`text-xs font-bold uppercase tracking-widest ${paymentMethod === 'Payoneer' ? 'text-white/80' : 'text-gray-500'}`}>You'll receive USD</p>
-                            
-                            {paymentMethod === 'Payoneer' && (
-                                <div className="absolute top-3 right-3 text-white">
-                                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                                    </svg>
-                                </div>
-                            )}
-                        </button>
-
-                        <button
-                            type="button"
-                            onClick={() => setPaymentMethod('Bank')}
-                            className={`flex flex-col items-center justify-center p-6 rounded-2xl border-2 transition-all duration-300 group relative overflow-hidden ${paymentMethod === 'Bank'
-                                ? 'bg-gradient-to-b from-[#FF6B4B] to-[#D9361A] border-[#FF4D2D] shadow-[inset_0_1px_0_rgba(255,255,255,0.4),inset_0_-1px_0_rgba(0,0,0,0.2)]'
-                                : 'border-white/10 bg-[#1A1A1A] hover:border-brand-primary/30'
-                                }`}
-                        >
-                            {/* Full Surface Metallic Shine for Active State */}
-                            <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.02)_0%,rgba(255,255,255,0.05)_40%,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.05)_60%,rgba(255,255,255,0.02)_100%)] pointer-events-none opacity-70" />
-
-                            <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 transition-all duration-300 border ${paymentMethod === 'Bank' ? 'bg-white/20 border-white/30 text-white' : 'bg-white/5 border-white/10 text-gray-400 group-hover:bg-brand-primary/10 group-hover:border-brand-primary/20 group-hover:text-brand-primary'}`}>
-                                <IconBank className="w-8 h-8" strokeWidth={2.5} />
-                            </div>
-                            
-                            <h3 className={`text-lg font-black mb-0.5 uppercase tracking-wider ${paymentMethod === 'Bank' ? 'text-white' : 'text-gray-400 group-hover:text-white'}`}>Bank Transfer</h3>
-                            <p className={`text-xs font-bold uppercase tracking-widest ${paymentMethod === 'Bank' ? 'text-white/80' : 'text-gray-500'}`}>You'll receive PKR</p>
-                            
-                            {paymentMethod === 'Bank' && (
-                                <div className="absolute top-3 right-3 text-white">
-                                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                                    </svg>
-                                </div>
-                            )}
-                        </button>
-                    </div>
-                );
             case 'bank':
                 return (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -504,18 +421,6 @@ const CompleteProfile: React.FC<CompleteProfileProps> = ({ role, initialStatus, 
                             />
                         </div>
                     </div>
-                );
-            case 'payoneer':
-                return (
-                    <Input
-                        label="Payoneer Email"
-                        type="email"
-                        placeholder="email@example.com"
-                        value={payoneerEmail}
-                        onChange={(e) => setPayoneerEmail(e.target.value)}
-                        variant="metallic"
-                        required
-                    />
                 );
             case 'cnic':
                 return (

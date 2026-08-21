@@ -15,7 +15,6 @@ type Message = {
 export const AiAgent: React.FC = () => {
   const { effectiveRole } = useUser();
   const [isOpen, setIsOpen] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
@@ -27,42 +26,44 @@ export const AiAgent: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState(false);
-  const dragStartRef = useRef({ x: 0, y: 0, startX: 0, startY: 0 });
-  const hasDragged = useRef(false);
+  // Resizing Panel Width States & Event Handlers
+  const [width, setWidth] = useState(384); // Default 384px (sm:w-96)
+  const isResizingRef = useRef(false);
 
-  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if ((e.target as Element).closest('.no-drag')) return;
-    setIsDragging(true);
-    hasDragged.current = false;
-    dragStartRef.current = {
-      x: e.clientX - position.x,
-      y: e.clientY - position.y,
-      startX: e.clientX,
-      startY: e.clientY
-    };
+  const handleResizePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    isResizingRef.current = true;
+    document.documentElement.style.setProperty('--ai-agent-transition', 'none');
+    document.addEventListener("pointermove", handleResizePointerMove);
+    document.addEventListener("pointerup", handleResizePointerUp);
   };
 
-  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDragging) return;
-    
-    // Prevent accidental drags from tiny physical clicks (jitter)
-    const dx = Math.abs(e.clientX - dragStartRef.current.startX);
-    const dy = Math.abs(e.clientY - dragStartRef.current.startY);
-    if (dx > 3 || dy > 3) {
-      hasDragged.current = true;
+  const handleResizePointerMove = (e: PointerEvent) => {
+    if (!isResizingRef.current) return;
+    const newWidth = window.innerWidth - e.clientX;
+    const minWidth = 320;
+    const maxWidth = Math.min(800, window.innerWidth * 0.7);
+    if (newWidth >= minWidth && newWidth <= maxWidth) {
+      setWidth(newWidth);
+      document.documentElement.style.setProperty('--ai-agent-width', `${newWidth}px`);
     }
-
-    setPosition({
-      x: e.clientX - dragStartRef.current.x,
-      y: e.clientY - dragStartRef.current.y
-    });
   };
 
-  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    setIsDragging(false);
+  const handleResizePointerUp = () => {
+    isResizingRef.current = false;
+    document.removeEventListener("pointermove", handleResizePointerMove);
+    document.removeEventListener("pointerup", handleResizePointerUp);
+    document.documentElement.style.setProperty('--ai-agent-transition', 'margin-right 300ms ease-in-out');
   };
+
+  useEffect(() => {
+    return () => {
+      document.removeEventListener("pointermove", handleResizePointerMove);
+      document.removeEventListener("pointerup", handleResizePointerUp);
+      document.documentElement.style.setProperty('--ai-agent-width', '0px');
+      document.documentElement.style.setProperty('--ai-agent-transition', 'none');
+    };
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -80,10 +81,20 @@ export const AiAgent: React.FC = () => {
     }
   }, [isOpen, isLoading]);
 
+  // Sync isOpen and width with document root CSS variables
+  useEffect(() => {
+    if (isOpen) {
+      document.documentElement.style.setProperty('--ai-agent-width', `${width}px`);
+      document.documentElement.style.setProperty('--ai-agent-transition', 'margin-right 300ms ease-in-out');
+    } else {
+      document.documentElement.style.setProperty('--ai-agent-width', '0px');
+      document.documentElement.style.setProperty('--ai-agent-transition', 'margin-right 300ms ease-in-out');
+    }
+  }, [isOpen]);
+
   useEffect(() => {
     const handleToggle = () => {
       setIsOpen((prev) => !prev);
-      setIsMinimized(false);
     };
     window.addEventListener("toggle-ai-agent", handleToggle);
     return () => window.removeEventListener("toggle-ai-agent", handleToggle);
@@ -398,131 +409,115 @@ export const AiAgent: React.FC = () => {
     }
   };
 
-  // Only render for Super Admin and Project Manager
-  if (effectiveRole !== "Super Admin" && effectiveRole !== "Project Manager") return null;
-
-  if (!isOpen) return null;
+  // Only render for Super Admin
+  if (effectiveRole?.toLowerCase().trim() !== "super admin") return null;
 
   return (
-    <div 
-      className="fixed bottom-6 right-6 z-50 select-none"
-      style={{ transform: `translate(${position.x}px, ${position.y}px)`, touchAction: isDragging ? "none" : "auto" }}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
+    <div
+      className={`fixed right-0 top-0 h-screen z-[100] bg-[#0c0c0e] border-l border-white/10 flex flex-col shadow-2xl transition-transform duration-300 ease-in-out transform ${
+        isOpen ? "translate-x-0 pointer-events-auto" : "translate-x-full pointer-events-none"
+      }`}
+      style={{ width: `${width}px` }}
     >
-      <div className={`bg-surface-bg border border-white/10 rounded-2xl shadow-2xl w-80 sm:w-96 flex flex-col overflow-hidden transition-all duration-300 transform origin-bottom-right ${isMinimized ? 'h-[62px]' : ''}`}>
-          {/* Header */}
-          <div 
-            className={`bg-white/5 p-4 border-b border-white/10 flex justify-between items-center cursor-move ${isMinimized ? 'hover:bg-white/10' : ''}`}
-            onClick={(e) => {
-              if (hasDragged.current) { e.stopPropagation(); return; }
-              isMinimized && setIsMinimized(false)
-            }}
+      {/* Resize Handle */}
+      <div
+        className="absolute left-0 top-0 bottom-0 w-2 -ml-1 cursor-col-resize hover:bg-brand-primary/30 transition-colors z-50 select-none no-drag"
+        onPointerDown={handleResizePointerDown}
+      />
+
+      {/* Header */}
+      <div className="h-20 px-6 border-b border-white/10 flex justify-between items-center select-none bg-white/5 shrink-0">
+        <div className="flex items-center gap-2 text-white font-medium">
+          <Bot className="w-5 h-5 text-brand-primary" />
+          AI Assistant
+        </div>
+        <button
+          onClick={() => {
+            setIsOpen(false);
+          }}
+          className="text-gray-400 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Messages Area */}
+      <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-4 select-text scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+        {messages.map((msg, idx) => (
+          <div
+            key={idx}
+            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
           >
-            <div className="flex items-center gap-2 text-white font-medium">
-              <Bot className="w-5 h-5 text-brand-primary" />
-              AI Assistant
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={(e) => { e.stopPropagation(); setIsMinimized(!isMinimized); }}
-                className="text-gray-400 hover:text-white transition-colors p-1 rounded-md hover:bg-white/10"
-              >
-                <Minus className="w-5 h-5" />
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); setIsOpen(false); setIsMinimized(false); }}
-                className="text-gray-400 hover:text-white transition-colors p-1 rounded-md hover:bg-white/10"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-
-          {/* Messages Area */}
-          {!isMinimized && (
-            <>
-              <div className="flex-1 p-4 overflow-y-auto min-h-[300px] max-h-[400px] flex flex-col gap-3 no-drag select-text">
-            {messages.map((msg, idx) => (
-              <div
-                key={idx}
-                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`max-w-[85%] p-3 rounded-2xl text-sm ${
-                    msg.role === "user"
-                      ? "bg-brand-primary text-white rounded-tr-sm"
-                      : "bg-white/10 text-gray-200 rounded-tl-sm"
-                  }`}
+            <div
+              className={`max-w-[85%] p-3 rounded-2xl text-sm ${
+                msg.role === "user"
+                  ? "bg-brand-primary text-white rounded-tr-sm"
+                  : "bg-white/10 text-gray-200 rounded-tl-sm"
+              }`}
+            >
+              {msg.role === "assistant" ? (
+                <ReactMarkdown
+                  components={{
+                    p: ({ node, ...props }) => <p className="mb-2 last:mb-0 leading-relaxed" {...props} />,
+                    ul: ({ node, ...props }) => <ul className="list-disc pl-4 mb-2 space-y-1" {...props} />,
+                    ol: ({ node, ...props }) => <ol className="list-decimal pl-4 mb-2 space-y-1" {...props} />,
+                    li: ({ node, ...props }) => <li className="" {...props} />,
+                    strong: ({ node, ...props }) => <strong className="font-bold text-white" {...props} />,
+                    h3: ({ node, ...props }) => <h3 className="font-bold text-base mb-1 mt-2 text-brand-primary" {...props} />,
+                    h4: ({ node, ...props }) => <h4 className="font-bold text-sm mb-1 mt-2 text-brand-primary" {...props} />,
+                  }}
                 >
-                  {msg.role === "assistant" ? (
-                    <ReactMarkdown
-                      components={{
-                        p: ({ node, ...props }) => <p className="mb-2 last:mb-0 leading-relaxed" {...props} />,
-                        ul: ({ node, ...props }) => <ul className="list-disc pl-4 mb-2 space-y-1" {...props} />,
-                        ol: ({ node, ...props }) => <ol className="list-decimal pl-4 mb-2 space-y-1" {...props} />,
-                        li: ({ node, ...props }) => <li className="" {...props} />,
-                        strong: ({ node, ...props }) => <strong className="font-bold text-white" {...props} />,
-                        h3: ({ node, ...props }) => <h3 className="font-bold text-base mb-1 mt-2 text-brand-primary" {...props} />,
-                        h4: ({ node, ...props }) => <h4 className="font-bold text-sm mb-1 mt-2 text-brand-primary" {...props} />,
-                      }}
-                    >
-                      {msg.content}
-                    </ReactMarkdown>
-                  ) : (
-                    <div className="whitespace-pre-wrap">{msg.content}</div>
-                  )}
-                </div>
-              </div>
-            ))}
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="bg-white/10 p-3 rounded-2xl rounded-tl-sm text-brand-primary">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
+                  {msg.content}
+                </ReactMarkdown>
+              ) : (
+                <div className="whitespace-pre-wrap">{msg.content}</div>
+              )}
+            </div>
           </div>
+        ))}
+        {isLoading && (
+          <div className="flex justify-start">
+            <div className="bg-white/10 p-3 rounded-2xl rounded-tl-sm text-brand-primary">
+              <Loader2 className="w-4 h-4 animate-spin" />
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
 
-          {/* Input Area */}
-          <div className="p-3 border-t border-white/10 bg-white/5 no-drag">
-            <form
-              onSubmit={(e) => {
+      {/* Input Area */}
+      <div className="p-4 border-t border-white/10 bg-white/5 select-none">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSend();
+          }}
+          className="flex gap-2"
+        >
+          <TextareaAutosize
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 handleSend();
-              }}
-              className="flex gap-2"
-            >
-              <TextareaAutosize
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSend();
-                  }
-                }}
-                placeholder="Ask me something..."
-                maxRows={5}
-                className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-2 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-brand-primary transition-colors resize-none"
-                disabled={isLoading}
-              />
-              <button
-                type="submit"
-                disabled={isLoading || !input.trim()}
-                className="bg-brand-primary text-white p-2 rounded-xl hover:bg-brand-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <Send className="w-4 h-4" />
-              </button>
-            </form>
-          </div>
-          </>
-          )}
-        </div>
+              }
+            }}
+            placeholder="Ask me something..."
+            maxRows={5}
+            className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-brand-primary transition-colors resize-none"
+            disabled={isLoading}
+          />
+          <button
+            type="submit"
+            disabled={isLoading || !input.trim()}
+            className="bg-brand-primary text-white p-2.5 rounded-xl hover:bg-brand-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center shrink-0 self-end"
+          >
+            <Send className="w-4 h-4" />
+          </button>
+        </form>
+      </div>
     </div>
   );
 };

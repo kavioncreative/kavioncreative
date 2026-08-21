@@ -123,7 +123,7 @@ export const getStatusTextColor = (status: string) => {
 };
 
 export const getAccountCapsuleClasses = () => {
-    return '!border-none !rounded-md !px-3 !py-1 !tracking-wider !text-[10px] whitespace-nowrap !min-w-max text-center font-black uppercase bg-brand-primary/10 text-brand-primary shadow-[0_0_15px_rgba(59,130,246,0.1)]';
+    return '!border-none !rounded-md !px-3 !py-1 !tracking-wider !text-[10px] whitespace-nowrap !min-w-max text-center font-black uppercase bg-brand-primary/10 text-brand-primary';
 };
 
 export const RoleCapsule: React.FC<{ role: string, className?: string }> = ({ role, className = '' }) => {

@@ -385,9 +385,9 @@ export const DashboardLayout: React.FC<{
     { name: 'TeamSlabs', label: 'Team Slabs', icon: <IconFilter />, permission: 'manage_team_slabs' },
     { name: 'TeamEarnings', label: 'Team Earnings', icon: <IconDollar />, permission: 'view_team_earnings' },
     { name: 'TeamDesignerEarnings', label: 'Team Designer Stats', icon: <IconChartLine />, permission: 'view_team_designer_earnings' },
-    { name: 'Profile', label: 'My Profile', icon: <IconUser />, permission: 'view_profile' },
     { name: 'Training', icon: <IconFileVideo />, permission: 'view_training' },
     { name: 'MyNotes', label: 'My Notes', icon: <IconFileText />, permission: 'view_my_notes' },
+    { name: 'Profile', label: 'My Profile', icon: <IconUser />, permission: 'view_profile' },
     { name: 'Reminders', icon: <IconBell />, permission: 'access_reminders' },
     { name: 'Settings', icon: <IconSettings />, permission: 'view_settings' },
   ] as const).filter(item => {
@@ -621,7 +621,7 @@ export const DashboardLayout: React.FC<{
                 <button
                   key={item.name}
                   onClick={() => onItemSelect(item.name)}
-                  className={`flex items-center h-12 transition-[color,background-color,opacity] duration-300 font-medium group relative rounded-xl overflow-hidden outline-none focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none ring-0 ${isExpanded ? 'w-full px-4' : 'w-12 mx-auto justify-center px-0'} ${activeItem === item.name
+                  className={`flex items-center h-12 transition-all duration-300 font-medium group relative rounded-xl overflow-hidden outline-none focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none ring-0 w-full px-4 ${activeItem === item.name
                     ? 'bg-gradient-to-b from-[#FF6B4B] to-[#D9361A] text-white border border-[#FF4D2D] shadow-[inset_0_1px_0_rgba(255,255,255,0.4),inset_0_-1px_0_rgba(0,0,0,0.2)]'
                     : 'text-gray-400 hover:text-white hover:bg-white/[0.04] border border-transparent shadow-none-instant'
                     }`}
@@ -634,7 +634,7 @@ export const DashboardLayout: React.FC<{
                   <span className={`shrink-0 transition-colors relative z-10 ${activeItem === item.name ? 'text-white' : 'text-gray-400 group-hover:text-white'}`}>
                     {item.icon}
                   </span>
-                  <span className={`transition-all duration-300 font-semibold whitespace-nowrap overflow-hidden text-ellipsis min-w-0 relative z-10 ${isExpanded ? 'ml-3 opacity-100 translate-x-0' : 'ml-0 opacity-0 -translate-x-4 pointer-events-none w-0'}`}>
+                  <span className={`transition-all duration-300 ease-in-out font-semibold whitespace-nowrap overflow-hidden text-ellipsis min-w-0 relative z-10 ${isExpanded ? 'ml-3 opacity-100 translate-x-0 max-w-[150px]' : 'ml-0 opacity-0 -translate-x-4 pointer-events-none max-w-0'}`}>
                     {item.label || item.name}
                   </span>
 
@@ -650,12 +650,12 @@ export const DashboardLayout: React.FC<{
                 <button
                   key={item.name}
                   onClick={() => onItemSelect(item.name as DashboardView)}
-                  className={`flex items-center h-10 transition-[color,background-color,opacity] duration-300 font-medium group relative rounded-xl overflow-hidden outline-none focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none ring-0 ${isExpanded ? 'w-full px-4' : 'w-12 mx-auto justify-center px-0'} ${activeItem === item.name
+                  className={`flex items-center h-10 transition-all duration-300 font-medium group relative rounded-xl overflow-hidden outline-none focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none ring-0 w-full px-4 ${activeItem === item.name
                     ? 'bg-white/[0.08] text-white border border-transparent'
                     : 'text-gray-400 hover:text-white hover:bg-white/[0.04] border border-transparent'
                     }`}
                 >
-                  <span className={`transition-all duration-300 font-semibold whitespace-nowrap overflow-hidden text-ellipsis min-w-0 relative z-10 ${isExpanded ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4 pointer-events-none w-0'}`}>
+                  <span className={`transition-all duration-300 ease-in-out font-semibold whitespace-nowrap overflow-hidden text-ellipsis min-w-0 relative z-10 ${isExpanded ? 'opacity-100 translate-x-0 max-w-[150px]' : 'opacity-0 -translate-x-4 pointer-events-none max-w-0'}`}>
                     {item.label || item.name}
                   </span>
 
@@ -679,13 +679,13 @@ export const DashboardLayout: React.FC<{
               {/* Collapse / Expand toggle */}
               <button
                 onClick={() => setIsExpanded(!isExpanded)}
-                className="w-full h-11 flex items-center transition-[color,background-color,border-color,transform,opacity] duration-200 group/btn relative rounded-xl px-4 hover:bg-white/[0.04] outline-none focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none ring-0 border border-transparent"
+                className="w-full h-11 flex items-center transition-all duration-300 group/btn relative rounded-xl px-4 hover:bg-white/[0.04] outline-none focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none ring-0 border border-transparent overflow-hidden"
               >
                 <div className="relative z-10 flex items-center w-full">
                   <span className="shrink-0 transition-colors text-gray-400 group-hover/btn:text-white">
                     <IconLayoutSidebar />
                   </span>
-                  <span className={`ml-3 font-semibold transition-all duration-300 whitespace-nowrap overflow-hidden text-ellipsis min-w-0 ${isExpanded ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4 pointer-events-none'} text-gray-400 group-hover/btn:text-white`}>
+                  <span className={`font-semibold transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden text-ellipsis min-w-0 ${isExpanded ? 'ml-3 opacity-100 translate-x-0 max-w-[150px]' : 'ml-0 opacity-0 -translate-x-4 pointer-events-none max-w-0'} text-gray-400 group-hover/btn:text-white`}>
                     {isExpanded ? 'Collapse' : 'Expand'}
                   </span>
                 </div>
@@ -698,14 +698,14 @@ export const DashboardLayout: React.FC<{
               {/* Sign Out */}
               <button
                 onClick={onSignOut}
-                className="w-full h-11 flex items-center transition-[color,background-color,border-color,transform,opacity] duration-300 group/btn relative rounded-xl px-4 overflow-hidden bg-gradient-to-b from-[#FF6B4B] to-[#D9361A] border border-[#FF4D2D] shadow-[inset_0_1px_0_rgba(255,255,255,0.4),inset_0_-1px_0_rgba(0,0,0,0.2)] active:scale-95 outline-none focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none ring-0"
+                className="w-full h-11 flex items-center transition-all duration-300 group/btn relative rounded-xl px-4 overflow-hidden bg-gradient-to-b from-[#FF6B4B] to-[#D9361A] border border-[#FF4D2D] shadow-[inset_0_1px_0_rgba(255,255,255,0.4),inset_0_-1px_0_rgba(0,0,0,0.2)] active:scale-95 outline-none focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none ring-0"
               >
                 <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.15)_50%,transparent_100%)] pointer-events-none opacity-50" />
                 <div className="relative z-10 flex items-center w-full">
                   <span className="shrink-0 text-white">
                     <IconLogout />
                   </span>
-                  <span className={`ml-3 font-semibold transition-all duration-300 whitespace-nowrap overflow-hidden text-ellipsis min-w-0 ${isExpanded ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4 pointer-events-none'} text-white`}>
+                  <span className={`font-semibold transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden text-ellipsis min-w-0 ${isExpanded ? 'ml-3 opacity-100 translate-x-0 max-w-[150px]' : 'ml-0 opacity-0 -translate-x-4 pointer-events-none max-w-0'} text-white`}>
                     Sign Out
                   </span>
                 </div>
@@ -875,8 +875,13 @@ export const DashboardLayout: React.FC<{
         )}
       </aside>
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col h-full min-w-0 transition-all duration-300 overflow-hidden">
+      <div 
+        className="flex-1 flex flex-col h-full min-w-0 overflow-hidden"
+        style={{
+          marginRight: 'var(--ai-agent-width, 0px)',
+          transition: 'var(--ai-agent-transition, margin-right 300ms ease-in-out), transform 300ms ease-in-out, opacity 300ms ease-in-out'
+        }}
+      >
         <header className="h-20 border-b border-surface-border flex items-center justify-between px-4 lg:px-8 bg-surface-bg/50 backdrop-blur-xl sticky top-0 z-30 w-full gap-2 lg:gap-4">
           <div className="flex-1 flex items-center gap-2 lg:gap-6 lg:min-w-[200px]">
             <button
@@ -894,17 +899,17 @@ export const DashboardLayout: React.FC<{
           {/* Centered Slot for Clock */}
           {/* Centered Slot for Clock */}
           <div id="header-center-slot" className="flex-none flex justify-center items-center h-full px-2 text-center">
-            <div className="relative px-3 sm:px-6 h-8 sm:h-10 flex items-center justify-center bg-black/40 border border-white/[0.05] rounded-xl shadow-[inset_0_2px_8px_rgba(0,0,0,0.6)] overflow-hidden transition-all duration-300 min-w-max group/clock">
+            <div className="relative px-3 sm:px-6 py-2 sm:py-2.5 flex items-center justify-center bg-black/40 border border-white/[0.05] rounded-xl shadow-[inset_0_2px_8px_rgba(0,0,0,0.6)] overflow-hidden transition-all duration-300 min-w-max group/clock">
               <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.02)_48%,rgba(255,255,255,0.05)_50%,rgba(255,255,255,0.02)_52%,transparent_100%)] opacity-30 pointer-events-none" />
               
-              <span className="relative z-10 text-[12px] sm:text-[15px] font-black text-white tabular-nums tracking-[0.1em] transition-colors duration-300 uppercase flex items-center gap-2 sm:gap-3">
+              <span className="relative z-10 text-[12px] sm:text-[15px] font-black text-white tabular-nums tracking-[0.1em] transition-colors duration-300 uppercase flex items-center gap-2 sm:gap-3 leading-none">
                 <span className="hidden sm:block text-white">{dateDisplay}</span>
                 <span className="hidden sm:block w-1 h-1 rounded-full bg-white/20" />
                 <div className="flex items-center gap-1 sm:gap-1.5">
                   {/* Show full time on desktop, HH:MM on mobile */}
                   <span className="hidden sm:inline">{timeDisplay}</span>
                   <span className="sm:hidden">{timeDisplay.split(':').slice(0, 2).join(':')}</span>
-                  <span className="text-brand-primary drop-shadow-[0_0_8px_rgba(255,77,45,0.3)]">{amPm}</span>
+                  <span className="text-brand-primary">{amPm}</span>
                 </div>
               </span>
             </div>
@@ -1058,8 +1063,7 @@ export const DashboardLayout: React.FC<{
               </button>
             )}
 
-            {/* AI Assistant fixed header action */}
-            {['Super Admin', 'Project Manager'].includes(effectiveRole || '') && (
+            {effectiveRole?.toLowerCase().trim() === 'super admin' && (
               <button
                 className="relative p-2 text-gray-400 hover:text-white transition-[color,transform,opacity] duration-200 outline-none focus:ring-0 active:scale-90"
                 onClick={() => {

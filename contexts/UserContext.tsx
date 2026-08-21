@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 
 interface UserProfile {
@@ -24,6 +24,8 @@ interface UserProfile {
     daily_capacity?: number | null;
     whatsapp_number?: string;
     additional_permissions?: string[];
+    payout_strategy?: string;
+    fixed_payout_rate?: number;
 }
 
 interface UserContextType {
@@ -46,6 +48,12 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const cached = localStorage.getItem('user_profile_cache');
         return cached ? JSON.parse(cached) : null;
     });
+
+    const profileRef = useRef<UserProfile | null>(profile);
+    useEffect(() => {
+        profileRef.current = profile;
+    }, [profile]);
+
     const [loading, setLoading] = useState(true);
     const [permissionsLoaded, setPermissionsLoaded] = useState(false);
     const [simulatedRole, setSimulatedRoleState] = useState<string | null>(localStorage.getItem('nova_simulated_role'));
@@ -105,7 +113,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return permissions.includes(code);
     };
 
-    const fetchPermissions = async (role: string, additionalPerms: string[] = []) => {
+    const fetchPermissions = async (role: string, additionalPerms: string[] = [], isBackground = false) => {
         try {
             const { data, error } = await supabase
                 .from('role_permissions')
@@ -127,24 +135,31 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (loading) return; // Don't do anything while profile is being checked initially
 
         if (effectiveRole) {
-            setPermissionsLoaded(false);
-            fetchPermissions(effectiveRole, profile?.additional_permissions || []);
+            const isBg = permissions.length > 0;
+            if (!isBg) {
+                setPermissionsLoaded(false);
+            }
+            fetchPermissions(effectiveRole, profile?.additional_permissions || [], isBg);
         } else {
             setPermissions([]);
             setPermissionsLoaded(true);
         }
     }, [effectiveRole, loading, profile?.additional_permissions]);
 
-    const fetchProfile = async () => {
-        setLoading(true);
-        setPermissionsLoaded(false);
+    const fetchProfile = async (isBackground = false) => {
+        if (!isBackground) {
+            setLoading(true);
+            setPermissionsLoaded(false);
+        }
         try {
             const { data: { session: currentSession } } = await supabase.auth.getSession();
             if (!currentSession) {
                 setProfile(null);
                 setPermissions([]);
                 setPermissionsLoaded(true);
-                setLoading(false);
+                if (!isBackground) {
+                    setLoading(false);
+                }
                 return null;
             }
 
@@ -171,18 +186,21 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             setPermissionsLoaded(true);
             return null;
         } finally {
-            setLoading(false);
+            if (!isBackground) {
+                setLoading(false);
+            }
         }
     };
 
     useEffect(() => {
-        fetchProfile();
+        fetchProfile(false);
 
         // Listen for auth changes
         const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange((event) => {
             console.log('UserContext: Auth event:', event);
             if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-                fetchProfile();
+                const isBg = !!profileRef.current;
+                fetchProfile(isBg);
             } else if (event === 'SIGNED_OUT') {
                 setProfile(null);
                 localStorage.removeItem('user_profile_cache');

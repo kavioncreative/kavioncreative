@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react';
-import { Card, Modal } from '../components/Surfaces';
+import { Card, Modal, ElevatedMetallicCard } from '../components/Surfaces';
 import Button from '../components/Button';
 import { Table } from '../components/Table';
 import { Avatar } from '../components/Avatar';
@@ -29,6 +29,9 @@ interface Member {
     status: string;
     joined: string;
     isInvitation?: boolean;
+    avatar_url?: string;
+    payout_strategy?: string;
+    fixed_payout_rate?: number;
 }
 
 interface AccountRequest {
@@ -250,7 +253,9 @@ const Users = forwardRef<UsersHandle, UsersProps>(({ onUserOpen, isUserOpen }, r
                 status: p.status,
                 avatar_url: p.avatar_url,
                 joined: new Date(p.created_at).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }),
-                isInvitation: false
+                isInvitation: false,
+                payout_strategy: p.payout_strategy,
+                fixed_payout_rate: p.fixed_payout_rate
             }));
 
             setProfiles(formattedProfiles);
@@ -1024,6 +1029,32 @@ const Users = forwardRef<UsersHandle, UsersProps>(({ onUserOpen, isUserOpen }, r
                 )
             },
             {
+                header: 'Payout Model',
+                key: 'payout_model',
+                className: 'min-w-[140px]',
+                render: (item: any) => {
+                    if (item.isInvitation) return <span className="text-gray-600 font-medium">-</span>;
+                    if (item.role === 'Super Admin' || item.role === 'Admin') return <span className="text-gray-600 font-medium">-</span>;
+                    const model = item.payout_strategy === 'basicplusbonus' ? 'Basic + Bonus' : 'Only Bonus';
+                    return <span className="text-white/80 font-medium">{model}</span>;
+                }
+            },
+            {
+                header: 'Salary',
+                key: 'salary',
+                className: 'min-w-[140px]',
+                render: (item: any) => {
+                    if (item.isInvitation) return <span className="text-gray-600 font-medium">-</span>;
+                    if (item.role === 'Super Admin' || item.role === 'Admin') return <span className="text-gray-600 font-medium">-</span>;
+                    if (item.payout_strategy !== 'basicplusbonus') return <span className="text-gray-500 font-medium">-</span>;
+                    return (
+                        <span className="text-brand-success font-bold">
+                            PKR {Math.round(item.fixed_payout_rate || 0).toLocaleString('en-US')}
+                        </span>
+                    );
+                }
+            },
+            {
                 header: 'Joined',
                 key: 'joined',
                 render: (item: any) => <span className="text-gray-400 font-medium">{item.joined}</span>
@@ -1514,11 +1545,15 @@ const Users = forwardRef<UsersHandle, UsersProps>(({ onUserOpen, isUserOpen }, r
 
                     {shiftsSubTab === 'assign' ? (
                         <div className="space-y-4 animate-in fade-in duration-300">
-                            <Card className="overflow-hidden bg-surface-card border border-surface-border rounded-3xl">
-                                <div className="p-6 md:p-8 border-b border-surface-border">
-                                    <h3 className="text-xl font-bold text-white uppercase tracking-wider">Shift Timing Management</h3>
-                                    <p className="text-sm text-gray-500 mt-1">Assign standard shift start and end times to your managers and designers.</p>
-                                </div>
+                            <ElevatedMetallicCard
+                                title={
+                                    <div>
+                                        <h3 className="text-xl font-bold text-white uppercase tracking-wider">Shift Timing Management</h3>
+                                        <p className="text-xs text-gray-500 mt-1">Assign standard shift start and end times to your managers and designers.</p>
+                                    </div>
+                                }
+                                bodyClassName="p-0"
+                            >
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left text-[13px] text-gray-300">
                                         <thead className="bg-white/[0.02] text-gray-400 font-bold uppercase tracking-widest text-[10px] border-b border-surface-border">
@@ -1548,25 +1583,27 @@ const Users = forwardRef<UsersHandle, UsersProps>(({ onUserOpen, isUserOpen }, r
                                                             {userShift ? userShift.timezone : 'Asia/Karachi'}
                                                         </td>
                                                         <td className="px-6 py-4 text-right">
-                                                            <Button
-                                                                variant="recessed"
-                                                                size="xs"
-                                                                onClick={() => {
-                                                                    setSelectedShiftUser(user);
-                                                                    if (userShift) {
-                                                                        setShiftStartTime(userShift.start_time.substring(0, 5));
-                                                                        setShiftEndTime(userShift.end_time.substring(0, 5));
-                                                                        setShiftTimezone(userShift.timezone);
-                                                                    } else {
-                                                                        setShiftStartTime('09:00');
-                                                                        setShiftEndTime('18:00');
-                                                                        setShiftTimezone('Asia/Karachi');
-                                                                    }
-                                                                    setIsShiftModalOpen(true);
-                                                                }}
-                                                            >
-                                                                Assign Shift
-                                                            </Button>
+                                                            <div className="flex justify-end">
+                                                                <Button
+                                                                    variant="metallic"
+                                                                    size="sm"
+                                                                    onClick={() => {
+                                                                        setSelectedShiftUser(user);
+                                                                        if (userShift) {
+                                                                            setShiftStartTime(userShift.start_time.substring(0, 5));
+                                                                            setShiftEndTime(userShift.end_time.substring(0, 5));
+                                                                            setShiftTimezone(userShift.timezone);
+                                                                        } else {
+                                                                            setShiftStartTime('09:00');
+                                                                            setShiftEndTime('18:00');
+                                                                            setShiftTimezone('Asia/Karachi');
+                                                                        }
+                                                                        setIsShiftModalOpen(true);
+                                                                    }}
+                                                                >
+                                                                    Assign Shift
+                                                                </Button>
+                                                            </div>
                                                         </td>
                                                     </tr>
                                                 );
@@ -1574,7 +1611,7 @@ const Users = forwardRef<UsersHandle, UsersProps>(({ onUserOpen, isUserOpen }, r
                                         </tbody>
                                     </table>
                                 </div>
-                            </Card>
+                            </ElevatedMetallicCard>
                         </div>
                     ) : (
                         <div className="space-y-4 animate-in fade-in duration-300">

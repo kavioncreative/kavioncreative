@@ -73,7 +73,7 @@ export const AccountProvider: React.FC<{ children: ReactNode }> = ({ children })
     };
 
     useEffect(() => {
-        if (profile) {
+        if (profile?.id) {
             fetchAccounts(true);
 
 
@@ -92,7 +92,7 @@ export const AccountProvider: React.FC<{ children: ReactNode }> = ({ children })
             setAccounts([]);
             setLoading(false);
         }
-    }, [profile]);
+    }, [profile?.id, effectiveRole]);
 
     return (
         <AccountContext.Provider value={{ accounts, loading, fetchAccounts }}>

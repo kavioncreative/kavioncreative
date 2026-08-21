@@ -2579,7 +2579,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                             setViewMode('projects');
                         }}
                         className={`
-                            rounded-xl border-transparent transition-all duration-300
+                            rounded-xl border-transparent transition-all duration-300 uppercase tracking-widest
                             ${alertFilter === 'dispute'
                                 ? '!bg-brand-error !text-white shadow-[0_0_15px_rgba(239,68,68,0.3)]'
                                 : '!bg-brand-error/10 !text-brand-error hover:!bg-brand-error/20'
@@ -2597,7 +2597,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                             setViewMode('projects');
                         }}
                         className={`
-                            rounded-xl border-transparent transition-all duration-300
+                            rounded-xl border-transparent transition-all duration-300 uppercase tracking-widest
                             ${alertFilter === 'arthelp'
                                 ? '!bg-brand-info !text-white shadow-[0_0_15px_rgba(14,165,233,0.3)]'
                                 : '!bg-brand-info/10 !text-brand-info hover:!bg-brand-info/20'
@@ -2615,7 +2615,7 @@ function ProjectsComponent(props: ProjectsProps, ref: React.Ref<ProjectsHandle>)
                             setViewMode('projects');
                         }}
                         className={`
-                            rounded-xl border-transparent transition-all duration-300
+                            rounded-xl border-transparent transition-all duration-300 uppercase tracking-widest
                             ${alertFilter === 'late'
                                 ? '!bg-brand-error !text-white shadow-[0_0_15px_rgba(239,68,68,0.3)]'
                                 : '!bg-brand-error/10 !text-brand-error hover:!bg-brand-error/20'

@@ -515,113 +515,115 @@ const Settings = React.forwardRef<{ save: () => Promise<void>, discard: () => vo
                     </div>
                 ) : (
                     <div className="space-y-6 animate-in">
-                        <ElevatedMetallicCard
-                            title="Public Profile"
-                            headerClassName="px-8 py-6"
-                            bodyClassName="p-8"
-                        >
-                            <div className="space-y-8">
-                                <div className="flex items-center gap-6">
-                                    <Avatar
-                                        size="xl"
-                                        status="online"
-                                        src={avatarDraft?.localUrl || persistedLocalPreview || profile?.avatar_url}
-                                        initials={profile?.name ? profile.name.split(' ').map(n => n[0]).join('').toUpperCase() : '??'}
-                                        loading={uploadingAvatar}
-                                        onLoad={() => {
-                                            // Clear the persisted local preview only when the remote one is actually visible
-                                            if (persistedLocalPreview && !uploadingAvatar && !avatarDraft) {
-                                                console.log('Confirmed: Persistent Avatar loaded. Cleaning up backup preview.');
-                                                URL.revokeObjectURL(persistedLocalPreview);
-                                                setPersistedLocalPreview(null);
-                                            }
-                                        }}
-                                        onError={() => {
-                                            if (persistedLocalPreview && !uploadingAvatar) {
-                                                console.error('Remote avatar failed to load, keeping local backup indefinitely.');
-                                            }
-                                        }}
-                                    />
-                                    <div className="space-y-3">
-                                        <div className="flex gap-3">
-                                            <Button
-                                                variant="metallic"
-                                                size="sm"
-                                                onClick={handleAvatarClick}
-                                            >
-                                                Change Photo
-                                            </Button>
+                        {!profileOnly && (
+                            <ElevatedMetallicCard
+                                title="Public Profile"
+                                headerClassName="px-8 py-6"
+                                bodyClassName="p-8"
+                            >
+                                <div className="space-y-8">
+                                    <div className="flex items-center gap-6">
+                                        <Avatar
+                                            size="xl"
+                                            status="online"
+                                            src={avatarDraft?.localUrl || persistedLocalPreview || profile?.avatar_url}
+                                            initials={profile?.name ? profile.name.split(' ').map(n => n[0]).join('').toUpperCase() : '??'}
+                                            loading={uploadingAvatar}
+                                            onLoad={() => {
+                                                // Clear the persisted local preview only when the remote one is actually visible
+                                                if (persistedLocalPreview && !uploadingAvatar && !avatarDraft) {
+                                                    console.log('Confirmed: Persistent Avatar loaded. Cleaning up backup preview.');
+                                                    URL.revokeObjectURL(persistedLocalPreview);
+                                                    setPersistedLocalPreview(null);
+                                                }
+                                            }}
+                                            onError={() => {
+                                                if (persistedLocalPreview && !uploadingAvatar) {
+                                                    console.error('Remote avatar failed to load, keeping local backup indefinitely.');
+                                                }
+                                            }}
+                                        />
+                                        <div className="space-y-3">
+                                            <div className="flex gap-3">
+                                                <Button
+                                                    variant="metallic"
+                                                    size="sm"
+                                                    onClick={handleAvatarClick}
+                                                >
+                                                    Change Photo
+                                                </Button>
+                                            </div>
+                                            <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">JPG, GIF or PNG. Max size of 800K</p>
                                         </div>
-                                        <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">JPG, GIF or PNG. Max size of 800K</p>
                                     </div>
-                                </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <Input
-                                        label="Display Name"
-                                        placeholder="E.g. Alex Rivier"
-                                        value={isSuperAdmin ? formData.name : formatDisplayName(profile?.name)}
-                                        onChange={isSuperAdmin ? (e) => setFormData({ ...formData, name: e.target.value }) : undefined}
-                                        readOnly={!isSuperAdmin}
-                                        className={!isSuperAdmin ? "cursor-not-allowed" : ""}
-                                        variant="metallic"
-                                        leftIcon={<IconUser className="w-4 h-4" />}
-                                    />
-                                    <Input
-                                        label="Email Address"
-                                        placeholder="E.g. alex@codeslogic.com"
-                                        value={profile?.email || ''}
-                                        readOnly
-                                        className="cursor-not-allowed"
-                                        variant="metallic"
-                                    />
-                                    <Input
-                                        label="Job Title / Role"
-                                        placeholder="E.g. Designer"
-                                        value={effectiveRole || ''}
-                                        readOnly
-                                        className="cursor-not-allowed"
-                                        variant="metallic"
-                                    />
-                                    {!isAdmin && !isSuperAdmin && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <Input
-                                            label="Phone Number"
-                                            value={profile?.phone || 'Not specified'}
+                                            label="Display Name"
+                                            placeholder="E.g. Alex Rivier"
+                                            value={isSuperAdmin ? formData.name : formatDisplayName(profile?.name)}
+                                            onChange={isSuperAdmin ? (e) => setFormData({ ...formData, name: e.target.value }) : undefined}
+                                            readOnly={!isSuperAdmin}
+                                            className={!isSuperAdmin ? "cursor-not-allowed" : ""}
+                                            variant="metallic"
+                                            leftIcon={<IconUser className="w-4 h-4" />}
+                                        />
+                                        <Input
+                                            label="Email Address"
+                                            placeholder="E.g. alex@codeslogic.com"
+                                            value={profile?.email || ''}
                                             readOnly
                                             className="cursor-not-allowed"
                                             variant="metallic"
-                                            leftIcon={<IconPhone className="w-4 h-4" />}
                                         />
+                                        <Input
+                                            label="Job Title / Role"
+                                            placeholder="E.g. Designer"
+                                            value={effectiveRole || ''}
+                                            readOnly
+                                            className="cursor-not-allowed"
+                                            variant="metallic"
+                                        />
+                                        {!isAdmin && !isSuperAdmin && (
+                                            <Input
+                                                label="Phone Number"
+                                                value={profile?.phone || 'Not specified'}
+                                                readOnly
+                                                className="cursor-not-allowed"
+                                                variant="metallic"
+                                                leftIcon={<IconPhone className="w-4 h-4" />}
+                                            />
+                                        )}
+                                    </div>
+
+                                    {isSuperAdmin && (isDirty || formData.name.trim() !== (profile?.name || '').trim()) && (
+                                        <div className="flex justify-end gap-3 pt-6 border-t border-white/5 animate-in fade-in slide-in-from-top-2 duration-300">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={handleDiscardChanges}
+                                                disabled={saving}
+                                                className="px-6"
+                                            >
+                                                Discard
+                                            </Button>
+                                            <Button
+                                                variant="metallic"
+                                                size="sm"
+                                                className="px-8"
+                                                onClick={handleSaveSettings}
+                                                isLoading={saving}
+                                            >
+                                                Save Changes
+                                            </Button>
+                                        </div>
                                     )}
                                 </div>
-
-                                {isSuperAdmin && (isDirty || formData.name.trim() !== (profile?.name || '').trim()) && (
-                                    <div className="flex justify-end gap-3 pt-6 border-t border-white/5 animate-in fade-in slide-in-from-top-2 duration-300">
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={handleDiscardChanges}
-                                            disabled={saving}
-                                            className="px-6"
-                                        >
-                                            Discard
-                                        </Button>
-                                        <Button
-                                            variant="metallic"
-                                            size="sm"
-                                            className="px-8"
-                                            onClick={handleSaveSettings}
-                                            isLoading={saving}
-                                        >
-                                            Save Changes
-                                        </Button>
-                                    </div>
-                                )}
-                            </div>
-                        </ElevatedMetallicCard>
+                            </ElevatedMetallicCard>
+                        )}
 
                         {/* Payment Details card - Based on preference */}
-                        {isFreelancer && !isSuperAdmin && profile && (
+                        {!profileOnly && isFreelancer && !isSuperAdmin && profile && (
                             <ElevatedMetallicCard
                                 title="Payment Settings"
                                 headerClassName="px-8 py-6"
@@ -698,7 +700,7 @@ const Settings = React.forwardRef<{ save: () => Promise<void>, discard: () => vo
                         )}
 
                         {/* Bank Details Section - For everyone except Admin and Freelancers (who have it combined above) */}
-                        {!isAdmin && !isSuperAdmin && !isFreelancer && (
+                        {!profileOnly && !isAdmin && !isSuperAdmin && !isFreelancer && (
                             <ElevatedMetallicCard
                                 title="Bank Details"
                                 headerClassName="px-8 py-6"
@@ -738,7 +740,7 @@ const Settings = React.forwardRef<{ save: () => Promise<void>, discard: () => vo
                         )}
 
                         {/* Identity Verification Card - For everyone except Admin */}
-                        {!isAdmin && !isSuperAdmin && profile && (
+                        {!profileOnly && !isAdmin && !isSuperAdmin && profile && (
                             <ElevatedMetallicCard
                                 title="IDENTITY VERIFICATION"
                                 headerClassName="px-8 py-6"
@@ -830,7 +832,7 @@ const Settings = React.forwardRef<{ save: () => Promise<void>, discard: () => vo
 
 
                         {/* Sounds Section - Only for Super Admin */}
-                        {effectiveRole === 'Super Admin' && (
+                        {!profileOnly && effectiveRole === 'Super Admin' && (
                             <ElevatedMetallicCard
                                 title="Sounds"
                                 headerClassName="px-8 py-6"

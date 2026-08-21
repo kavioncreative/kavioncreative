@@ -4,7 +4,7 @@ import { Card, Modal } from '../components/Surfaces';
 import { Table } from '../components/Table';
 import Button from '../components/Button';
 import { IconPlus, IconClock, IconCheckCircle, IconChevronRight, IconLayout, IconX, IconCalendar, IconUser, IconMoreVertical, IconEye, IconEdit, IconTrash, IconFilter } from '../components/Icons';
-import { Pagination } from '../components/Navigation';
+import { Pagination, Tabs } from '../components/Navigation';
 import { Input, TextArea } from '../components/Input';
 import { Dropdown } from '../components/Dropdown';
 import { KebabMenu } from '../components/KebabMenu';
@@ -71,6 +71,15 @@ const Tasks: React.FC = () => {
     const isPM = effectiveRole === 'Project Manager';
     const canManageAll = isSuperAdmin || isAdminUser;
     const canCreate = canManageAll || isPM;
+
+    // Recurring templates states
+    const [viewMode, setViewMode] = useState<'tasks' | 'templates'>('tasks');
+    const [templates, setTemplates] = useState<any[]>([]);
+    const [selectedTemplate, setSelectedTemplate] = useState<any | null>(null);
+    const [frequency, setFrequency] = useState<'Daily' | 'Weekly' | 'Monthly'>('Daily');
+    const [spawnTime, setSpawnTime] = useState('09:00:00');
+    const [deadlineOffset, setDeadlineOffset] = useState<number>(0);
+    const [templateToDelete, setTemplateToDelete] = useState<any | null>(null);
 
     // Update timer every minute for live status updates
     useEffect(() => {
@@ -208,17 +217,21 @@ const Tasks: React.FC = () => {
     useEffect(() => {
         if (!profile?.id) return;
 
+        const tableToListen = viewMode === 'tasks' ? 'tasks' : 'task_templates';
+        const channelName = viewMode === 'tasks' ? 'tasks-realtime' : 'templates-realtime';
+        const callback = viewMode === 'tasks' ? fetchTasks : fetchTemplates;
+
         const channel = supabase
-            .channel('tasks-realtime')
+            .channel(channelName)
             .on(
                 'postgres_changes',
                 {
                     event: '*',
                     schema: 'public',
-                    table: 'tasks'
+                    table: tableToListen
                 },
                 () => {
-                    fetchTasks();
+                    callback();
                 }
             )
             .subscribe();
@@ -226,12 +239,16 @@ const Tasks: React.FC = () => {
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [profile?.id, currentPage, searchQuery, filterDate, filterAssignee, activeFilter, quickFilter]);
+    }, [profile?.id, currentPage, searchQuery, filterDate, filterAssignee, activeFilter, quickFilter, viewMode]);
 
 
     useEffect(() => {
-        fetchTasks(true);
-    }, [profile?.id, currentPage, searchQuery, filterDate, filterAssignee, activeFilter, quickFilter]);
+        if (viewMode === 'tasks') {
+            fetchTasks(true);
+        } else {
+            fetchTemplates();
+        }
+    }, [profile?.id, currentPage, searchQuery, filterDate, filterAssignee, activeFilter, quickFilter, viewMode]);
 
     // Fetch Users
     useEffect(() => {
@@ -273,14 +290,88 @@ const Tasks: React.FC = () => {
         fetchUsers();
     }, [effectiveRole]);
 
+    const fetchTemplates = async () => {
+        if (!profile?.id) return;
+        setLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('task_templates')
+                .select(`
+                    *,
+                    assignee_profile:profiles!assignee_id(name),
+                    creator_profile:profiles!created_by(name)
+                `)
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+            setTemplates(data || []);
+        } catch (err) {
+            console.error('Error fetching templates:', err);
+            addToast({ title: 'Error', message: 'Failed to fetch templates', type: 'error' });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleToggleTemplateActive = async (templateId: string, currentActive: boolean) => {
+        try {
+            const { error } = await supabase
+                .from('task_templates')
+                .update({ is_active: !currentActive })
+                .eq('id', templateId);
+
+            if (error) throw error;
+            addToast({ title: 'Success', message: `Template ${!currentActive ? 'activated' : 'paused'} successfully`, type: 'success' });
+            fetchTemplates();
+        } catch (err: any) {
+            console.error('Error toggling template active status:', err);
+            addToast({ title: 'Error', message: err.message || 'Failed to update template status', type: 'error' });
+        }
+    };
+
+    const handleOpenEditTemplate = (template: any) => {
+        setModalMode('edit');
+        setSelectedTemplate(template);
+        setTaskTitle(template.task);
+        setTaskDescription(template.description || '');
+        setSelectedAssignee(template.assignee_id || '');
+        setFrequency(template.frequency as any);
+        setSpawnTime(template.spawn_time || '09:00');
+        setDeadlineTime(template.deadline_time || '18:00');
+        setDeadlineOffset(template.deadline_offset_days || 0);
+        setIsModalOpen(true);
+    };
+
+    const filteredTemplates = React.useMemo(() => {
+        let filtered = [...templates];
+        if (searchQuery) {
+            const q = searchQuery.toLowerCase();
+            filtered = filtered.filter(t => 
+                t.task.toLowerCase().includes(q) || 
+                (t.description && t.description.toLowerCase().includes(q))
+            );
+        }
+        if (filterAssignee !== 'all') {
+            filtered = filtered.filter(t => t.assignee_id === filterAssignee);
+        }
+        return filtered;
+    }, [templates, searchQuery, filterAssignee]);
+
     const inProgressCount = stats.progress;
     const completedCount = stats.completed;
     const allTasksCount = stats.all;
 
     const handleCreateTask = async () => {
-        if (!taskTitle || !taskDescription || !selectedAssignee || !deadlineDate || !deadlineTime) {
-            addToast({ title: 'Validation Error', message: 'Please fill in all fields', type: 'error' });
-            return;
+        if (viewMode === 'tasks') {
+            if (!taskTitle || !taskDescription || !selectedAssignee || !deadlineDate || !deadlineTime) {
+                addToast({ title: 'Validation Error', message: 'Please fill in all fields', type: 'error' });
+                return;
+            }
+        } else {
+            if (!taskTitle || !taskDescription || !selectedAssignee || !spawnTime || !deadlineTime) {
+                addToast({ title: 'Validation Error', message: 'Please fill in all fields', type: 'error' });
+                return;
+            }
         }
 
         if (!profile) {
@@ -290,41 +381,86 @@ const Tasks: React.FC = () => {
 
         setLoading(true);
 
-        if (modalMode === 'edit' && selectedTask) {
-            const { error } = await supabase.from('tasks').update({
-                task: taskTitle,
-                description: taskDescription,
-                assignee_id: selectedAssignee,
-                deadline_date: deadlineDate.toISOString().split('T')[0],
-                deadline_time: deadlineTime,
-            }).eq('id', selectedTask.id);
+        if (viewMode === 'tasks') {
+            if (modalMode === 'edit' && selectedTask) {
+                const { error } = await supabase.from('tasks').update({
+                    task: taskTitle,
+                    description: taskDescription,
+                    assignee_id: selectedAssignee,
+                    deadline_date: deadlineDate.toISOString().split('T')[0],
+                    deadline_time: deadlineTime,
+                }).eq('id', selectedTask.id);
 
-            if (error) {
-                console.error('Error updating task:', error);
-                addToast({ title: 'Error', message: 'Failed to update task', type: 'error' });
+                if (error) {
+                    console.error('Error updating task:', error);
+                    addToast({ title: 'Error', message: 'Failed to update task', type: 'error' });
+                } else {
+                    addToast({ title: 'Success', message: 'Task updated successfully', type: 'success' });
+                    fetchTasks();
+                    handleCloseModal();
+                }
             } else {
-                addToast({ title: 'Success', message: 'Task updated successfully', type: 'success' });
-                fetchTasks();
-                handleCloseModal();
+                const { error } = await supabase.from('tasks').insert([{
+                    task: taskTitle,
+                    description: taskDescription,
+                    assignee_id: selectedAssignee,
+                    created_by: profile.id,
+                    deadline_date: deadlineDate.toISOString().split('T')[0],
+                    deadline_time: deadlineTime,
+                    status: 'In Progress'
+                }]);
+
+                if (error) {
+                    console.error('Error creating task:', error);
+                    addToast({ title: 'Error', message: 'Failed to create task', type: 'error' });
+                } else {
+                    addToast({ title: 'Success', message: 'Task created successfully', type: 'success' });
+                    fetchTasks();
+                    handleCloseModal();
+                }
             }
         } else {
-            const { error } = await supabase.from('tasks').insert([{
-                task: taskTitle,
-                description: taskDescription,
-                assignee_id: selectedAssignee,
-                created_by: profile.id,
-                deadline_date: deadlineDate.toISOString().split('T')[0],
-                deadline_time: deadlineTime,
-                status: 'In Progress'
-            }]);
+            // Template Mode
+            if (modalMode === 'edit' && selectedTemplate) {
+                const { error } = await supabase.from('task_templates').update({
+                    task: taskTitle,
+                    description: taskDescription,
+                    assignee_id: selectedAssignee,
+                    frequency,
+                    spawn_time: spawnTime,
+                    deadline_time: deadlineTime,
+                    deadline_offset_days: Number(deadlineOffset) || 0
+                }).eq('id', selectedTemplate.id);
 
-            if (error) {
-                console.error('Error creating task:', error);
-                addToast({ title: 'Error', message: 'Failed to create task', type: 'error' });
+                if (error) {
+                    console.error('Error updating template:', error);
+                    addToast({ title: 'Error', message: 'Failed to update template', type: 'error' });
+                } else {
+                    addToast({ title: 'Success', message: 'Template updated successfully', type: 'success' });
+                    fetchTemplates();
+                    handleCloseModal();
+                }
             } else {
-                addToast({ title: 'Success', message: 'Task created successfully', type: 'success' });
-                fetchTasks();
-                handleCloseModal();
+                const { error } = await supabase.from('task_templates').insert([{
+                    task: taskTitle,
+                    description: taskDescription,
+                    assignee_id: selectedAssignee,
+                    created_by: profile.id,
+                    frequency,
+                    spawn_time: spawnTime,
+                    deadline_time: deadlineTime,
+                    deadline_offset_days: Number(deadlineOffset) || 0,
+                    is_active: true
+                }]);
+
+                if (error) {
+                    console.error('Error creating template:', error);
+                    addToast({ title: 'Error', message: 'Failed to create template', type: 'error' });
+                } else {
+                    addToast({ title: 'Success', message: 'Template created successfully', type: 'success' });
+                    fetchTemplates();
+                    handleCloseModal();
+                }
             }
         }
 
@@ -337,19 +473,29 @@ const Tasks: React.FC = () => {
     };
 
     const handleConfirmDelete = async () => {
-        if (!taskToDelete) return;
-
         setLoading(true);
-        const { error } = await supabase.from('tasks').delete().eq('id', taskToDelete.id);
-
-        if (error) {
-            console.error('Error deleting task:', error);
-            addToast({ title: 'Error', message: 'Failed to delete task', type: 'error' });
-        } else {
-            addToast({ title: 'Success', message: 'Task deleted successfully', type: 'success' });
-            fetchTasks();
-            setIsDeleteModalOpen(false);
-            setTaskToDelete(null);
+        if (viewMode === 'tasks' && taskToDelete) {
+            const { error } = await supabase.from('tasks').delete().eq('id', taskToDelete.id);
+            if (error) {
+                console.error('Error deleting task:', error);
+                addToast({ title: 'Error', message: 'Failed to delete task', type: 'error' });
+            } else {
+                addToast({ title: 'Success', message: 'Task deleted successfully', type: 'success' });
+                fetchTasks();
+                setIsDeleteModalOpen(false);
+                setTaskToDelete(null);
+            }
+        } else if (viewMode === 'templates' && templateToDelete) {
+            const { error } = await supabase.from('task_templates').delete().eq('id', templateToDelete.id);
+            if (error) {
+                console.error('Error deleting template:', error);
+                addToast({ title: 'Error', message: 'Failed to delete template', type: 'error' });
+            } else {
+                addToast({ title: 'Success', message: 'Template deleted successfully', type: 'success' });
+                fetchTemplates();
+                setIsDeleteModalOpen(false);
+                setTemplateToDelete(null);
+            }
         }
         setLoading(false);
     };
@@ -375,11 +521,15 @@ const Tasks: React.FC = () => {
         setIsModalOpen(false);
         setModalMode('create');
         setSelectedTask(null);
+        setSelectedTemplate(null);
         setTaskTitle('');
         setTaskDescription('');
         setSelectedAssignee('');
         setDeadlineDate(null);
         setDeadlineTime('');
+        setFrequency('Daily');
+        setSpawnTime('09:00:00');
+        setDeadlineOffset(0);
     };
 
     const handleOpenEdit = (task: Task) => {
@@ -400,13 +550,30 @@ const Tasks: React.FC = () => {
 
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            {/* View Mode Sub-navigation */}
+            {canCreate && (
+                <div className="mb-6">
+                    <Tabs
+                        tabs={[
+                            { id: 'tasks', label: 'Active Tasks' },
+                            { id: 'templates', label: 'Recurring Templates' },
+                        ]}
+                        activeTab={viewMode}
+                        onTabChange={(id) => {
+                            setViewMode(id as 'tasks' | 'templates');
+                            setCurrentPage(1);
+                        }}
+                    />
+                </div>
+            )}
+
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3 w-full md:w-auto">
                     {/* Search Bar */}
                     <div className="relative w-full md:w-[240px]">
                         <Input
-                            placeholder="Search tasks..."
+                            placeholder={viewMode === 'tasks' ? "Search tasks..." : "Search templates..."}
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             variant="metallic"
@@ -415,85 +582,89 @@ const Tasks: React.FC = () => {
                         />
                     </div>
 
-                    {/* Quick Filters */}
-                    <div className="relative w-full md:w-[180px]">
-                        <Dropdown
-                            value={quickFilter}
-                            onChange={(val) => {
-                                setQuickFilter(val);
-                                setFilterDate(null); // Clear manual date if quick filter used
-                            }}
-                            options={[
-                                { value: 'all', label: 'All Time' },
-                                { value: 'today', label: 'Due Today' },
-                                { value: 'yesterday', label: 'Due Yesterday' },
-                                { value: 'tomorrow', label: 'Due Tomorrow' },
-                                { value: 'overdue', label: 'Overdue', descriptionClassName: '!text-brand-error bg-brand-error/10 border-brand-error/20' },
-                                { value: 'assigned_me', label: 'Assigned to Me' },
-                                { value: 'created_me', label: 'Created by Me' }
-                            ]}
-                            variant="metallic"
-                        >
-                            <div className="relative flex items-center justify-between gap-2 bg-black/40 border border-white/[0.05] rounded-xl px-4 h-10 text-sm font-bold text-white hover:bg-black/50 transition-all cursor-pointer group shadow-[inset_0_2px_8px_rgba(0,0,0,0.6)] overflow-hidden">
-                                <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-b from-black/60 to-transparent pointer-events-none" />
-                                <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.02)_48%,rgba(255,255,255,0.05)_50%,rgba(255,255,255,0.02)_52%,transparent_100%)] opacity-30 pointer-events-none" />
+                    {/* Quick Filters - Hide in Templates mode */}
+                    {viewMode === 'tasks' && (
+                        <div className="relative w-full md:w-[180px]">
+                            <Dropdown
+                                value={quickFilter}
+                                onChange={(val) => {
+                                    setQuickFilter(val);
+                                    setFilterDate(null); // Clear manual date if quick filter used
+                                }}
+                                options={[
+                                    { value: 'all', label: 'All Time' },
+                                    { value: 'today', label: 'Due Today' },
+                                    { value: 'yesterday', label: 'Due Yesterday' },
+                                    { value: 'tomorrow', label: 'Due Tomorrow' },
+                                    { value: 'overdue', label: 'Overdue', descriptionClassName: '!text-brand-error bg-brand-error/10 border-brand-error/20' },
+                                    { value: 'assigned_me', label: 'Assigned to Me' },
+                                    { value: 'created_me', label: 'Created by Me' }
+                                ]}
+                                variant="metallic"
+                            >
+                                <div className="relative flex items-center justify-between gap-2 bg-black/40 border border-white/[0.05] rounded-xl px-4 h-10 text-sm font-bold text-white hover:bg-black/50 transition-all cursor-pointer group shadow-[inset_0_2px_8px_rgba(0,0,0,0.6)] overflow-hidden">
+                                    <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-b from-black/60 to-transparent pointer-events-none" />
+                                    <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.02)_48%,rgba(255,255,255,0.05)_50%,rgba(255,255,255,0.02)_52%,transparent_100%)] opacity-30 pointer-events-none" />
 
-                                <div className="flex items-center gap-2 relative z-10">
-                                    <IconFilter className="w-4 h-4 text-brand-primary group-hover:scale-110 transition-transform" />
-                                    <span className="truncate">
-                                        {quickFilter === 'all' ? 'Quick Filter' : 
-                                         quickFilter === 'today' ? 'Due Today' : 
-                                         quickFilter === 'yesterday' ? 'Due Yesterday' : 
-                                         quickFilter === 'tomorrow' ? 'Due Tomorrow' : 
-                                         quickFilter === 'overdue' ? 'Overdue' : 
-                                         quickFilter === 'assigned_me' ? 'My Tasks' : 'My Assignments'}
-                                    </span>
-                                </div>
+                                    <div className="flex items-center gap-2 relative z-10">
+                                        <IconFilter className="w-4 h-4 text-brand-primary group-hover:scale-110 transition-transform" />
+                                        <span className="truncate">
+                                            {quickFilter === 'all' ? 'Quick Filter' : 
+                                             quickFilter === 'today' ? 'Due Today' : 
+                                             quickFilter === 'yesterday' ? 'Due Yesterday' : 
+                                             quickFilter === 'tomorrow' ? 'Due Tomorrow' : 
+                                             quickFilter === 'overdue' ? 'Overdue' : 
+                                             quickFilter === 'assigned_me' ? 'My Tasks' : 'My Assignments'}
+                                        </span>
+                                    </div>
 
-                                <svg className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors shrink-0 relative z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-                                </svg>
-                            </div>
-                        </Dropdown>
-                    </div>
-
-                    {/* Date Filter */}
-                    <div className="relative w-full md:w-[180px]">
-                        <DatePicker
-                            value={filterDate}
-                            onChange={(date) => {
-                                setFilterDate(date);
-                                setQuickFilter('all'); // Clear quick filter if manual date used
-                            }}
-                        >
-                            <div className="relative flex items-center justify-between gap-2 bg-black/40 border border-white/[0.05] rounded-xl px-4 h-10 text-sm font-bold text-white hover:bg-black/50 transition-all cursor-pointer group shadow-[inset_0_2px_8px_rgba(0,0,0,0.6)] overflow-hidden">
-                                <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-b from-black/60 to-transparent pointer-events-none" />
-                                <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.02)_48%,rgba(255,255,255,0.05)_50%,rgba(255,255,255,0.02)_52%,transparent_100%)] opacity-30 pointer-events-none" />
-
-                                <div className="flex items-center gap-2 relative z-10">
-                                    <IconCalendar className="w-4 h-4 text-brand-primary group-hover:scale-110 transition-transform" />
-                                    <span className="truncate">{systemFormatDate(filterDate) || 'Filter By Date'}</span>
-                                </div>
-
-                                <div className="flex items-center gap-1.5 relative z-10">
-                                    <svg className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <svg className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors shrink-0 relative z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
                                     </svg>
-                                    {filterDate && (
-                                        <div
-                                            className="p-1 rounded-md hover:bg-white/10 text-gray-500 hover:text-brand-primary transition-all pointer-events-auto"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setFilterDate(null);
-                                            }}
-                                        >
-                                            <IconX className="w-3 h-3" strokeWidth={3} />
-                                        </div>
-                                    )}
                                 </div>
-                            </div>
-                        </DatePicker>
-                    </div>
+                            </Dropdown>
+                        </div>
+                    )}
+
+                    {/* Date Filter - Hide in Templates mode */}
+                    {viewMode === 'tasks' && (
+                        <div className="relative w-full md:w-[180px]">
+                            <DatePicker
+                                value={filterDate}
+                                onChange={(date) => {
+                                    setFilterDate(date);
+                                    setQuickFilter('all'); // Clear quick filter if manual date used
+                                }}
+                            >
+                                <div className="relative flex items-center justify-between gap-2 bg-black/40 border border-white/[0.05] rounded-xl px-4 h-10 text-sm font-bold text-white hover:bg-black/50 transition-all cursor-pointer group shadow-[inset_0_2px_8px_rgba(0,0,0,0.6)] overflow-hidden">
+                                    <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-b from-black/60 to-transparent pointer-events-none" />
+                                    <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.02)_48%,rgba(255,255,255,0.05)_50%,rgba(255,255,255,0.02)_52%,transparent_100%)] opacity-30 pointer-events-none" />
+
+                                    <div className="flex items-center gap-2 relative z-10">
+                                        <IconCalendar className="w-4 h-4 text-brand-primary group-hover:scale-110 transition-transform" />
+                                        <span className="truncate">{systemFormatDate(filterDate) || 'Filter By Date'}</span>
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5 relative z-10">
+                                        <svg className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                        {filterDate && (
+                                            <div
+                                                className="p-1 rounded-md hover:bg-white/10 text-gray-500 hover:text-brand-primary transition-all pointer-events-auto"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setFilterDate(null);
+                                                }}
+                                            >
+                                                <IconX className="w-3 h-3" strokeWidth={3} />
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </DatePicker>
+                        </div>
+                    )}
 
                     {/* Assignee Filter */}
                     {canCreate && (
@@ -546,278 +717,408 @@ const Tasks: React.FC = () => {
                         leftIcon={<IconPlus className="w-4 h-4" />}
                         className="w-full md:w-auto whitespace-nowrap"
                     >
-                        Create Task
+                        {viewMode === 'tasks' ? 'Create Task' : 'Create Template'}
                     </Button>
                 )}
             </div>
 
-            {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* All Tasks */}
-                <Card
-                    isElevated={true}
-                    disableHover={activeFilter === 'all'}
-                    className={`h-full p-0 border-2 transition-all group cursor-pointer overflow-hidden ${activeFilter === 'all'
-                        ? 'bg-gradient-to-b from-[#FF6B4B] to-[#D9361A] border-[#FF4D2D] shadow-[inset_0_1px_0_rgba(255,255,255,0.4),inset_0_-1px_0_rgba(0,0,0,0.2)]'
-                        : 'border-white/10 bg-[#1A1A1A] hover:border-brand-primary/30'
-                        }`}
-                    bodyClassName="h-full"
-                    onClick={() => setActiveFilter('all')}
-                >
-                    {/* Full Surface Metallic Shine */}
-                    <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.02)_0%,rgba(255,255,255,0.05)_40%,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.05)_60%,rgba(255,255,255,0.02)_100%)] pointer-events-none opacity-70" />
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.05)_0%,transparent_70%)] pointer-events-none" />
+            {/* Summary Cards - Only in Tasks Mode */}
+            {viewMode === 'tasks' && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* All Tasks */}
+                    <Card
+                        isElevated={true}
+                        disableHover={activeFilter === 'all'}
+                        className={`h-full p-0 border-2 transition-all group cursor-pointer overflow-hidden ${activeFilter === 'all'
+                            ? 'bg-gradient-to-b from-[#FF6B4B] to-[#D9361A] border-[#FF4D2D] shadow-[inset_0_1px_0_rgba(255,255,255,0.4),inset_0_-1px_0_rgba(0,0,0,0.2)]'
+                            : 'border-white/10 bg-[#1A1A1A] hover:border-brand-primary/30'
+                            }`}
+                        bodyClassName="h-full"
+                        onClick={() => setActiveFilter('all')}
+                    >
+                        {/* Full Surface Metallic Shine */}
+                        <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.02)_0%,rgba(255,255,255,0.05)_40%,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.05)_60%,rgba(255,255,255,0.02)_100%)] pointer-events-none opacity-70" />
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.05)_0%,transparent_70%)] pointer-events-none" />
 
-                    <div className="p-5 relative z-10 w-full">
-                        <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                                <p className={`text-xs font-bold uppercase tracking-widest mb-2 ${activeFilter === 'all' ? 'text-white/80' : 'text-gray-400'}`}>All Tasks</p>
-                                <p className={`text-2xl font-black mb-1 ${activeFilter === 'all' ? 'text-white' : 'text-brand-primary'}`}>{allTasksCount}</p>
-                                <div className="flex items-center gap-2 mt-1">
-                                    <span className={activeFilter === 'all' ? 'inline-flex items-center px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider bg-white/20 text-white' : getStatusCapsuleClasses('urgent')}>
-                                        Total Tasks
-                                    </span>
+                        <div className="p-5 relative z-10 w-full">
+                            <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                    <p className={`text-xs font-bold uppercase tracking-widest mb-2 ${activeFilter === 'all' ? 'text-white/80' : 'text-gray-400'}`}>All Tasks</p>
+                                    <p className={`text-2xl font-black mb-1 ${activeFilter === 'all' ? 'text-white' : 'text-brand-primary'}`}>{allTasksCount}</p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <span className={activeFilter === 'all' ? 'inline-flex items-center px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider bg-white/20 text-white' : getStatusCapsuleClasses('urgent')}>
+                                            Total Tasks
+                                        </span>
+                                    </div>
                                 </div>
-                            </div>
-                            <div className={`p-2 rounded-xl border transition-all ${activeFilter === 'all'
-                                ? 'bg-white/20 border-white/30 text-white'
-                                : 'bg-white/5 border-white/10 text-gray-400 group-hover:bg-brand-primary/10 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
-                                }`}>
-                                <IconLayout className="w-5 h-5" />
+                                <div className={`p-2 rounded-xl border transition-all ${activeFilter === 'all'
+                                    ? 'bg-white/20 border-white/30 text-white'
+                                    : 'bg-white/5 border-white/10 text-gray-400 group-hover:bg-brand-primary/10 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
+                                    }`}>
+                                    <IconLayout className="w-5 h-5" />
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </Card>
+                    </Card>
 
-                {/* In Progress */}
-                <Card
-                    isElevated={true}
-                    disableHover={activeFilter === 'progress'}
-                    className={`h-full p-0 border-2 transition-all group cursor-pointer overflow-hidden ${activeFilter === 'progress'
-                        ? 'bg-gradient-to-b from-[#FF6B4B] to-[#D9361A] border-[#FF4D2D] shadow-[inset_0_1px_0_rgba(255,255,255,0.4),inset_0_-1px_0_rgba(0,0,0,0.2)]'
-                        : 'border-white/10 bg-[#1A1A1A] hover:border-brand-primary/30'
-                        }`}
-                    bodyClassName="h-full"
-                    onClick={() => setActiveFilter('progress')}
-                >
-                    {/* Full Surface Metallic Shine */}
-                    <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.02)_0%,rgba(255,255,255,0.05)_40%,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.05)_60%,rgba(255,255,255,0.02)_100%)] pointer-events-none opacity-70" />
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.05)_0%,transparent_70%)] pointer-events-none" />
+                    {/* In Progress */}
+                    <Card
+                        isElevated={true}
+                        disableHover={activeFilter === 'progress'}
+                        className={`h-full p-0 border-2 transition-all group cursor-pointer overflow-hidden ${activeFilter === 'progress'
+                            ? 'bg-gradient-to-b from-[#FF6B4B] to-[#D9361A] border-[#FF4D2D] shadow-[inset_0_1px_0_rgba(255,255,255,0.4),inset_0_-1px_0_rgba(0,0,0,0.2)]'
+                            : 'border-white/10 bg-[#1A1A1A] hover:border-brand-primary/30'
+                            }`}
+                        bodyClassName="h-full"
+                        onClick={() => setActiveFilter('progress')}
+                    >
+                        {/* Full Surface Metallic Shine */}
+                        <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.02)_0%,rgba(255,255,255,0.05)_40%,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.05)_60%,rgba(255,255,255,0.02)_100%)] pointer-events-none opacity-70" />
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.05)_0%,transparent_70%)] pointer-events-none" />
 
-                    <div className="p-5 relative z-10 w-full">
-                        <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                                <p className={`text-xs font-bold uppercase tracking-widest mb-2 ${activeFilter === 'progress' ? 'text-white/80' : 'text-gray-400'}`}>In Progress</p>
-                                <p className={`text-2xl font-black mb-1 ${activeFilter === 'progress' ? 'text-white' : 'text-brand-warning'}`}>{inProgressCount}</p>
-                                <div className="flex items-center gap-2 mt-1">
-                                    <span className={activeFilter === 'progress' ? 'inline-flex items-center px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider bg-white/20 text-white' : getStatusCapsuleClasses('in progress')}>
-                                        Active Tasks
-                                    </span>
+                        <div className="p-5 relative z-10 w-full">
+                            <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                    <p className={`text-xs font-bold uppercase tracking-widest mb-2 ${activeFilter === 'progress' ? 'text-white/80' : 'text-gray-400'}`}>In Progress</p>
+                                    <p className={`text-2xl font-black mb-1 ${activeFilter === 'progress' ? 'text-white' : 'text-brand-warning'}`}>{inProgressCount}</p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <span className={activeFilter === 'progress' ? 'inline-flex items-center px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider bg-white/20 text-white' : getStatusCapsuleClasses('in progress')}>
+                                            Active Tasks
+                                        </span>
+                                    </div>
                                 </div>
-                            </div>
-                            <div className={`p-2 rounded-xl border transition-all ${activeFilter === 'progress'
-                                ? 'bg-white/20 border-white/30 text-white'
-                                : 'bg-white/5 border-white/10 text-gray-400 group-hover:bg-brand-primary/10 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
-                                }`}>
-                                <IconClock className="w-5 h-5" />
+                                <div className={`p-2 rounded-xl border transition-all ${activeFilter === 'progress'
+                                    ? 'bg-white/20 border-white/30 text-white'
+                                    : 'bg-white/5 border-white/10 text-gray-400 group-hover:bg-brand-primary/10 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
+                                    }`}>
+                                    <IconClock className="w-5 h-5" />
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </Card>
+                    </Card>
 
-                {/* Completed */}
-                <Card
-                    isElevated={true}
-                    disableHover={activeFilter === 'completed'}
-                    className={`h-full p-0 border-2 transition-all group cursor-pointer overflow-hidden ${activeFilter === 'completed'
-                        ? 'bg-gradient-to-b from-[#FF6B4B] to-[#D9361A] border-[#FF4D2D] shadow-[inset_0_1px_0_rgba(255,255,255,0.4),inset_0_-1px_0_rgba(0,0,0,0.2)]'
-                        : 'border-white/10 bg-[#1A1A1A] hover:border-brand-primary/30'
-                        }`}
-                    bodyClassName="h-full"
-                    onClick={() => setActiveFilter('completed')}
-                >
-                    {/* Full Surface Metallic Shine */}
-                    <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.02)_0%,rgba(255,255,255,0.05)_40%,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.05)_60%,rgba(255,255,255,0.02)_100%)] pointer-events-none opacity-70" />
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.05)_0%,transparent_70%)] pointer-events-none" />
+                    {/* Completed */}
+                    <Card
+                        isElevated={true}
+                        disableHover={activeFilter === 'completed'}
+                        className={`h-full p-0 border-2 transition-all group cursor-pointer overflow-hidden ${activeFilter === 'completed'
+                            ? 'bg-gradient-to-b from-[#FF6B4B] to-[#D9361A] border-[#FF4D2D] shadow-[inset_0_1px_0_rgba(255,255,255,0.4),inset_0_-1px_0_rgba(0,0,0,0.2)]'
+                            : 'border-white/10 bg-[#1A1A1A] hover:border-brand-primary/30'
+                            }`}
+                        bodyClassName="h-full"
+                        onClick={() => setActiveFilter('completed')}
+                    >
+                        {/* Full Surface Metallic Shine */}
+                        <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.02)_0%,rgba(255,255,255,0.05)_40%,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.05)_60%,rgba(255,255,255,0.02)_100%)] pointer-events-none opacity-70" />
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.05)_0%,transparent_70%)] pointer-events-none" />
 
-                    <div className="p-5 relative z-10 w-full">
-                        <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                                <p className={`text-xs font-bold uppercase tracking-widest mb-2 ${activeFilter === 'completed' ? 'text-white/80' : 'text-gray-400'}`}>Completed</p>
-                                <p className={`text-2xl font-black mb-1 ${activeFilter === 'completed' ? 'text-white' : 'text-brand-success'}`}>{completedCount}</p>
-                                <div className="flex items-center gap-2 mt-1">
-                                    <span className={activeFilter === 'completed' ? 'inline-flex items-center px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider bg-white/20 text-white' : getStatusCapsuleClasses('approved')}>
-                                        Done
-                                    </span>
+                        <div className="p-5 relative z-10 w-full">
+                            <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                    <p className={`text-xs font-bold uppercase tracking-widest mb-2 ${activeFilter === 'completed' ? 'text-white/80' : 'text-gray-400'}`}>Completed</p>
+                                    <p className={`text-2xl font-black mb-1 ${activeFilter === 'completed' ? 'text-white' : 'text-brand-success'}`}>{completedCount}</p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <span className={activeFilter === 'completed' ? 'inline-flex items-center px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider bg-white/20 text-white' : getStatusCapsuleClasses('approved')}>
+                                            Done
+                                        </span>
+                                    </div>
                                 </div>
-                            </div>
-                            <div className={`p-2 rounded-xl border transition-all ${activeFilter === 'completed'
-                                ? 'bg-white/20 border-white/30 text-white'
-                                : 'bg-white/5 border-white/10 text-gray-400 group-hover:bg-brand-primary/10 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
-                                }`}>
-                                <IconCheckCircle className="w-5 h-5" />
+                                <div className={`p-2 rounded-xl border transition-all ${activeFilter === 'completed'
+                                    ? 'bg-white/20 border-white/30 text-white'
+                                    : 'bg-white/5 border-white/10 text-gray-400 group-hover:bg-brand-primary/10 group-hover:border-brand-primary/20 group-hover:text-brand-primary'
+                                    }`}>
+                                    <IconCheckCircle className="w-5 h-5" />
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </Card>
-            </div>
+                    </Card>
+                </div>
+            )}
 
-            {/* Tasks Table */}
-            <div>
-                <Table
-                    columns={[
-                        {
-                            header: 'S. No.',
-                            key: 'sNo',
-                            className: 'min-w-[80px] whitespace-nowrap',
-                            render: (_: any, index: number) => index + 1
-                        },
-                        {
-                            header: 'Task',
-                            key: 'task',
-                            className: 'font-medium text-white'
-                        },
-                        {
-                            header: 'Created By',
-                            key: 'createdBy',
-                            className: 'text-gray-400 text-center',
-                            render: (task: Task) => {
-                                const name = task.creator_profile?.name;
-                                return formatDisplayName(name) || 'Unknown';
-                            }
-                        },
-                        {
-                            header: 'Assignee',
-                            key: 'assignee',
-                            className: 'w-48 text-gray-400 text-center whitespace-nowrap',
-                            render: (task: Task) => {
-                                const name = task.assignee_profile?.name;
-                                return formatDisplayName(name) || 'Unassigned';
-                            }
-                        },
-                        {
-                            header: 'Status',
-                            key: 'status',
-                            className: 'text-center',
-                            render: (task: Task) => (
-                                <span className={getStatusCapsuleClasses(task.status)}>
-                                    {task.status}
-                                </span>
-                            )
-                        },
-                        {
-                            header: 'Deadline',
-                            key: 'deadline',
-                            className: 'w-44 text-center',
-                            render: (task: Task) => (
-                                <div className="flex flex-col items-center justify-center">
-                                    <span className="text-white font-medium">{formatDeadlineDate(task.deadline_date)}</span>
-                                    <span className="text-[10px] text-brand-primary font-bold uppercase tracking-widest">{formatTime(task.deadline_time)}</span>
-                                </div>
-                            )
-                        },
-                        {
-                            header: 'Time Left',
-                            key: 'timeLeft',
-                            className: 'w-44 text-center',
-                            render: (task: Task) => {
-                                if (task.status === 'Completed') {
-                                    return <span className="text-sm font-bold uppercase tracking-wider text-brand-success">Completed</span>;
+            {/* Active Tasks Table */}
+            {viewMode === 'tasks' && (
+                <div>
+                    <Table
+                        columns={[
+                            {
+                                header: 'S. No.',
+                                key: 'sNo',
+                                className: 'min-w-[80px] whitespace-nowrap',
+                                render: (_: any, index: number) => index + 1
+                            },
+                            {
+                                header: 'Task',
+                                key: 'task',
+                                className: 'font-medium text-white'
+                            },
+                            {
+                                header: 'Created By',
+                                key: 'createdBy',
+                                className: 'text-gray-400 text-center',
+                                render: (task: Task) => {
+                                    const name = task.creator_profile?.name;
+                                    return formatDisplayName(name) || 'Unknown';
                                 }
-                                return (
-                                    <Countdown 
-                                        date={`${task.deadline_date}T${task.deadline_time || '00:00:00'}`} 
-                                        status={task.status} 
-                                        className="text-sm font-bold uppercase tracking-wider" 
-                                    />
-                                );
+                            },
+                            {
+                                header: 'Assignee',
+                                key: 'assignee',
+                                className: 'w-48 text-gray-400 text-center whitespace-nowrap',
+                                render: (task: Task) => {
+                                    const name = task.assignee_profile?.name;
+                                    return formatDisplayName(name) || 'Unassigned';
+                                }
+                            },
+                            {
+                                header: 'Status',
+                                key: 'status',
+                                className: 'text-center',
+                                render: (task: Task) => (
+                                    <span className={getStatusCapsuleClasses(task.status)}>
+                                        {task.status}
+                                    </span>
+                                )
+                            },
+                            {
+                                header: 'Deadline',
+                                key: 'deadline',
+                                className: 'w-44 text-center',
+                                render: (task: Task) => (
+                                    <div className="flex flex-col items-center justify-center">
+                                        <span className="text-white font-medium">{formatDeadlineDate(task.deadline_date)}</span>
+                                        <span className="text-[10px] text-brand-primary font-bold uppercase tracking-widest">{formatTime(task.deadline_time)}</span>
+                                    </div>
+                                )
+                            },
+                            {
+                                header: 'Time Left',
+                                key: 'timeLeft',
+                                className: 'w-44 text-center',
+                                render: (task: Task) => {
+                                    if (task.status === 'Completed') {
+                                        return <span className="text-sm font-bold uppercase tracking-wider text-brand-success">Completed</span>;
+                                    }
+                                    return (
+                                        <Countdown 
+                                            date={`${task.deadline_date}T${task.deadline_time || '00:00:00'}`} 
+                                            status={task.status} 
+                                            className="text-sm font-bold uppercase tracking-wider" 
+                                        />
+                                    );
+                                }
+                            },
+                            {
+                                header: '',
+                                key: 'actions',
+                                className: 'w-32 text-right',
+                                render: (task: Task) => (
+                                    <div className="flex items-center justify-end gap-2 pr-2">
+                                        {task.status !== 'Completed' && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleMarkComplete(task.id);
+                                                }}
+                                                className="p-2 hover:bg-brand-success/10 rounded-lg text-gray-500 hover:text-brand-success transition-all group"
+                                                title="Mark as Complete"
+                                            >
+                                                <IconCheckCircle className="w-5 h-5 transition-transform duration-200 group-hover:scale-110" />
+                                            </button>
+                                        )}
+                                        {(canManageAll || (isPM && task.created_by === profile?.id)) ? (
+                                            <KebabMenu
+                                                options={[
+                                                    {
+                                                        label: 'View',
+                                                        icon: <IconEye className="w-4 h-4" />,
+                                                        onClick: () => handleOpenPreview(task)
+                                                    },
+                                                    {
+                                                        label: 'Edit',
+                                                        icon: <IconEdit className="w-4 h-4" />,
+                                                        onClick: () => handleOpenEdit(task)
+                                                    },
+                                                    {
+                                                        label: 'Delete',
+                                                        icon: <IconTrash className="w-4 h-4" />,
+                                                        variant: 'danger',
+                                                        onClick: () => handleDeleteTask(task)
+                                                    }
+                                                ]}
+                                            />
+                                        ) : (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleOpenPreview(task);
+                                                }}
+                                                className="p-2 hover:bg-white/5 rounded-lg text-gray-500 hover:text-white transition-all group"
+                                            >
+                                                <IconChevronRight className="w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5" />
+                                            </button>
+                                        )}
+                                    </div>
+                                )
                             }
-                        },
-                        {
-                            header: '',
-                            key: 'actions',
-                            className: 'w-32 text-right',
-                            render: (task: Task) => (
-                                <div className="flex items-center justify-end gap-2 pr-2">
-                                    {task.status !== 'Completed' && (
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleMarkComplete(task.id);
-                                            }}
-                                            className="p-2 hover:bg-brand-success/10 rounded-lg text-gray-500 hover:text-brand-success transition-all group"
-                                            title="Mark as Complete"
-                                        >
-                                            <IconCheckCircle className="w-5 h-5 transition-transform duration-200 group-hover:scale-110" />
-                                        </button>
-                                    )}
-                                    {(canManageAll || (isPM && task.created_by === profile?.id)) ? (
+                        ]}
+                        data={tasks}
+                        onRowClick={task => handleOpenPreview(task)}
+                        isLoading={loading}
+                        isMetallicHeader={true}
+                        emptyMessage="No tasks found. Create your first task to get started."
+                    />
+
+                    {/* Pagination */}
+                    {Math.ceil(totalTasks / itemsPerPage) > 1 && (
+                        <div className="mt-8 mb-6 flex flex-col md:flex-row items-center justify-between gap-6 px-1">
+                            <div className="flex flex-col gap-1 items-center md:items-start text-center md:text-left">
+                                <p className="text-[11px] font-black text-gray-400 uppercase tracking-widest leading-none">Task Index</p>
+                                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest opacity-60">Synchronized View Navigation</p>
+                            </div>
+                            <Pagination
+                                current={currentPage}
+                                total={Math.ceil(totalTasks / itemsPerPage)}
+                                onChange={(page) => {
+                                    setCurrentPage(page);
+                                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                                }}
+                            />
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Recurring Templates Table */}
+            {viewMode === 'templates' && (
+                <div>
+                    <Table
+                        columns={[
+                            {
+                                header: 'S. No.',
+                                key: 'sNo',
+                                className: 'min-w-[80px] whitespace-nowrap',
+                                render: (_: any, index: number) => index + 1
+                            },
+                            {
+                                header: 'Template Title',
+                                key: 'task',
+                                className: 'font-medium text-white',
+                                render: (template: any) => (
+                                    <div className="font-bold text-white pr-4">
+                                        {template.task}
+                                    </div>
+                                )
+                            },
+                            {
+                                header: 'Description',
+                                key: 'description',
+                                className: 'w-[30%]',
+                                render: (template: any) => (
+                                    <p className="text-gray-400 text-xs truncate max-w-[280px]">
+                                        {template.description || 'No description provided.'}
+                                    </p>
+                                )
+                            },
+                            {
+                                header: 'Assignee',
+                                key: 'assignee_profile',
+                                className: 'w-[15%] text-center',
+                                render: (template: any) => (
+                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded bg-white/5 border border-white/10 text-xs font-bold text-gray-300">
+                                        {template.assignee_profile?.name ? formatDisplayName(template.assignee_profile.name) : 'Unassigned'}
+                                    </span>
+                                )
+                            },
+                            {
+                                header: 'Frequency',
+                                key: 'frequency',
+                                className: 'w-[12%] text-center',
+                                render: (template: any) => (
+                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-brand-primary/10 text-brand-primary border border-brand-primary/20">
+                                        {template.frequency}
+                                    </span>
+                                )
+                            },
+                            {
+                                header: 'Spawn / Deadline',
+                                key: 'spawn_time',
+                                className: 'w-[15%] text-center',
+                                render: (template: any) => (
+                                    <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider space-y-0.5">
+                                        <div className="flex items-center justify-center gap-1">
+                                            <span className="text-gray-600">Spawn:</span>
+                                            <span className="text-white">{formatTime(template.spawn_time)}</span>
+                                        </div>
+                                        <div className="flex items-center justify-center gap-1">
+                                            <span className="text-gray-600">Due:</span>
+                                            <span className="text-brand-warning">+{template.deadline_offset_days}d @ {formatTime(template.deadline_time)}</span>
+                                        </div>
+                                    </div>
+                                )
+                            },
+                            {
+                                header: 'Status',
+                                key: 'is_active',
+                                className: 'w-[10%] text-center',
+                                render: (template: any) => (
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleToggleTemplateActive(template.id, template.is_active);
+                                        }}
+                                        className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all border
+                                            ${template.is_active
+                                                ? 'bg-brand-success/15 border-brand-success/30 text-brand-success hover:bg-brand-success/25'
+                                                : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10 hover:text-white'
+                                            }
+                                        `}
+                                    >
+                                        {template.is_active ? 'Active' : 'Paused'}
+                                    </button>
+                                )
+                            },
+                            {
+                                header: '',
+                                key: 'actions',
+                                className: 'w-[5%] text-right',
+                                render: (template: any) => (
+                                    <div className="flex items-center justify-end gap-2 pr-2">
                                         <KebabMenu
                                             options={[
                                                 {
-                                                    label: 'View',
-                                                    icon: <IconEye className="w-4 h-4" />,
-                                                    onClick: () => handleOpenPreview(task)
-                                                },
-                                                {
                                                     label: 'Edit',
                                                     icon: <IconEdit className="w-4 h-4" />,
-                                                    onClick: () => handleOpenEdit(task)
+                                                    onClick: () => handleOpenEditTemplate(template)
                                                 },
                                                 {
                                                     label: 'Delete',
                                                     icon: <IconTrash className="w-4 h-4" />,
                                                     variant: 'danger',
-                                                    onClick: () => handleDeleteTask(task)
+                                                    onClick: () => {
+                                                        setTemplateToDelete(template);
+                                                        setIsDeleteModalOpen(true);
+                                                    }
                                                 }
                                             ]}
                                         />
-                                    ) : (
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleOpenPreview(task);
-                                            }}
-                                            className="p-2 hover:bg-white/5 rounded-lg text-gray-500 hover:text-white transition-all group"
-                                        >
-                                            <IconChevronRight className="w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5" />
-                                        </button>
-                                    )}
-                                </div>
-                            )
-                        }
-                    ]}
-                    data={tasks}
-                    onRowClick={task => handleOpenPreview(task)}
-                    isLoading={loading}
-                    isMetallicHeader={true}
-                    emptyMessage="No tasks found. Create your first task to get started."
-                />
+                                    </div>
+                                )
+                            }
+                        ]}
+                        data={filteredTemplates}
+                        onRowClick={template => handleOpenEditTemplate(template)}
+                        isLoading={loading}
+                        isMetallicHeader={true}
+                        emptyMessage="No recurring templates found. Create one to get started."
+                    />
+                </div>
+            )}
 
-                {/* Pagination */}
-                {Math.ceil(totalTasks / itemsPerPage) > 1 && (
-                    <div className="mt-8 mb-6 flex flex-col md:flex-row items-center justify-between gap-6 px-1">
-                        <div className="flex flex-col gap-1 items-center md:items-start text-center md:text-left">
-                            <p className="text-[11px] font-black text-gray-400 uppercase tracking-widest leading-none">Task Index</p>
-                            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest opacity-60">Synchronized View Navigation</p>
-                        </div>
-                        <Pagination
-                            current={currentPage}
-                            total={Math.ceil(totalTasks / itemsPerPage)}
-                            onChange={(page) => {
-                                setCurrentPage(page);
-                                window.scrollTo({ top: 0, behavior: 'smooth' });
-                            }}
-                        />
-                    </div>
-                )}
-            </div>
-
-            {/* Create Task Modal */}
+            {/* Create Task / Template Modal */}
             <Modal
                 isOpen={isModalOpen}
                 onClose={handleCloseModal}
-                title={modalMode === 'edit' ? 'Edit Task' : 'Create New Task'}
+                title={viewMode === 'tasks' ? (modalMode === 'edit' ? 'Edit Task' : 'Create New Task') : (modalMode === 'edit' ? 'Edit Template' : 'Create New Template')}
                 size="md"
                 isElevatedFooter={true}
                 footer={
@@ -835,7 +1136,7 @@ const Tasks: React.FC = () => {
                             isLoading={loading}
                             className="px-8"
                         >
-                            {modalMode === 'edit' ? 'Update Task' : 'Create Task'}
+                            {viewMode === 'tasks' ? (modalMode === 'edit' ? 'Update Task' : 'Create Task') : (modalMode === 'edit' ? 'Update Template' : 'Create Template')}
                         </Button>
                     </div>
                 }
@@ -844,13 +1145,13 @@ const Tasks: React.FC = () => {
                     {/* Task Title */}
                     <div>
                         <label className="block text-sm font-medium text-gray-300 mb-2">
-                            Task Title
+                            {viewMode === 'tasks' ? 'Task Title' : 'Template Title'}
                         </label>
                         <Input
                             type="text"
                             value={taskTitle}
                             onChange={(e) => setTaskTitle(e.target.value)}
-                            placeholder="Enter task title"
+                            placeholder={viewMode === 'tasks' ? "Enter task title" : "Enter template title"}
                             variant="metallic"
                         />
                     </div>
@@ -858,38 +1159,102 @@ const Tasks: React.FC = () => {
                     {/* Task Description */}
                     <div>
                         <TextArea
-                            label="Task Description"
+                            label={viewMode === 'tasks' ? "Task Description" : "Template Description"}
                             value={taskDescription}
                             onChange={(e) => setTaskDescription(e.target.value)}
-                            placeholder="Enter task description"
+                            placeholder={viewMode === 'tasks' ? "Enter task description" : "Enter template description"}
                             variant="metallic"
                             onExpand={() => setIsDescriptionExpanded(true)}
                             className="min-h-[140px]"
                         />
                     </div>
 
-                    {/* Deadline Date & Time */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <DatePicker
-                            label="Deadline Date"
-                            value={deadlineDate}
-                            onChange={setDeadlineDate}
-                            placeholder="Select deadline date"
-                            variant="metallic"
-                        />
-                        <TimeSelect
-                            label="Deadline Time"
-                            value={deadlineTime}
-                            onChange={setDeadlineTime}
-                            placeholder="Select deadline time"
-                            variant="metallic"
-                        />
-                    </div>
+                    {/* Template Specific Fields */}
+                    {viewMode === 'templates' && (
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-2">
+                                    Frequency
+                                </label>
+                                <Dropdown
+                                    value={frequency}
+                                    onChange={(val) => setFrequency(val as any)}
+                                    options={[
+                                        { value: 'Daily', label: 'Daily' },
+                                        { value: 'Weekly', label: 'Weekly' },
+                                        { value: 'Monthly', label: 'Monthly' }
+                                    ]}
+                                    variant="metallic"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <TimeSelect
+                                    label="Spawn Time (Auto Create)"
+                                    value={spawnTime}
+                                    onChange={setSpawnTime}
+                                    placeholder="Select spawn time"
+                                    variant="metallic"
+                                />
+                                <TimeSelect
+                                    label="Deadline Time (Due Time)"
+                                    value={deadlineTime}
+                                    onChange={setDeadlineTime}
+                                    placeholder="Select deadline time"
+                                    variant="metallic"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-2">
+                                    Deadline (Due Relative to Spawn)
+                                </label>
+                                <Dropdown
+                                    value={String(deadlineOffset)}
+                                    onChange={(val) => setDeadlineOffset(parseInt(val) || 0)}
+                                    options={[
+                                        { value: '0', label: 'Same Day (0 Days Offset)' },
+                                        { value: '1', label: 'Next Day (1 Day Offset)' },
+                                        { value: '2', label: '2 Days Later' },
+                                        { value: '3', label: '3 Days Later' },
+                                        { value: '4', label: '4 Days Later' },
+                                        { value: '5', label: '5 Days Later' },
+                                        { value: '6', label: '6 Days Later' },
+                                        { value: '7', label: '1 Week Later (7 Days Offset)' }
+                                    ]}
+                                    variant="metallic"
+                                />
+                                <p className="text-[11px] text-gray-500 mt-2 leading-relaxed">
+                                    Determines how many days after auto-creation the task is due.
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Standard Deadline Date & Time - Only for Tasks */}
+                    {viewMode === 'tasks' && (
+                        <div className="grid grid-cols-2 gap-4">
+                            <DatePicker
+                                label="Deadline Date"
+                                value={deadlineDate}
+                                onChange={setDeadlineDate}
+                                placeholder="Select deadline date"
+                                variant="metallic"
+                            />
+                            <TimeSelect
+                                label="Deadline Time"
+                                value={deadlineTime}
+                                onChange={setDeadlineTime}
+                                placeholder="Select deadline time"
+                                variant="metallic"
+                            />
+                        </div>
+                    )}
 
                     {/* Assignee Dropdown */}
                     <div>
                         <label className="block text-sm font-medium text-gray-300 mb-2">
-                            Assignee
+                            {viewMode === 'tasks' ? 'Assignee' : 'Default Assignee'}
                         </label>
                         <Dropdown
                             value={selectedAssignee}
@@ -900,7 +1265,7 @@ const Tasks: React.FC = () => {
                                 description: u.role,
                                 descriptionClassName: getRoleCapsuleClasses(u.role || '')
                             }))}
-                            placeholder="Select an assignee"
+                            placeholder={viewMode === 'tasks' ? "Select an assignee" : "Select default assignee"}
                             variant="metallic"
                             showSearch={true}
                         />
@@ -960,8 +1325,6 @@ const Tasks: React.FC = () => {
                             </p>
                         </div>
                     </div>
-
-
                 </div>
             </Modal>
 
@@ -969,7 +1332,7 @@ const Tasks: React.FC = () => {
             <Modal
                 isOpen={isDescriptionExpanded}
                 onClose={() => setIsDescriptionExpanded(false)}
-                title="Task Description"
+                title={viewMode === 'tasks' ? "Task Description" : "Template Description"}
                 size="lg"
                 isElevatedFooter={true}
                 footer={(
@@ -983,7 +1346,7 @@ const Tasks: React.FC = () => {
                 <div className="h-full min-h-[400px]">
                     <TextArea
                         variant="metallic"
-                        placeholder="Type task details here..."
+                        placeholder="Type details here..."
                         value={taskDescription}
                         onChange={(e) => setTaskDescription(e.target.value)}
                         className="h-full"
@@ -999,8 +1362,9 @@ const Tasks: React.FC = () => {
                 onClose={() => {
                     setIsDeleteModalOpen(false);
                     setTaskToDelete(null);
+                    setTemplateToDelete(null);
                 }}
-                title="Delete Task"
+                title={viewMode === 'tasks' ? 'Delete Task' : 'Delete Template'}
                 size="sm"
                 isElevatedFooter={true}
                 footer={
@@ -1010,6 +1374,7 @@ const Tasks: React.FC = () => {
                             onClick={() => {
                                 setIsDeleteModalOpen(false);
                                 setTaskToDelete(null);
+                                setTemplateToDelete(null);
                             }}
                             className="px-8"
                         >
@@ -1021,7 +1386,7 @@ const Tasks: React.FC = () => {
                             isLoading={loading}
                             className="px-8"
                         >
-                            Delete Task
+                            {viewMode === 'tasks' ? 'Delete Task' : 'Delete Template'}
                         </Button>
                     </div>
                 }
@@ -1032,7 +1397,7 @@ const Tasks: React.FC = () => {
                     </div>
                     <h3 className="text-xl font-bold text-white mb-2">Confirm Deletion</h3>
                     <p className="text-gray-400 text-sm leading-relaxed max-w-xs">
-                        Are you sure you want to delete <span className="text-white font-bold">"{taskToDelete?.task}"</span>? This action cannot be undone.
+                        Are you sure you want to delete <span className="text-white font-bold">"{viewMode === 'tasks' ? taskToDelete?.task : templateToDelete?.task}"</span>? This action cannot be undone.
                     </p>
                 </div>
             </Modal>

@@ -2461,6 +2461,25 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
       console.error("Error logging deadline update:", timelineError);
   };
 
+  const handleCloseDeadlineModal = () => {
+    setIsDeadlineModalOpen(false);
+    setActiveShortcut(null);
+
+    // If assignee was changed in details edit form but they cancelled setting the deadline, revert assignee
+    if (isEditing && editState && editState.assignee_id !== project?.assignee_id) {
+      setEditState((prev: any) => ({
+        ...prev,
+        assignee_id: project?.assignee_id || null,
+        assignee: project?.assignee || "",
+      }));
+      addToast({
+        type: "error",
+        title: "Deadline Required",
+        message: "You must set a new deadline when changing the assignee. Reassignment reverted.",
+      });
+    }
+  };
+
   const handleDeleteComment = (commentId: string) => {
     console.log("DEBUG: handleDeleteComment triggered for ID:", commentId);
     if (!commentId) {
@@ -3527,6 +3546,18 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
                     assignee_id: val || null,
                     assignee: f?.name || "",
                   });
+
+                  // Automatically popup assignee deadline modal if assignee changed to a freelancer
+                  if (val && val !== project?.assignee_id) {
+                    setDeadlineType("assignee");
+                    setModalDate(
+                      project?.due_date
+                        ? new Date(project.due_date)
+                        : new Date(),
+                    );
+                    setModalTime(project?.due_time || "17:00");
+                    setIsDeadlineModalOpen(true);
+                  }
                 }}
                 showSearch
                 className="w-full"
@@ -6277,10 +6308,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
         {/* Deadline Update Modal */}
         <Modal
           isOpen={isDeadlineModalOpen}
-          onClose={() => {
-            setIsDeadlineModalOpen(false);
-            setActiveShortcut(null);
-          }}
+          onClose={handleCloseDeadlineModal}
           title="Update Deadline"
           isElevatedHeader
           isElevatedFooter
@@ -6289,10 +6317,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({
               <Button
                 variant="recessed"
                 className="uppercase tracking-widest text-xs px-6 h-10 border-white/5 hover:bg-white/5"
-                onClick={() => {
-                  setIsDeadlineModalOpen(false);
-                  setActiveShortcut(null);
-                }}
+                onClick={handleCloseDeadlineModal}
               >
                 Cancel
               </Button>

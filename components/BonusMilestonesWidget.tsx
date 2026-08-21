@@ -1,32 +1,41 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Card } from './Surfaces';
+import { Card, ElevatedMetallicCard } from './Surfaces';
 import { IconAward } from './Icons';
 
 interface BonusMilestonesWidgetProps {
     profile: any;
     role: string | null;
+    dateFrom?: Date | null;
+    dateTo?: Date | null;
 }
 
-export const BonusMilestonesWidget: React.FC<BonusMilestonesWidgetProps> = ({ profile, role }) => {
+export const BonusMilestonesWidget: React.FC<BonusMilestonesWidgetProps> = ({ profile, role, dateFrom, dateTo }) => {
     const [milestones, setMilestones] = useState<any[]>([]);
     const [progressStats, setProgressStats] = useState<any>({});
     const [isLoading, setIsLoading] = useState(true);
+    const [isExpanded, setIsExpanded] = useState(false);
 
     useEffect(() => {
-        if (profile && role) {
+        if (profile?.id && role) {
             fetchMilestonesAndProgress();
         }
-    }, [profile, role]);
+    }, [profile?.id, role, dateFrom, dateTo]);
 
     const fetchMilestonesAndProgress = async () => {
-        setIsLoading(true);
+        // Only show skeleton on very first load, not on background refreshes
+        if (milestones.length === 0) setIsLoading(true);
         try {
-            // 1. Fetch active bonus structures for this user's role
-            const { data: bonusData } = await supabase
+            const { data: allStructures, error } = await supabase
                 .from('bonus_structures')
-                .select('*')
-                .eq('role', role);
+                .select('*');
+
+            if (error) throw error;
+
+            const bonusData = (allStructures || []).filter(b => {
+                const roles = (b.role || '').split(',').map((r: string) => r.trim().toLowerCase());
+                return roles.includes((role || '').toLowerCase());
+            });
 
             if (!bonusData || bonusData.length === 0) {
                 setMilestones([]);
@@ -36,10 +45,13 @@ export const BonusMilestonesWidget: React.FC<BonusMilestonesWidgetProps> = ({ pr
 
             setMilestones(bonusData);
 
-            // 2. Fetch current month's boundaries
-            const startOfMonth = new Date();
-            startOfMonth.setDate(1);
-            startOfMonth.setHours(0, 0, 0, 0);
+            // 2. Fetch selected or current month's boundaries
+            const startOfMonth = dateFrom ? new Date(dateFrom) : new Date();
+            if (!dateFrom) {
+                startOfMonth.setDate(1);
+                startOfMonth.setHours(0, 0, 0, 0);
+            }
+            const endOfMonth = dateTo ? new Date(dateTo) : new Date(startOfMonth.getFullYear(), startOfMonth.getMonth() + 1, 0, 23, 59, 59, 999);
 
             const stats: any = {};
 
@@ -54,7 +66,8 @@ export const BonusMilestonesWidget: React.FC<BonusMilestonesWidgetProps> = ({ pr
                         .from('projects')
                         .select('id', { count: 'exact', head: true })
                         .eq('status', 'Approved')
-                        .gte('created_at', startOfMonth.toISOString());
+                        .gte('created_at', startOfMonth.toISOString())
+                        .lte('created_at', endOfMonth.toISOString());
                     
                     if (isPm) {
                         query = query.eq('primary_manager_id', profile.id);
@@ -71,7 +84,8 @@ export const BonusMilestonesWidget: React.FC<BonusMilestonesWidgetProps> = ({ pr
                         .from('leads')
                         .select('status')
                         .eq('assigned_to', profile.id)
-                        .gte('created_at', startOfMonth.toISOString());
+                        .gte('created_at', startOfMonth.toISOString())
+                        .lte('created_at', endOfMonth.toISOString());
 
                     if (leads && leads.length > 0) {
                         const converted = leads.filter(l => l.status === 'Converted').length;
@@ -86,7 +100,8 @@ export const BonusMilestonesWidget: React.FC<BonusMilestonesWidgetProps> = ({ pr
                         .from('reviews')
                         .select('rating')
                         .eq('user_id', profile.id)
-                        .gte('created_at', startOfMonth.toISOString());
+                        .gte('created_at', startOfMonth.toISOString())
+                        .lte('created_at', endOfMonth.toISOString());
 
                     if (reviews && reviews.length > 0) {
                         const sum = reviews.reduce((acc, r) => acc + (r.rating || 0), 0);
@@ -101,7 +116,8 @@ export const BonusMilestonesWidget: React.FC<BonusMilestonesWidgetProps> = ({ pr
                         .from('attendance_records')
                         .select('punch_in_at')
                         .eq('user_id', profile.id)
-                        .gte('punch_in_at', startOfMonth.toISOString());
+                        .gte('punch_in_at', startOfMonth.toISOString())
+                        .lte('punch_in_at', endOfMonth.toISOString());
 
                     let onTimeCount = 0;
                     if (attendance && attendance.length > 0) {
@@ -125,6 +141,17 @@ export const BonusMilestonesWidget: React.FC<BonusMilestonesWidgetProps> = ({ pr
                         });
                     }
                     currentVal = onTimeCount;
+                } else if (bonus.calc_type === 'Penalties') {
+                    // Count of active (Valid) user penalties this month
+                    const { count } = await supabase
+                        .from('user_penalties')
+                        .select('id', { count: 'exact', head: true })
+                        .eq('user_id', profile.id)
+                        .eq('status', 'Valid')
+                        .gte('created_at', startOfMonth.toISOString())
+                        .lte('created_at', endOfMonth.toISOString());
+
+                    currentVal = count || 0;
                 }
 
                 stats[bonus.id] = currentVal;
@@ -138,17 +165,23 @@ export const BonusMilestonesWidget: React.FC<BonusMilestonesWidgetProps> = ({ pr
         }
     };
 
-    // Motivational copywriting engine based on progress percent
-    const getMotivationalCopy = (current: number, target: number, calcType: string) => {
-        const percent = Math.min((current / target) * 100, 100);
-        if (percent === 100) return '🏆 Milestone Unlocked! Outstanding performance!';
-        if (percent >= 80) {
-            const diff = Math.round((target - current) * 10) / 10;
-            return `🔥 You are so close! Only ${diff} ${calcType === 'Percentage' ? '%' : calcType === 'Rating' ? 'stars' : 'more'} to lock in your reward!`;
+
+
+    const achievedCount = milestones.reduce((count, milestone) => {
+        const currentVal = progressStats[milestone.id] || 0;
+        let resolvedTarget = milestone.target;
+        if (milestone.calc_type === 'Punctuality' && milestone.target === 0) {
+            const now = new Date();
+            resolvedTarget = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
         }
-        if (percent >= 50) return '⚡ Great pace! You are halfway to your bonus milestone.';
-        return '🚀 Keep going! Build momentum to claim this month\'s target payouts.';
-    };
+        let percent = 0;
+        if (milestone.calc_type === 'Penalties') {
+            percent = currentVal === 0 ? 100 : 0;
+        } else {
+            percent = resolvedTarget > 0 ? Math.min((currentVal / resolvedTarget) * 100, 100) : 0;
+        }
+        return percent >= 100 ? count + 1 : count;
+    }, 0);
 
     if (isLoading) {
         return (
@@ -160,68 +193,118 @@ export const BonusMilestonesWidget: React.FC<BonusMilestonesWidgetProps> = ({ pr
         );
     }
 
-    if (milestones.length === 0) return null; // Hide if no configured targets for role
+    if (milestones.length === 0) return null;
 
     return (
-        <Card className="p-6 md:p-8 bg-surface-card border border-surface-border rounded-3xl relative overflow-hidden animate-in fade-in duration-500 shadow-[0_12px_24px_rgba(0,0,0,0.4)]">
-            <div className="absolute inset-0 bg-gradient-to-r from-brand-primary/5 via-transparent to-transparent pointer-events-none" />
-            
-            <div className="flex items-center gap-3 mb-6 relative z-10">
-                <div className="p-2 rounded-xl bg-brand-primary/10 text-brand-primary">
-                    <IconAward size={20} />
+        <ElevatedMetallicCard
+            title={
+                <div 
+                    className="flex items-center justify-between w-full cursor-pointer select-none"
+                    onClick={() => setIsExpanded(!isExpanded)}
+                >
+                    <div className="flex items-center gap-2 min-w-0">
+                        <IconAward className="w-4 h-4 text-brand-primary shrink-0" />
+                        <span className="text-sm font-bold text-white uppercase tracking-wider truncate">My Milestone Bonuses</span>
+                        <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-brand-success/15 border border-brand-success/20 text-brand-success ml-2 whitespace-nowrap">
+                            Achieved {achievedCount} / {milestones.length}
+                        </span>
+                    </div>
+                    <button className="p-1 rounded-lg hover:bg-white/5 transition-colors text-gray-400 hover:text-white shrink-0 ml-4">
+                        {isExpanded ? (
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7" />
+                            </svg>
+                        ) : (
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                            </svg>
+                        )}
+                    </button>
                 </div>
-                <div>
-                    <h3 className="text-lg font-bold text-white uppercase tracking-wider">My Milestone Bonuses</h3>
-                    <p className="text-xs text-gray-500">Real-time target trackers for your role's extra monthly payouts.</p>
-                </div>
-            </div>
+            }
+            headerClassName="px-8 py-5"
+            bodyClassName={`p-8 ${isExpanded ? 'block' : 'hidden'}`}
+        >
+            <p className="text-xs text-gray-500 font-medium leading-relaxed -mt-2 mb-6">
+                Real-time target trackers for your role's monthly bonus payouts.
+            </p>
 
-            <div className="space-y-6 relative z-10">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {milestones.map((milestone) => {
                     const currentVal = progressStats[milestone.id] || 0;
-                    
+
                     let resolvedTarget = milestone.target;
                     if (milestone.calc_type === 'Punctuality' && milestone.target === 0) {
-                        const startOfMonth = new Date();
-                        const year = startOfMonth.getFullYear();
-                        const month = startOfMonth.getMonth();
-                        resolvedTarget = new Date(year, month + 1, 0).getDate();
+                        const now = new Date();
+                        resolvedTarget = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
                     }
 
-                    const percent = resolvedTarget > 0 ? Math.min((currentVal / resolvedTarget) * 100, 100) : 0;
-                    
+                    let percent = 0;
+                    if (milestone.calc_type === 'Penalties') {
+                        percent = currentVal === 0 ? 100 : 0;
+                    } else {
+                        percent = resolvedTarget > 0 ? Math.min((currentVal / resolvedTarget) * 100, 100) : 0;
+                    }
+
+                    const isAchieved = percent >= 100;
+                    const progressColor = isAchieved
+                        ? 'bg-brand-success shadow-[0_0_8px_rgba(34,197,94,0.4)]'
+                        : 'bg-gradient-to-r from-brand-primary to-[#D9361A]';
+
+                    const currentLabel = milestone.calc_type === 'Penalties'
+                        ? (currentVal === 0 ? 'Zero Penalties' : `${currentVal} Penalty`)
+                        : milestone.calc_type === 'Percentage'
+                        ? `${currentVal}%`
+                        : milestone.calc_type === 'Rating'
+                        ? `${currentVal} ★`
+                        : `${currentVal} / ${resolvedTarget}`;
+
                     return (
-                        <div key={milestone.id} className="space-y-3 p-4 rounded-2xl bg-black/30 border border-white/5 hover:border-white/10 transition-colors">
-                            <div className="flex justify-between items-start">
-                                <div className="space-y-1">
-                                    <h4 className="text-sm font-bold text-white uppercase tracking-wide">{milestone.name}</h4>
-                                    <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
-                                        Type: {milestone.calc_type} • Current: {currentVal} / {resolvedTarget}
-                                    </span>
+                        <div
+                            key={milestone.id}
+                            className={`flex flex-col gap-4 p-5 rounded-2xl border transition-all duration-300 ${
+                                isAchieved
+                                    ? 'bg-brand-success/[0.03] border-brand-success/15 hover:border-brand-success/25'
+                                    : 'bg-white/[0.02] border-white/[0.05] hover:border-white/10 hover:bg-white/[0.03]'
+                            }`}
+                        >
+                            {/* Top Row: Name + Amount */}
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                    <h4 className="text-[11px] font-black text-white uppercase tracking-widest leading-tight truncate">
+                                        {milestone.name}
+                                    </h4>
+                                    {milestone.description && (
+                                        <p className="text-[10px] text-gray-500 mt-1 leading-snug line-clamp-2">
+                                            {milestone.description}
+                                        </p>
+                                    )}
                                 </div>
-                                <div className="text-right">
-                                    <span className="px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-black tracking-wider uppercase">
-                                        +{milestone.currency} {milestone.amount.toLocaleString()}
-                                    </span>
-                                </div>
+                                <span className={`shrink-0 text-[10px] font-black tracking-wider px-2.5 py-1.5 rounded-lg border ${
+                                    isAchieved
+                                        ? 'bg-brand-success/10 border-brand-success/20 text-brand-success'
+                                        : 'bg-brand-primary/10 border-brand-primary/20 text-brand-primary'
+                                }`}>
+                                    +{milestone.currency} {(milestone.amount || 0).toLocaleString()}
+                                </span>
                             </div>
 
-                            {/* visual progress bar */}
-                            <div className="space-y-1">
-                                <div className="w-full h-3 rounded-full bg-black/40 overflow-hidden border border-white/5 p-[1.5px]">
-                                    <div 
-                                        className={`h-full rounded-full transition-all duration-1000 ease-out shadow-[0_0_8px_rgba(255,77,45,0.3)]
-                                            ${percent >= 100 ? 'bg-gradient-to-r from-emerald-500 to-green-600 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : ''}
-                                            ${percent >= 50 && percent < 100 ? 'bg-gradient-to-r from-amber-500 to-orange-500' : ''}
-                                            ${percent < 50 ? 'bg-gradient-to-r from-red-500 to-brand-primary' : ''}
-                                        `}
+                            {/* Bottom: Progress */}
+                            <div className="space-y-2">
+                                <div className="h-1.5 w-full bg-white/[0.06] rounded-full overflow-hidden">
+                                    <div
+                                        className={`h-full rounded-full transition-all duration-1000 ease-out ${progressColor}`}
                                         style={{ width: `${percent}%` }}
                                     />
                                 </div>
-                                <div className="flex justify-between items-center text-[10px] font-bold">
-                                    <span className="text-white font-mono">{Math.round(percent)}%</span>
-                                    <span className={`uppercase tracking-wider ${percent >= 100 ? 'text-emerald-400' : 'text-gray-500'}`}>
-                                        {percent >= 100 ? 'Target Achieved' : getMotivationalCopy(currentVal, resolvedTarget, milestone.calc_type)}
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">
+                                        {milestone.calc_type}
+                                    </span>
+                                    <span className={`text-[9px] font-black uppercase tracking-widest ${
+                                        isAchieved ? 'text-brand-success' : 'text-gray-400'
+                                    }`}>
+                                        {isAchieved ? '✓ Achieved' : currentLabel}
                                     </span>
                                 </div>
                             </div>
@@ -229,6 +312,7 @@ export const BonusMilestonesWidget: React.FC<BonusMilestonesWidgetProps> = ({ pr
                     );
                 })}
             </div>
-        </Card>
+        </ElevatedMetallicCard>
     );
 };
+
